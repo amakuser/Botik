@@ -35,7 +35,7 @@ def send_variable_image(message):
 
 
 
-# Start polling in a separate thread
+
 polling_thread = threading.Thread(target=bot.polling, args=(True, 5))
 polling_thread.daemon = True
 polling_thread.start()
