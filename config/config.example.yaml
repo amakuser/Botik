@@ -1,0 +1,39 @@
+# Bybit API (в проде лучше env: BYBIT_API_KEY, BYBIT_API_SECRET)
+bybit:
+  api_key: ""
+  api_secret: ""
+  testnet: true
+  category: "linear"   # linear | inverse
+
+# Режим исполнения: "sync" (однопоточный) или "async" (asyncio)
+execution_mode: sync
+
+# Дневные лимиты (дата по UTC)
+daily_limits:
+  max_loss: 100.0      # макс. убыток за день, USDT
+  max_profit: null     # опционально макс. прибыль за день (null = без ограничения)
+  max_trades: 50       # макс. число сделок за день
+
+# Список стратегий: имя класса из реестра, символ, таймфрейм, параметры
+strategies:
+  - name: MAStrategy
+    symbol: BTCUSDT
+    timeframe: "15"
+    params:
+      fast_period: 10
+      slow_period: 20
+      position_size_pct: 0.02
+
+# Статистика и ML
+stats:
+  db_path: "data/stats.db"
+  timezone: "UTC"
+
+ml:
+  enabled: true
+  model_path: "data/model.pkl"
+  retrain_after_trades: 50   # переобучение каждые N сделок
+  position_size_feature: true
+
+# Режим без реальных ордеров (paper trading); сделки пишутся в БД для статистики и ML
+dry_run: true

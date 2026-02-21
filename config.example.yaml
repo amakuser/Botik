@@ -1,0 +1,56 @@
+# Пример конфигурации. Скопируйте в config.yaml и при необходимости измените.
+# Секреты задаются через .env (имена переменных ниже).
+
+bybit:
+  host: "api-demo.bybit.com"   # DEMO; main: api.bybit.com
+  ws_public_host: "stream-testnet.bybit.com"   # DEMO/testnet; main: stream.bybit.com
+  api_key_env: "BYBIT_API_KEY"
+  api_secret_env: "BYBIT_API_SECRET"
+
+symbols:
+  - "BTCUSDT"
+  - "ETHUSDT"
+  - "SOLUSDT"
+ws_depth: 50
+
+strategy:
+  min_spread_ticks: 2
+  replace_interval_ms: 5000
+  order_ttl_sec: 60
+  default_tick_size: 0.01
+  inventory:
+    max_net_base_pct: 10.0   # макс. дисбаланс позиции в % от лимита
+    max_position_value_usdt: 500.0
+
+risk:
+  initial_equity_usdt: 10000.0   # фиксируется при старте
+  max_total_exposure_pct_of_initial: 2.0
+  max_symbol_exposure_pct: 1.0
+  max_orders_per_minute: 30
+
+fees:
+  maker_rate: 0.001
+  taker_rate: 0.001
+  default_when_unknown: "taker"   # если неизвестно — считать как taker (консервативно)
+
+telegram:
+  token_env: "TELEGRAM_BOT_TOKEN"
+  chat_id_env: "TELEGRAM_CHAT_ID"
+
+# Защита от случайного запуска: по умолчанию торговля выключена
+start_paused: true
+
+# /panic: по умолчанию только отмена ордеров; закрытие позиции market — только если true
+allow_panic_market_close: false
+
+# Хранилище и метрики
+storage:
+  path: "data/botik.db"
+  metrics_interval_sec: 1
+retention_days: 30
+retention_max_db_size_gb: 50
+
+logging:
+  dir: "logs"
+  max_bytes: 10485760
+  backup_count: 5

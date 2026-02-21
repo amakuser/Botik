@@ -1,0 +1,1 @@
+# Маркетдата: WebSocket public (стакан)

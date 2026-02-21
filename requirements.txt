@@ -1,0 +1,22 @@
+# Bybit Spot DEMO Bot + ML Service
+# Python 3.11+
+
+# HTTP и WebSocket
+aiohttp>=3.9.0
+websockets>=12.0
+
+# Конфиг и окружение
+pydantic>=2.0
+pydantic-settings>=2.0
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# Telegram
+pyTelegramBotAPI>=4.14.0
+
+# Тесты
+pytest>=7.0
+pytest-asyncio>=0.21.0
+
+# ML (отдельный процесс)
+scikit-learn>=1.3.0
