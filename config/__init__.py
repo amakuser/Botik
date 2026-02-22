@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
@@ -17,6 +18,7 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     Путь: аргумент -> env BYBIT_BOT_CONFIG -> config/config.yaml в проекте.
     Ключи API можно задать через BYBIT_API_KEY / BYBIT_API_SECRET (перезаписывают yaml).
     """
+    load_dotenv(override=False)
     if path is None:
         path = os.environ.get("BYBIT_BOT_CONFIG")
     if path is None:

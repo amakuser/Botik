@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 
 # --- Модели секций (валидация и типы) ---
@@ -98,6 +99,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     Загружает конфиг из YAML. Если path не передан — ищет config.yaml в текущей директории.
     Секреты подставляются из окружения по именам из конфига.
     """
+    load_dotenv(override=False)
     if path is None:
         path = Path.cwd() / "config.yaml"
     path = Path(path)
