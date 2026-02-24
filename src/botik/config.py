@@ -19,9 +19,12 @@ from dotenv import load_dotenv
 class BybitConfig(BaseModel):
     host: str = "api-demo.bybit.com"
     api_key_env: str = "BYBIT_API_KEY"
+    api_secret_key_env: str = "BYBIT_API_SECRET_KEY"
+    # Legacy fallback (backward compatibility)
     api_secret_env: str = "BYBIT_API_SECRET"
-    # WebSocket public (spot): mainnet stream.bybit.com, testnet stream-testnet.bybit.com
-    ws_public_host: str = "stream-testnet.bybit.com"
+    rsa_private_key_path_env: str = "BYBIT_RSA_PRIVATE_KEY_PATH"
+    # WebSocket public (spot): для demo/mainnet market data используем stream.bybit.com
+    ws_public_host: str = "stream.bybit.com"
 
 
 class StrategyInventoryConfig(BaseModel):
@@ -85,7 +88,18 @@ class AppConfig(BaseModel):
         return os.environ.get(self.bybit.api_key_env)
 
     def get_bybit_api_secret(self) -> str | None:
-        return os.environ.get(self.bybit.api_secret_env)
+        return os.environ.get(self.bybit.api_secret_key_env) or os.environ.get(self.bybit.api_secret_env)
+
+    def get_bybit_rsa_private_key_path(self) -> str | None:
+        return os.environ.get(self.bybit.rsa_private_key_path_env)
+
+    def get_bybit_auth_mode(self) -> str:
+        """Auth mode for REST: hmac (primary), rsa (fallback), none."""
+        if self.get_bybit_api_secret():
+            return "hmac"
+        if self.get_bybit_rsa_private_key_path():
+            return "rsa"
+        return "none"
 
     def get_telegram_token(self) -> str | None:
         return os.environ.get(self.telegram.token_env)

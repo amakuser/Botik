@@ -3,9 +3,12 @@
 
 bybit:
   host: "api-demo.bybit.com"   # DEMO; main: api.bybit.com
-  ws_public_host: "stream-testnet.bybit.com"   # DEMO/testnet; main: stream.bybit.com
+  ws_public_host: "stream.bybit.com"   # public market data (mainnet); testnet: stream-testnet.bybit.com
   api_key_env: "BYBIT_API_KEY"
+  api_secret_key_env: "BYBIT_API_SECRET_KEY"
+  # Legacy fallback variable:
   api_secret_env: "BYBIT_API_SECRET"
+  rsa_private_key_path_env: "BYBIT_RSA_PRIVATE_KEY_PATH"
 
 symbols:
   - "BTCUSDT"

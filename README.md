@@ -20,7 +20,7 @@
    ```bash
    copy .env.example .env
    ```
-   В `.env` указать: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `BYBIT_API_KEY`, `BYBIT_API_SECRET`. Файл `.env` в репозиторий **не коммитить**.
+   В `.env` указать: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `BYBIT_API_KEY` и один из вариантов подписи: `BYBIT_API_SECRET_KEY` (HMAC, основной) или `BYBIT_RSA_PRIVATE_KEY_PATH` (RSA, fallback). Для обратной совместимости поддерживается `BYBIT_API_SECRET`. Файл `.env` в репозиторий **не коммитить**.
 
 ## Запуск
 
@@ -35,6 +35,43 @@
   ```
   Одноразовое обучение: `python -m ml_service.run_loop --train-once`.
 - Старый скрипт Telegram: `python PythonBot_Telegram.py` — требует `TELEGRAM_BOT_TOKEN` в `.env`.
+
+## Проверка WS и REST
+
+- Public WS для рынка Spot не требует API-ключей. Для данных mainnet используйте `stream.bybit.com`.
+- Проверка потока котировок:
+  ```bash
+  python bybit_smoke_test.py --symbol BTCUSDT
+  ```
+- Сравнение mainnet и testnet потока:
+  ```bash
+  python bybit_smoke_test.py --symbol BTCUSDT --compare-host stream-testnet.bybit.com
+  ```
+- Проверка REST create/cancel ордера на DEMO:
+  ```bash
+  python bybit_smoke_test.py --symbol BTCUSDT --check-rest-order --rest-host api-demo.bybit.com --auth-mode hmac
+  ```
+- Создать и оставить ордер открытым для ручной проверки в UI:
+  ```bash
+  python bybit_smoke_test.py --symbol BTCUSDT --check-rest-order --rest-host api-demo.bybit.com --auth-mode hmac --keep-order-open
+  ```
+- Создать ордер и очистить его (cancel):
+  ```bash
+  python bybit_smoke_test.py --symbol BTCUSDT --check-rest-order --rest-host api-demo.bybit.com --auth-mode hmac --cancel-created-order
+  ```
+- В конце smoke-теста выводится единая строка результата:
+  - `SMOKE_RESULT {...}`
+  - удобна для runbook и автоматической проверки.
+
+### Runbook диагностики
+
+1. Если `retCode=10002`:
+   - проверьте системное время (NTP);
+   - клиент делает автосинхронизацию времени с `/v5/market/time` и 1 повтор запроса.
+2. Если `retCode=10004`:
+   - проверьте соответствие режима подписи и ключей:
+   - для HMAC: `BYBIT_API_SECRET_KEY` (или legacy `BYBIT_API_SECRET`);
+   - для RSA: `BYBIT_RSA_PRIVATE_KEY_PATH` должен соответствовать публичному ключу в Bybit.
 
 ## Безопасность: как включить и остановить торговлю
 

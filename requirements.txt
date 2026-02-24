@@ -10,6 +10,7 @@ pydantic>=2.0
 pydantic-settings>=2.0
 python-dotenv>=1.0.0
 PyYAML>=6.0
+cryptography>=42.0.0
 
 # Telegram
 pyTelegramBotAPI>=4.14.0

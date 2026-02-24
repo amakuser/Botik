@@ -51,12 +51,33 @@ def main() -> None:
         conn = get_connection(config.storage.path)
         api_key = config.get_bybit_api_key()
         api_secret = config.get_bybit_api_secret()
+        rsa_private_key_path = config.get_bybit_rsa_private_key_path()
+        auth_mode = config.get_bybit_auth_mode()
         rest: BybitRestClient | None = None
-        if api_key and api_secret:
+        if api_key and (api_secret or rsa_private_key_path):
             rest = BybitRestClient(
                 base_url=f"https://{config.bybit.host}",
                 api_key=api_key,
                 api_secret=api_secret,
+                rsa_private_key_path=rsa_private_key_path,
+            )
+            log.info(
+                "REST auth enabled: mode=%s host=%s recv_window=%s",
+                rest.auth_mode,
+                config.bybit.host,
+                rest.recv_window,
+            )
+            # Preflight: fail fast if auth/time settings are broken.
+            preflight = await rest.get_open_orders(config.symbols[0] if config.symbols else None)
+            if preflight.get("retCode") != 0:
+                raise RuntimeError(
+                    f"REST preflight failed: retCode={preflight.get('retCode')} retMsg={preflight.get('retMsg')}"
+                )
+            log.info("REST preflight passed.")
+        else:
+            log.warning(
+                "REST trading disabled: set BYBIT_API_KEY and one auth secret. auth_mode=%s",
+                auth_mode,
             )
         risk_manager = RiskManager(config.risk)
         strategy = MicroSpreadStrategy(config)
@@ -79,6 +100,17 @@ def main() -> None:
                     continue
                 try:
                     resp = await rest.get_open_orders()
+                    if resp.get("retCode") == 10004:
+                        log.error("Stopping trading loop: invalid REST signature (retCode=10004).")
+                        state.set_paused(True)
+                        return
+                    if resp.get("retCode") != 0:
+                        log.warning(
+                            "get_open_orders failed: retCode=%s retMsg=%s",
+                            resp.get("retCode"),
+                            resp.get("retMsg"),
+                        )
+                        continue
                     list_ = (resp.get("result") or {}).get("list") or []
                     total_exposure = 0.0
                     symbol_exposure: dict[str, float] = {}
@@ -118,6 +150,18 @@ def main() -> None:
                             order_link_id=intent.order_link_id,
                             time_in_force="PostOnly",
                         )
+                        if ret.get("retCode") == 10004:
+                            log.error("Stopping trading loop: invalid REST signature on place_order (10004).")
+                            state.set_paused(True)
+                            return
+                        if ret.get("retCode") != 0:
+                            log.warning(
+                                "place_order failed: symbol=%s retCode=%s retMsg=%s",
+                                intent.symbol,
+                                ret.get("retCode"),
+                                ret.get("retMsg"),
+                            )
+                            continue
                         if ret.get("retCode") == 0:
                             risk_manager.register_order_placed()
                             total_exposure += intent.price * intent.qty

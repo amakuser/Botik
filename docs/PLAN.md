@@ -7,6 +7,18 @@
 - Код и идентификаторы — на **английском**.
 - Комментарии и документация — на **русском** (понятно для ученика).
 
+## Статус: Надёжность Trading (WS mainnet + REST demo, HMAC)
+
+- В качестве рабочего контура закреплён режим: **public WS mainnet** (`stream.bybit.com`) + **REST demo** (`api-demo.bybit.com`).
+- Основной режим подписи для REST: **HMAC** (`BYBIT_API_SECRET_KEY`), с fallback на `BYBIT_API_SECRET`.
+- RSA (`BYBIT_RSA_PRIVATE_KEY_PATH`) оставлен как поддерживаемый резервный путь.
+- В REST-клиент добавлена синхронизация времени с `/v5/market/time` и одноразовый автоповтор при `retCode=10002`.
+- Добавлен smoke-инструмент `bybit_smoke_test.py` для сценариев:
+  - WS smoke / WS compare
+  - create order
+  - verify in open orders
+  - keep-open или cancel-cleanup
+
 ## Безопасность и дисциплина
 
 - **Торговля по умолчанию выключена:** `start_paused=true`. Включить можно только командой **/resume** в Telegram.
