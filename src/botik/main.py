@@ -1,29 +1,35 @@
 """
-Точка входа CLI: загрузка конфига, настройка логов, маркетдата, стратегия, RiskManager, execution.
-Торговля только при заданных API-ключах и при state.paused=False (/resume).
+CLI entrypoint: config, logging, WS market data, strategy, risk checks and execution.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
-from pathlib import Path
+import time
+import uuid
+from typing import Any
 
 from src.botik.config import load_config
 from src.botik.control.telegram_bot import start_telegram_bot_in_thread
 from src.botik.execution.bybit_rest import BybitRestClient
+from src.botik.execution.paper import PaperTradingClient
 from src.botik.marketdata.ws_public import BybitSpotOrderbookWS
 from src.botik.risk.manager import RiskManager
 from src.botik.state.state import TradingState
-from src.botik.storage.sqlite_store import get_connection, insert_metrics, insert_order
+from src.botik.storage.sqlite_store import get_connection, insert_fill, insert_metrics, insert_order
 from src.botik.strategy.micro_spread import MicroSpreadStrategy
 from src.botik.utils.logging import setup_logging
 from src.botik.utils.time import utc_now_iso
 
 
+def _fmt_float(value: float) -> str:
+    return f"{value:.8f}".rstrip("0").rstrip(".")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Bybit Spot DEMO Bot")
-    parser.add_argument("--config", type=str, default=None, help="Путь к config.yaml")
+    parser = argparse.ArgumentParser(description="Bybit Spot Bot")
+    parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -33,8 +39,14 @@ def main() -> None:
         backup_count=config.logging.backup_count,
     )
     log = logging.getLogger("botik")
-    log.info("Конфиг загружен: bybit host=%s, symbols=%s, start_paused=%s",
-             config.bybit.host, config.symbols, config.start_paused)
+    log.info(
+        "Config loaded: host=%s ws=%s symbols=%s start_paused=%s execution_mode=%s",
+        config.bybit.host,
+        config.bybit.ws_public_host,
+        config.symbols,
+        config.start_paused,
+        config.execution.mode,
+    )
 
     state = TradingState()
     state.paused = config.start_paused
@@ -43,63 +55,223 @@ def main() -> None:
     telegram_chat_id = config.get_telegram_chat_id()
     if telegram_token:
         start_telegram_bot_in_thread(telegram_token, state, config, allowed_chat_id=telegram_chat_id)
-        log.info("Telegram бот запущен (чат: %s).", telegram_chat_id or "любой")
+        log.info("Telegram bot started (chat: %s)", telegram_chat_id or "any")
     else:
-        log.warning("TELEGRAM_BOT_TOKEN не задан — команды /pause, /resume, /panic недоступны.")
+        log.warning("TELEGRAM_BOT_TOKEN is not set, control commands are disabled.")
 
     async def run_ws_metrics_trading() -> None:
         conn = get_connection(config.storage.path)
+
         api_key = config.get_bybit_api_key()
         api_secret = config.get_bybit_api_secret()
         rsa_private_key_path = config.get_bybit_rsa_private_key_path()
-        auth_mode = config.get_bybit_auth_mode()
-        rest: BybitRestClient | None = None
-        if api_key and (api_secret or rsa_private_key_path):
-            rest = BybitRestClient(
+
+        executor: Any | None = None
+        mode = config.execution.mode.lower().strip()
+        if mode == "paper":
+            executor = PaperTradingClient(state=state, fill_on_cross=config.execution.paper_fill_on_cross)
+            log.info("Execution mode: paper (no real exchange orders).")
+        elif api_key and (api_secret or rsa_private_key_path):
+            executor = BybitRestClient(
                 base_url=f"https://{config.bybit.host}",
                 api_key=api_key,
                 api_secret=api_secret,
                 rsa_private_key_path=rsa_private_key_path,
             )
             log.info(
-                "REST auth enabled: mode=%s host=%s recv_window=%s",
-                rest.auth_mode,
+                "Execution mode: live auth=%s host=%s recv_window=%s",
+                executor.auth_mode,
                 config.bybit.host,
-                rest.recv_window,
+                executor.recv_window,
             )
-            # Preflight: fail fast if auth/time settings are broken.
-            preflight = await rest.get_open_orders(config.symbols[0] if config.symbols else None)
+        else:
+            log.warning("Execution is disabled: set execution.mode=paper or BYBIT credentials for live mode.")
+
+        if executor is not None:
+            preflight = await executor.get_open_orders(config.symbols[0] if config.symbols else None)
             if preflight.get("retCode") != 0:
                 raise RuntimeError(
-                    f"REST preflight failed: retCode={preflight.get('retCode')} retMsg={preflight.get('retMsg')}"
+                    f"Execution preflight failed: retCode={preflight.get('retCode')} retMsg={preflight.get('retMsg')}"
                 )
-            log.info("REST preflight passed.")
-        else:
-            log.warning(
-                "REST trading disabled: set BYBIT_API_KEY and one auth secret. auth_mode=%s",
-                auth_mode,
-            )
+            log.info("Execution preflight passed.")
+
         risk_manager = RiskManager(config.risk)
         strategy = MicroSpreadStrategy(config)
         replace_interval_sec = config.strategy.replace_interval_ms / 1000.0
 
-        async def trading_loop() -> None:
-            if rest is None:
+        min_position_qty = config.strategy.min_position_qty_base
+        hold_timeout_sec = config.strategy.position_hold_timeout_sec
+        force_exit_enabled = config.strategy.force_exit_enabled
+        force_exit_tif = config.strategy.force_exit_time_in_force
+        force_exit_cooldown_sec = config.strategy.force_exit_cooldown_sec
+
+        net_position_base: dict[str, float] = {s: 0.0 for s in config.symbols}
+        position_opened_at: dict[str, float | None] = {s: None for s in config.symbols}
+        last_force_exit_ts: dict[str, float] = {s: 0.0 for s in config.symbols}
+        seen_exec_ids: set[str] = set()
+
+        async def refresh_positions_from_executions() -> None:
+            if executor is None:
                 return
+            for symbol in config.symbols:
+                try:
+                    resp = await executor.get_execution_list(symbol=symbol, limit=100)
+                except Exception as exc:
+                    log.warning("get_execution_list failed for %s: %s", symbol, exc)
+                    continue
+                if resp.get("retCode") != 0:
+                    log.warning(
+                        "get_execution_list error for %s: retCode=%s retMsg=%s",
+                        symbol,
+                        resp.get("retCode"),
+                        resp.get("retMsg"),
+                    )
+                    continue
+
+                items = (resp.get("result") or {}).get("list") or []
+                for item in reversed(items):
+                    exec_id = str(
+                        item.get("execId")
+                        or f"{item.get('orderId')}:{item.get('execTime')}:{item.get('execQty')}:{item.get('symbol')}"
+                    )
+                    if exec_id in seen_exec_ids:
+                        continue
+                    seen_exec_ids.add(exec_id)
+                    if len(seen_exec_ids) > 20000:
+                        seen_exec_ids.clear()
+
+                    side = str(item.get("side") or "").lower()
+                    qty = float(item.get("execQty") or item.get("qty") or 0.0)
+                    if qty <= 0 or side not in {"buy", "sell"}:
+                        continue
+
+                    signed_qty = qty if side == "buy" else -qty
+                    net_position_base[symbol] = net_position_base.get(symbol, 0.0) + signed_qty
+                    if abs(net_position_base[symbol]) >= min_position_qty:
+                        if position_opened_at[symbol] is None:
+                            position_opened_at[symbol] = time.monotonic()
+                    else:
+                        position_opened_at[symbol] = None
+
+                    insert_fill(
+                        conn,
+                        symbol=symbol,
+                        side="Buy" if side == "buy" else "Sell",
+                        price=str(item.get("execPrice") or item.get("price") or "0"),
+                        qty=str(qty),
+                        filled_at_utc=utc_now_iso(),
+                        order_link_id=item.get("orderLinkId"),
+                        exchange_order_id=item.get("orderId"),
+                        fee=str(item.get("execFee") or ""),
+                        fee_currency=item.get("feeCurrency"),
+                        liquidity="Maker" if str(item.get("isMaker") or "").lower() == "true" else "Taker",
+                    )
+
+        async def maybe_force_exit(symbol: str) -> bool:
+            if executor is None:
+                return False
+            pos_qty = net_position_base.get(symbol, 0.0)
+            if abs(pos_qty) < min_position_qty:
+                return False
+
+            opened_at = position_opened_at.get(symbol)
+            if opened_at is None:
+                position_opened_at[symbol] = time.monotonic()
+                return True
+
+            age = time.monotonic() - opened_at
+            if age < hold_timeout_sec:
+                return True
+
+            if not force_exit_enabled:
+                log.warning(
+                    "Position timeout reached for %s (qty=%s age=%.1fs) but force_exit_enabled=false",
+                    symbol,
+                    pos_qty,
+                    age,
+                )
+                return True
+
+            if time.monotonic() - last_force_exit_ts.get(symbol, 0.0) < force_exit_cooldown_sec:
+                return True
+
+            ob = state.get_orderbook(symbol)
+            if ob is None:
+                return True
+
+            side = "Sell" if pos_qty > 0 else "Buy"
+            exit_price = ob.best_bid if side == "Sell" else ob.best_ask
+            qty_str = _fmt_float(abs(pos_qty))
+            price_str = _fmt_float(exit_price)
+            order_link_id = f"force-exit-{symbol}-{uuid.uuid4().hex[:10]}"
+
+            ret = await executor.place_order(
+                symbol=symbol,
+                side=side,
+                qty=qty_str,
+                price=price_str,
+                order_link_id=order_link_id,
+                time_in_force=force_exit_tif,
+            )
+            last_force_exit_ts[symbol] = time.monotonic()
+
+            if ret.get("retCode") != 0:
+                log.warning(
+                    "Force-exit failed: symbol=%s side=%s qty=%s retCode=%s retMsg=%s",
+                    symbol,
+                    side,
+                    qty_str,
+                    ret.get("retCode"),
+                    ret.get("retMsg"),
+                )
+                return True
+
+            risk_manager.register_order_placed()
+            insert_order(
+                conn,
+                symbol=symbol,
+                side=side,
+                order_link_id=order_link_id,
+                price=price_str,
+                qty=qty_str,
+                status="New",
+                created_at_utc=utc_now_iso(),
+                exchange_order_id=(ret.get("result") or {}).get("orderId"),
+            )
+            log.warning(
+                "Force-exit submitted: symbol=%s side=%s qty=%s price=%s tif=%s age=%.1fs",
+                symbol,
+                side,
+                qty_str,
+                price_str,
+                force_exit_tif,
+                age,
+            )
+            return True
+
+        async def trading_loop() -> None:
+            if executor is None:
+                return
+
             while True:
                 await asyncio.sleep(replace_interval_sec)
+
                 if state.panic_requested:
                     try:
-                        await rest.cancel_all_orders()
-                        log.warning("PANIC: отменены все ордера.")
-                    except Exception as e:
-                        log.exception("Ошибка при panic cancel: %s", e)
+                        await executor.cancel_all_orders()
+                        log.warning("PANIC: all working orders cancelled.")
+                    except Exception as exc:
+                        log.exception("panic cancel failed: %s", exc)
                     state.set_panic_requested(False)
                     continue
+
                 if state.paused:
                     continue
+
                 try:
-                    resp = await rest.get_open_orders()
+                    await refresh_positions_from_executions()
+
+                    resp = await executor.get_open_orders()
                     if resp.get("retCode") == 10004:
                         log.error("Stopping trading loop: invalid REST signature (retCode=10004).")
                         state.set_paused(True)
@@ -111,45 +283,57 @@ def main() -> None:
                             resp.get("retMsg"),
                         )
                         continue
-                    list_ = (resp.get("result") or {}).get("list") or []
+
                     total_exposure = 0.0
                     symbol_exposure: dict[str, float] = {}
-                    our_order_link_ids: list[tuple[str, str]] = []  # (symbol, orderLinkId)
-                    for o in list_:
-                        sym = o.get("symbol", "")
-                        price = float(o.get("price") or 0)
-                        qty = float(o.get("qty") or 0)
-                        link = o.get("orderLinkId") or ""
+                    our_order_link_ids: list[tuple[str, str]] = []
+                    for order in (resp.get("result") or {}).get("list") or []:
+                        sym = order.get("symbol", "")
+                        price = float(order.get("price") or 0)
+                        qty = float(order.get("qty") or 0)
+                        link = order.get("orderLinkId") or ""
                         notional = price * qty
                         total_exposure += notional
-                        symbol_exposure[sym] = symbol_exposure.get(sym, 0) + notional
+                        symbol_exposure[sym] = symbol_exposure.get(sym, 0.0) + notional
                         if link.startswith("mm-"):
                             our_order_link_ids.append((sym, link))
+
                     for sym, link in our_order_link_ids:
-                        await rest.cancel_order(symbol=sym, order_link_id=link)
+                        await executor.cancel_order(symbol=sym, order_link_id=link)
+
+                    blocked_symbols: set[str] = set()
+                    for symbol in config.symbols:
+                        if await maybe_force_exit(symbol):
+                            blocked_symbols.add(symbol)
+
                     intents = strategy.get_intents(state)
+                    normal_tif = "PostOnly" if config.strategy.maker_only else "GTC"
+
                     for intent in intents:
-                        res = risk_manager.check_order(
+                        if intent.symbol in blocked_symbols:
+                            continue
+
+                        risk = risk_manager.check_order(
                             intent.symbol,
                             intent.side,
                             intent.price,
                             intent.qty,
                             total_exposure,
-                            symbol_exposure.get(intent.symbol, 0),
+                            symbol_exposure.get(intent.symbol, 0.0),
                         )
-                        if not res.allowed:
-                            log.debug("Risk reject: %s", res.reason)
+                        if not risk.allowed:
+                            log.debug("Risk reject: %s", risk.reason)
                             continue
-                        price_str = f"{intent.price:.8f}".rstrip("0").rstrip(".")
-                        qty_str = f"{intent.qty:.8f}".rstrip("0").rstrip(".")
-                        ret = await rest.place_order(
+
+                        ret = await executor.place_order(
                             symbol=intent.symbol,
                             side=intent.side,
-                            qty=qty_str,
-                            price=price_str,
+                            qty=_fmt_float(intent.qty),
+                            price=_fmt_float(intent.price),
                             order_link_id=intent.order_link_id,
-                            time_in_force="PostOnly",
+                            time_in_force=normal_tif,
                         )
+
                         if ret.get("retCode") == 10004:
                             log.error("Stopping trading loop: invalid REST signature on place_order (10004).")
                             state.set_paused(True)
@@ -162,24 +346,25 @@ def main() -> None:
                                 ret.get("retMsg"),
                             )
                             continue
-                        if ret.get("retCode") == 0:
-                            risk_manager.register_order_placed()
-                            total_exposure += intent.price * intent.qty
-                            symbol_exposure[intent.symbol] = symbol_exposure.get(intent.symbol, 0) + intent.price * intent.qty
-                            ts = utc_now_iso()
-                            insert_order(
-                                conn,
-                                symbol=intent.symbol,
-                                side=intent.side,
-                                order_link_id=intent.order_link_id,
-                                price=price_str,
-                                qty=qty_str,
-                                status="New",
-                                created_at_utc=ts,
-                                exchange_order_id=(ret.get("result") or {}).get("orderId"),
-                            )
-                except Exception as e:
-                    log.exception("Trading loop error: %s", e)
+
+                        risk_manager.register_order_placed()
+                        total_exposure += intent.price * intent.qty
+                        symbol_exposure[intent.symbol] = (
+                            symbol_exposure.get(intent.symbol, 0.0) + intent.price * intent.qty
+                        )
+                        insert_order(
+                            conn,
+                            symbol=intent.symbol,
+                            side=intent.side,
+                            order_link_id=intent.order_link_id,
+                            price=_fmt_float(intent.price),
+                            qty=_fmt_float(intent.qty),
+                            status="New",
+                            created_at_utc=utc_now_iso(),
+                            exchange_order_id=(ret.get("result") or {}).get("orderId"),
+                        )
+                except Exception as exc:
+                    log.exception("Trading loop error: %s", exc)
 
         ws = BybitSpotOrderbookWS(
             ws_host=config.bybit.ws_public_host,
@@ -216,10 +401,6 @@ def main() -> None:
 
     asyncio.run(run_ws_metrics_trading())
 
-
-# --- Как проверить: запуск с config.yaml и .env (BYBIT_*), start_paused=true — ордера не выставляются; /resume (через Telegram в Шаге 5) или state.paused=False — цикл выставляет ордера на DEMO.
-# --- Частые ошибки: не задать API ключи — trading_loop не запускает ордера; перепутать mainnet/demo host.
-# --- Что улучшить позже: polling исполнений и запись fills + PnL snapshot; TTL отмена ордеров по order_ttl_sec.
 
 if __name__ == "__main__":
     main()
