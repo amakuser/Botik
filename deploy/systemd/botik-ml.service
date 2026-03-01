@@ -1,0 +1,17 @@
+[Unit]
+Description=Botik ML Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=botik
+WorkingDirectory=/opt/Botik
+EnvironmentFile=/opt/Botik/.env
+ExecStart=/opt/Botik/.venv/bin/python -m ml_service.run_loop --config /opt/Botik/config.yaml
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
