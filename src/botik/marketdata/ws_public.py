@@ -1,7 +1,5 @@
 """
-WebSocket public: подписка на стакан top-50 (spot) по символам из конфига.
-Reconnect/backoff, логирование дисконнектов. Обновляет in-memory orderbook и TradingState.
-Сырой стакан на диск не пишем — только агрегаты пишет отдельный цикл в БД.
+Public Spot orderbook websocket client.
 """
 from __future__ import annotations
 
@@ -14,27 +12,14 @@ from typing import Any
 import websockets
 from websockets.client import WebSocketClientProtocol
 
-from src.botik.state.state import (
-    OrderBookAggregate,
-    TradingState,
-    compute_imbalance,
-)
+from src.botik.state.state import OrderBookAggregate, TradingState, compute_imbalance
 
 logger = logging.getLogger(__name__)
 
-# Топик стакана: orderbook.{depth}.{symbol}
 BYBIT_WS_SPOT_ORDERBOOK_TOPIC = "orderbook.{depth}.{symbol}"
 
 
-def _parse_bids_asks(data: list[list[str]]) -> list[tuple[float, float]]:
-    return [(float(p), float(s)) for p, s in data]
-
-
-def _apply_delta(
-    book: dict[float, float],
-    updates: list[list[str]],
-    is_bid: bool,
-) -> None:
+def _apply_delta(book: dict[float, float], updates: list[list[str]]) -> None:
     for price_str, size_str in updates:
         price = float(price_str)
         size = float(size_str)
@@ -45,8 +30,7 @@ def _apply_delta(
 
 
 def _book_to_sorted_list(book: dict[float, float], descending: bool) -> list[tuple[float, float]]:
-    items = sorted(book.items(), key=lambda x: x[0], reverse=descending)
-    return items
+    return sorted(book.items(), key=lambda x: x[0], reverse=descending)
 
 
 def aggregate_from_book(
@@ -56,19 +40,22 @@ def aggregate_from_book(
     tick_size: float,
     top_n: int = 10,
 ) -> OrderBookAggregate | None:
-    """Строит OrderBookAggregate из списков bid/ask. Если стакан пустой — возвращает None."""
     if not bids or not asks:
         return None
-    best_bid = bids[0][0]
-    best_ask = asks[0][0]
+
+    best_bid, best_bid_size = bids[0]
+    best_ask, best_ask_size = asks[0]
     mid = (best_bid + best_ask) / 2
     spread = best_ask - best_bid
     spread_ticks = int(round(spread / tick_size)) if tick_size > 0 else 0
     imb = compute_imbalance(bids, asks, top_n)
+
     return OrderBookAggregate(
         symbol=symbol,
         best_bid=best_bid,
         best_ask=best_ask,
+        best_bid_size=best_bid_size,
+        best_ask_size=best_ask_size,
         mid=mid,
         spread_ticks=spread_ticks,
         imbalance_top_n=imb,
@@ -77,11 +64,6 @@ def aggregate_from_book(
 
 
 class BybitSpotOrderbookWS:
-    """
-    Клиент WebSocket для стакана Spot. Поддерживает snapshot и delta.
-    Обновляет state.orderbooks по каждому символу.
-    """
-
     def __init__(
         self,
         ws_host: str,
@@ -111,38 +93,40 @@ class BybitSpotOrderbookWS:
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
-            logger.warning("Не удалось разобрать JSON: %s", raw[:200])
+            logger.warning("Failed to decode WS JSON: %s", raw[:200])
             return
-        if "topic" in msg and "data" in msg:
-            topic = msg.get("topic", "")
-            if not topic.startswith("orderbook."):
-                return
-            typ = msg.get("type", "delta")
-            data = msg.get("data", {})
-            symbol = data.get("s", "")
-            if symbol not in self.symbols:
-                return
-            bids_raw = data.get("b", [])
-            asks_raw = data.get("a", [])
-            if typ == "snapshot":
-                self._bids[symbol] = {float(p): float(s) for p, s in bids_raw}
-                self._asks[symbol] = {float(p): float(s) for p, s in asks_raw}
-            else:
-                _apply_delta(self._bids[symbol], bids_raw, True)
-                _apply_delta(self._asks[symbol], asks_raw, False)
-            bids_list = _book_to_sorted_list(self._bids[symbol], True)
-            asks_list = _book_to_sorted_list(self._asks[symbol], False)
-            agg = aggregate_from_book(
-                symbol, bids_list, asks_list, self.tick_size, top_n=min(10, self.depth)
-            )
-            if agg:
-                self.state.set_orderbook(symbol, agg)
+
+        if "topic" not in msg or "data" not in msg:
+            return
+        topic = msg.get("topic", "")
+        if not topic.startswith("orderbook."):
+            return
+
+        data = msg.get("data", {})
+        symbol = data.get("s", "")
+        if symbol not in self.symbols:
+            return
+
+        bids_raw = data.get("b", [])
+        asks_raw = data.get("a", [])
+        if msg.get("type", "delta") == "snapshot":
+            self._bids[symbol] = {float(p): float(s) for p, s in bids_raw}
+            self._asks[symbol] = {float(p): float(s) for p, s in asks_raw}
+        else:
+            _apply_delta(self._bids[symbol], bids_raw)
+            _apply_delta(self._asks[symbol], asks_raw)
+
+        bids_list = _book_to_sorted_list(self._bids[symbol], descending=True)
+        asks_list = _book_to_sorted_list(self._asks[symbol], descending=False)
+        agg = aggregate_from_book(symbol, bids_list, asks_list, self.tick_size, top_n=min(10, self.depth))
+        if agg is not None:
+            self.state.set_orderbook(symbol, agg)
 
     async def run(self) -> None:
-        """Бесконечный цикл: подключение, подписка, приём сообщений, при обрыве — backoff и reconnect."""
         backoff_sec = 1.0
         max_backoff = 60.0
         self._running = True
+
         while self._running:
             try:
                 async with websockets.connect(
@@ -153,18 +137,20 @@ class BybitSpotOrderbookWS:
                 ) as ws:
                     self._ws = ws
                     backoff_sec = 1.0
-                    logger.info("WebSocket подключён: %s", self._url())
+                    logger.info("WebSocket connected: %s", self._url())
                     await ws.send(json.dumps(self._subscribe_message()))
                     async for raw in ws:
                         if not self._running:
                             break
                         self._handle_message(raw)
-            except Exception as e:
-                logger.warning("WebSocket дисконнект или ошибка: %s. Переподключение через %.1f с.", e, backoff_sec)
+            except Exception as exc:
+                logger.warning("WebSocket reconnect in %.1fs: %s", backoff_sec, exc)
             finally:
                 self._ws = None
+
             if not self._running:
                 break
+
             await asyncio.sleep(backoff_sec)
             backoff_sec = min(backoff_sec * 2, max_backoff)
 
@@ -172,8 +158,3 @@ class BybitSpotOrderbookWS:
         self._running = False
         if self._ws:
             asyncio.create_task(self._ws.close())
-
-
-# --- Как проверить: asyncio.run(BybitSpotOrderbookWS(...).run()) с 1 символом, проверить state.get_orderbook(symbol).
-# --- Частые ошибки: не обрабатывать delta (только snapshot) — стакан устареет; не увеличивать backoff при частых обрывах.
-# --- Что улучшить позже: ping/pong по таймауту; переподписка при смене символов без перезапуска.
