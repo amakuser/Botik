@@ -1,6 +1,5 @@
 """
-Конфигурация бота: YAML + переменные окружения для секретов.
-Секреты не хранятся в YAML — только имена переменных (api_key_env и т.д.).
+Bot configuration: YAML + env vars for secrets.
 """
 from __future__ import annotations
 
@@ -9,11 +8,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-
-
-# --- Модели секций (валидация и типы) ---
+from pydantic import BaseModel, Field
 
 
 class BybitConfig(BaseModel):
@@ -23,7 +19,7 @@ class BybitConfig(BaseModel):
     # Legacy fallback (backward compatibility)
     api_secret_env: str = "BYBIT_API_SECRET"
     rsa_private_key_path_env: str = "BYBIT_RSA_PRIVATE_KEY_PATH"
-    # WebSocket public (spot): для demo/mainnet market data используем stream.bybit.com
+    # Public Spot market data host.
     ws_public_host: str = "stream.bybit.com"
 
 
@@ -36,7 +32,23 @@ class StrategyConfig(BaseModel):
     min_spread_ticks: int = 2
     replace_interval_ms: int = 5000
     order_ttl_sec: int = 60
-    default_tick_size: float = 0.01  # для перевода спреда в тики (spot USDT)
+    default_tick_size: float = 0.01
+
+    # Spread scanner params.
+    order_qty_base: float = 0.001
+    entry_tick_offset: int = 1
+    target_profit: float = 0.0002
+    safety_buffer: float = 0.0001
+    min_top_book_qty: float = 0.0
+
+    # Execution behavior.
+    maker_only: bool = True
+    position_hold_timeout_sec: int = 180
+    min_position_qty_base: float = 0.000001
+    force_exit_enabled: bool = True
+    force_exit_time_in_force: str = "IOC"
+    force_exit_cooldown_sec: int = 10
+
     inventory: StrategyInventoryConfig = Field(default_factory=StrategyInventoryConfig)
 
 
@@ -65,8 +77,13 @@ class StorageConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     dir: str = "logs"
-    max_bytes: int = 10 * 1024 * 1024  # 10 MB
+    max_bytes: int = 10 * 1024 * 1024
     backup_count: int = 5
+
+
+class ExecutionConfig(BaseModel):
+    mode: str = "live"  # live | paper
+    paper_fill_on_cross: bool = True
 
 
 class AppConfig(BaseModel):
@@ -83,6 +100,7 @@ class AppConfig(BaseModel):
     retention_days: int = 30
     retention_max_db_size_gb: float = 50.0
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
 
     def get_bybit_api_key(self) -> str | None:
         return os.environ.get(self.bybit.api_key_env)
@@ -109,10 +127,6 @@ class AppConfig(BaseModel):
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
-    """
-    Загружает конфиг из YAML. Если path не передан — ищет config.yaml в текущей директории.
-    Секреты подставляются из окружения по именам из конфига.
-    """
     load_dotenv(override=False)
     if path is None:
         path = Path.cwd() / "config.yaml"
@@ -122,8 +136,3 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     return AppConfig.model_validate(data)
-
-
-# --- Как проверить: python -c "from src.botik.config import load_config; c=load_config(); print(c.bybit.host)"
-# --- Частые ошибки: не задать переменные окружения для API/Telegram; указать секрет в YAML.
-# --- Что улучшить позже: валидация символов по списку биржи; подстановка config path через env.
