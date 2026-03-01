@@ -48,6 +48,9 @@ class StrategyConfig(BaseModel):
     force_exit_enabled: bool = True
     force_exit_time_in_force: str = "IOC"
     force_exit_cooldown_sec: int = 10
+    stop_loss_pct: float = 0.003
+    take_profit_pct: float = 0.005
+    pnl_exit_enabled: bool = True
 
     inventory: StrategyInventoryConfig = Field(default_factory=StrategyInventoryConfig)
 

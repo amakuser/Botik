@@ -36,6 +36,9 @@ strategy:
   force_exit_enabled: true
   force_exit_time_in_force: "IOC"
   force_exit_cooldown_sec: 10
+  stop_loss_pct: 0.003
+  take_profit_pct: 0.005
+  pnl_exit_enabled: true
 
   inventory:
     max_net_base_pct: 10.0

@@ -16,6 +16,7 @@ from src.botik.execution.bybit_rest import BybitRestClient
 from src.botik.execution.paper import PaperTradingClient
 from src.botik.marketdata.ws_public import BybitSpotOrderbookWS
 from src.botik.risk.manager import RiskManager
+from src.botik.risk.position import apply_fill, unrealized_pnl_pct
 from src.botik.state.state import TradingState
 from src.botik.storage.sqlite_store import get_connection, insert_fill, insert_metrics, insert_order
 from src.botik.strategy.micro_spread import MicroSpreadStrategy
@@ -104,8 +105,12 @@ def main() -> None:
         force_exit_enabled = config.strategy.force_exit_enabled
         force_exit_tif = config.strategy.force_exit_time_in_force
         force_exit_cooldown_sec = config.strategy.force_exit_cooldown_sec
+        stop_loss_pct = max(config.strategy.stop_loss_pct, 0.0)
+        take_profit_pct = max(config.strategy.take_profit_pct, 0.0)
+        pnl_exit_enabled = config.strategy.pnl_exit_enabled
 
         net_position_base: dict[str, float] = {s: 0.0 for s in config.symbols}
+        avg_entry_price: dict[str, float] = {s: 0.0 for s in config.symbols}
         position_opened_at: dict[str, float | None] = {s: None for s in config.symbols}
         last_force_exit_ts: dict[str, float] = {s: 0.0 for s in config.symbols}
         seen_exec_ids: set[str] = set()
@@ -142,22 +147,31 @@ def main() -> None:
 
                     side = str(item.get("side") or "").lower()
                     qty = float(item.get("execQty") or item.get("qty") or 0.0)
+                    price = float(item.get("execPrice") or item.get("price") or 0.0)
                     if qty <= 0 or side not in {"buy", "sell"}:
                         continue
 
-                    signed_qty = qty if side == "buy" else -qty
-                    net_position_base[symbol] = net_position_base.get(symbol, 0.0) + signed_qty
-                    if abs(net_position_base[symbol]) >= min_position_qty:
-                        if position_opened_at[symbol] is None:
-                            position_opened_at[symbol] = time.monotonic()
-                    else:
+                    old_qty = net_position_base.get(symbol, 0.0)
+                    new_qty, new_avg = apply_fill(
+                        current_qty=old_qty,
+                        current_avg_entry=avg_entry_price.get(symbol, 0.0),
+                        side=side,
+                        fill_qty=qty,
+                        fill_price=price,
+                    )
+                    net_position_base[symbol] = new_qty
+                    avg_entry_price[symbol] = new_avg
+
+                    if abs(old_qty) < min_position_qty and abs(new_qty) >= min_position_qty:
+                        position_opened_at[symbol] = time.monotonic()
+                    elif abs(new_qty) < min_position_qty:
                         position_opened_at[symbol] = None
 
                     insert_fill(
                         conn,
                         symbol=symbol,
                         side="Buy" if side == "buy" else "Sell",
-                        price=str(item.get("execPrice") or item.get("price") or "0"),
+                        price=str(price),
                         qty=str(qty),
                         filled_at_utc=utc_now_iso(),
                         order_link_id=item.get("orderLinkId"),
@@ -179,24 +193,44 @@ def main() -> None:
                 position_opened_at[symbol] = time.monotonic()
                 return True
 
+            ob = state.get_orderbook(symbol)
+            if ob is None:
+                return True
+
+            mark_price = ob.best_bid if pos_qty > 0 else ob.best_ask
+            pnl_pct = unrealized_pnl_pct(
+                position_qty=pos_qty,
+                avg_entry_price=avg_entry_price.get(symbol, 0.0),
+                mark_price=mark_price,
+            )
             age = time.monotonic() - opened_at
-            if age < hold_timeout_sec:
+
+            reason: str | None = None
+            if pnl_exit_enabled and pnl_pct is not None:
+                if stop_loss_pct > 0 and pnl_pct <= -stop_loss_pct:
+                    reason = "stop_loss"
+                elif take_profit_pct > 0 and pnl_pct >= take_profit_pct:
+                    reason = "take_profit"
+
+            if reason is None and age >= hold_timeout_sec:
+                reason = "hold_timeout"
+
+            # Symbol has an open position: block opening additional inventory.
+            if reason is None:
                 return True
 
             if not force_exit_enabled:
                 log.warning(
-                    "Position timeout reached for %s (qty=%s age=%.1fs) but force_exit_enabled=false",
+                    "Exit rule triggered but force_exit_enabled=false: symbol=%s reason=%s qty=%s pnl_pct=%s age=%.1fs",
                     symbol,
+                    reason,
                     pos_qty,
+                    f"{pnl_pct:.6f}" if pnl_pct is not None else "n/a",
                     age,
                 )
                 return True
 
             if time.monotonic() - last_force_exit_ts.get(symbol, 0.0) < force_exit_cooldown_sec:
-                return True
-
-            ob = state.get_orderbook(symbol)
-            if ob is None:
                 return True
 
             side = "Sell" if pos_qty > 0 else "Buy"
@@ -239,12 +273,14 @@ def main() -> None:
                 exchange_order_id=(ret.get("result") or {}).get("orderId"),
             )
             log.warning(
-                "Force-exit submitted: symbol=%s side=%s qty=%s price=%s tif=%s age=%.1fs",
+                "Force-exit submitted: symbol=%s side=%s qty=%s price=%s tif=%s reason=%s pnl_pct=%s age=%.1fs",
                 symbol,
                 side,
                 qty_str,
                 price_str,
                 force_exit_tif,
+                reason,
+                f"{pnl_pct:.6f}" if pnl_pct is not None else "n/a",
                 age,
             )
             return True
