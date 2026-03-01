@@ -36,6 +36,33 @@
   Одноразовое обучение: `python -m ml_service.run_loop --train-once`.
 - Старый скрипт Telegram: `python PythonBot_Telegram.py` — требует `TELEGRAM_BOT_TOKEN` в `.env`.
 
+## Локальное обучение на данных сервера
+
+Сценарий: сервер копит `data/botik.db`, ты обучаешь локально, затем отправляешь модель обратно на сервер и активируешь её.
+
+Команда:
+```bash
+python tools/ml_remote_cycle.py --remote-user <user> --remote-host <host> --remote-repo-path /opt/Botik
+```
+
+Что делает скрипт:
+1. Забирает БД с сервера (`scp`).
+2. Запускает локальное обучение (`python -m ml_service.run_loop --train-once`).
+3. Отправляет артефакт модели на сервер.
+4. Активирует модель на сервере через `tools/promote_model.py`.
+
+## Прод-развертывание (Linux, systemd)
+
+В репозитории есть шаблоны:
+- `deploy/systemd/botik-trading.service`
+- `deploy/systemd/botik-ml.service`
+- `deploy/update.sh`
+
+Типовой цикл обновления на сервере:
+```bash
+sudo bash /opt/Botik/deploy/update.sh /opt/Botik master
+```
+
 ## Проверка WS и REST
 
 - Public WS для рынка Spot не требует API-ключей. Для данных mainnet используйте `stream.bybit.com`.
@@ -79,6 +106,12 @@
 - **Включить торговлю:** команда **/resume** в Telegram (после реализации управления).
 - **Остановить новые ордера:** команда **/pause** — новые ордера не выставляются, текущие можно снять вручную или через **/panic**.
 - **Срочная остановка:** команда **/panic** — отмена всех ордеров. Опционально закрытие позиции рыночным ордером только если в конфиге включено `allow_panic_market_close` (по умолчанию выключено).
+- Дополнительные ограничения позиции в конфиге (`strategy`):
+  - `stop_loss_pct`
+  - `take_profit_pct`
+  - `position_hold_timeout_sec`
+  - `force_exit_enabled`
+  - `force_exit_time_in_force`
 
 ## Секреты
 
@@ -88,6 +121,7 @@
 ## Документация
 
 - [docs/PLAN.md](docs/PLAN.md) — план проекта и шаги разработки.
+- [docs/PROD_RUNBOOK.md](docs/PROD_RUNBOOK.md) — запуск/обновление на сервере.
 - [docs/AGENT_PROMPTS.md](docs/AGENT_PROMPTS.md) — подсказки для AI и структура кода.
 
 ---
