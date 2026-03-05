@@ -91,13 +91,14 @@ class ManagedProcess:
     def running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
-    def start(self, cmd: list[str], cwd: Path) -> None:
+    def start(self, cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> bool:
         if self.running:
-            return
+            return False
         self.last_exit_code = None
         self.proc = subprocess.Popen(
             cmd,
             cwd=str(cwd),
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -107,6 +108,7 @@ class ManagedProcess:
         self.on_output(f"[{self.name}] started: {' '.join(cmd)}")
         self._reader_thread = threading.Thread(target=self._read_output, daemon=True)
         self._reader_thread.start()
+        return True
 
     def _read_output(self) -> None:
         if self.proc is None or self.proc.stdout is None:
@@ -118,9 +120,9 @@ class ManagedProcess:
         self.state = "stopped" if code == 0 else "error"
         self.on_output(f"[{self.name}] exited with code {code}")
 
-    def stop(self) -> None:
+    def stop(self) -> bool:
         if not self.running or self.proc is None:
-            return
+            return False
         self.on_output(f"[{self.name}] stopping...")
         self.proc.terminate()
         try:
@@ -131,6 +133,7 @@ class ManagedProcess:
         self.last_exit_code = 0
         self.state = "stopped"
         self.on_output(f"[{self.name}] stopped")
+        return True
 
 
 class BotikGui:
@@ -179,12 +182,15 @@ class BotikGui:
         self._autosave_cfg_after_id: str | None = None
         self._runtime_refresh_lock = threading.Lock()
         self._runtime_refresh_inflight = False
+        self._telegram_thread: threading.Thread | None = None
+        self._telegram_missing_token_reported = False
 
         self._setup_style()
         self._build_ui()
         self._setup_edit_shortcuts()
         self._setup_autosave()
         self.load_settings()
+        self._start_telegram_control_if_configured()
 
         self._update_status()
         self._drain_logs()
@@ -571,6 +577,245 @@ class BotikGui:
     def _enqueue_log(self, text: str) -> None:
         self.log_queue.put(text)
 
+    def _invoke_on_ui_thread(self, fn: Callable[[], Any], timeout_sec: float = 45.0) -> Any:
+        if threading.current_thread() is threading.main_thread():
+            return fn()
+
+        done = threading.Event()
+        box: dict[str, Any] = {}
+
+        def runner() -> None:
+            try:
+                box["result"] = fn()
+            except Exception as exc:  # noqa: BLE001
+                box["error"] = exc
+            finally:
+                done.set()
+
+        self.root.after(0, runner)
+        if not done.wait(timeout=timeout_sec):
+            raise TimeoutError("UI thread action timed out")
+        if "error" in box:
+            raise RuntimeError(str(box["error"]))
+        return box.get("result")
+
+    def _start_telegram_control_if_configured(self) -> None:
+        env_data = _read_env_map(ENV_PATH)
+        token = (env_data.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        chat_id = (env_data.get("TELEGRAM_CHAT_ID") or "").strip() or None
+        if not token:
+            if not self._telegram_missing_token_reported:
+                self._enqueue_log("[telegram-gui] TELEGRAM_BOT_TOKEN not set; remote control disabled")
+                self._telegram_missing_token_reported = True
+            return
+        self._telegram_missing_token_reported = False
+        if self._telegram_thread is not None and self._telegram_thread.is_alive():
+            return
+
+        from src.botik.control.telegram_gui import GuiTelegramActions, start_gui_telegram_bot_in_thread
+
+        actions = GuiTelegramActions(
+            status=self.telegram_status_text,
+            balance=self.telegram_balance_text,
+            orders=self.telegram_orders_text,
+            start_trading=self.telegram_start_trading,
+            stop_trading=self.telegram_stop_trading,
+            pull_updates=self.telegram_pull_updates,
+            restart_soft=self.telegram_restart_soft,
+            restart_hard=self.telegram_restart_hard,
+        )
+        self._telegram_thread = start_gui_telegram_bot_in_thread(
+            token=token,
+            actions=actions,
+            allowed_chat_id=chat_id,
+        )
+        self._enqueue_log("[telegram-gui] control bot started")
+
+    def _git_short_head(self) -> str:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            return "unknown"
+        return (proc.stdout or "").strip() or "unknown"
+
+    def _git_pull_ff_only(self) -> tuple[bool, str]:
+        before = self._git_short_head()
+        pull = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
+        output = ((pull.stdout or "") + "\n" + (pull.stderr or "")).strip()
+        after = self._git_short_head()
+        ok = pull.returncode == 0
+        if ok:
+            msg = f"git pull OK: {before} -> {after}"
+            if output:
+                msg += f"\n{output}"
+            self._enqueue_log(f"[update] {msg}")
+            return True, msg
+        msg = f"git pull failed (code={pull.returncode})\n{output}".strip()
+        self._enqueue_log(f"[update] {msg}")
+        return False, msg
+
+    def _live_rest_context(self) -> dict[str, str]:
+        raw_cfg = self._load_yaml()
+        env_data = _read_env_map(ENV_PATH)
+        mode = str(((raw_cfg.get("execution") or {}).get("mode") or "paper")).strip().lower()
+        host = str((raw_cfg.get("bybit") or {}).get("host") or "api-demo.bybit.com").strip()
+        api_key = (
+            env_data.get("BYBIT_API_KEY")
+            or os.environ.get("BYBIT_API_KEY")
+            or ""
+        ).strip()
+        api_secret = (
+            env_data.get("BYBIT_API_SECRET_KEY")
+            or env_data.get("BYBIT_API_SECRET")
+            or os.environ.get("BYBIT_API_SECRET_KEY")
+            or os.environ.get("BYBIT_API_SECRET")
+            or ""
+        ).strip()
+        rsa_key_path = (
+            env_data.get("BYBIT_RSA_PRIVATE_KEY_PATH")
+            or os.environ.get("BYBIT_RSA_PRIVATE_KEY_PATH")
+            or ""
+        ).strip()
+        return {
+            "mode": mode,
+            "host": host,
+            "api_key": api_key,
+            "api_secret": api_secret,
+            "rsa_key_path": rsa_key_path,
+        }
+
+    async def _cancel_open_orders_live(
+        self,
+        host: str,
+        api_key: str,
+        api_secret: str,
+        rsa_key_path: str,
+    ) -> tuple[bool, str]:
+        from src.botik.execution.bybit_rest import BybitRestClient
+
+        client = BybitRestClient(
+            base_url=f"https://{host}",
+            api_key=api_key,
+            api_secret=api_secret or None,
+            rsa_private_key_path=rsa_key_path or None,
+        )
+
+        before = await client.get_open_orders()
+        if before.get("retCode") != 0:
+            return False, f"get_open_orders failed: retCode={before.get('retCode')} retMsg={before.get('retMsg')}"
+        before_list = (before.get("result") or {}).get("list") or []
+        before_count = len(before_list)
+
+        cancel = await client.cancel_all_orders()
+        if cancel.get("retCode") != 0:
+            return False, f"cancel_all_orders failed: retCode={cancel.get('retCode')} retMsg={cancel.get('retMsg')}"
+
+        await asyncio.sleep(0.6)
+        after = await client.get_open_orders()
+        if after.get("retCode") != 0:
+            return False, f"get_open_orders(after) failed: retCode={after.get('retCode')} retMsg={after.get('retMsg')}"
+        after_count = len((after.get("result") or {}).get("list") or [])
+        if after_count > 0:
+            return False, f"cancel_all incomplete: before={before_count} after={after_count}"
+        return True, f"cancel_all OK: before={before_count} after={after_count}"
+
+    def _cancel_open_orders_best_effort(self) -> tuple[bool, str]:
+        ctx = self._invoke_on_ui_thread(self._live_rest_context)
+        mode = str(ctx.get("mode") or "paper").lower()
+        if mode != "live":
+            return True, "mode=paper: открытых ордеров на бирже нет"
+        api_key = str(ctx.get("api_key") or "")
+        api_secret = str(ctx.get("api_secret") or "")
+        rsa_key_path = str(ctx.get("rsa_key_path") or "")
+        if not api_key or (not api_secret and not rsa_key_path):
+            return False, "нет API-ключей для cancel_all"
+        return asyncio.run(
+            self._cancel_open_orders_live(
+                host=str(ctx.get("host") or "api-demo.bybit.com"),
+                api_key=api_key,
+                api_secret=api_secret,
+                rsa_key_path=rsa_key_path,
+            )
+        )
+
+    def _telegram_status_text_ui(self) -> str:
+        mode = self._load_execution_mode()
+        return (
+            "GUI supervisor:\n"
+            f"trading={self._status_text(self.trading)}\n"
+            f"ml={self._status_text(self.ml)}\n"
+            f"execution.mode={mode}\n"
+            f"commit={self._git_short_head()}\n"
+            "Примечание: запущенный trading-процесс использует код версии на момент старта."
+        )
+
+    def telegram_status_text(self) -> str:
+        return str(self._invoke_on_ui_thread(self._telegram_status_text_ui))
+
+    def telegram_balance_text(self) -> str:
+        snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
+        return (
+            "Средства:\n"
+            f"баланс={snapshot.get('balance_total', 'n/a')}\n"
+            f"доступно={snapshot.get('balance_available', 'n/a')}\n"
+            f"кошелек={snapshot.get('balance_wallet', 'n/a')}\n"
+            f"api={snapshot.get('api_status', 'n/a')}\n"
+            f"обновлено={snapshot.get('updated_at', '-')}"
+        )
+
+    def telegram_orders_text(self) -> str:
+        snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
+        rows = list(snapshot.get("open_orders_rows") or [])
+        lines = [f"Активные ордера: {snapshot.get('open_orders_count', 0)}"]
+        for row in rows[:12]:
+            symbol, side, price, qty, status = row
+            lines.append(f"{symbol} {side} price={price} qty={qty} status={status}")
+        lines.append(f"api={snapshot.get('api_status', 'n/a')}")
+        return "\n".join(lines)
+
+    def telegram_start_trading(self) -> str:
+        return str(self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False)))
+
+    def telegram_stop_trading(self) -> str:
+        return str(self._invoke_on_ui_thread(self._stop_trading_impl))
+
+    def telegram_pull_updates(self) -> str:
+        ok, msg = self._git_pull_ff_only()
+        if self.trading.running:
+            msg += "\nTrading уже запущен на старой версии. Нужен рестарт для применения обновлений."
+        return msg if ok else f"Ошибка обновления:\n{msg}"
+
+    def telegram_restart_soft(self) -> str:
+        lines: list[str] = []
+        ok_cancel_before, msg_cancel_before = self._cancel_open_orders_best_effort()
+        lines.append(f"[1/4] cancel before stop: {msg_cancel_before}")
+        lines.append(f"[2/4] {self._invoke_on_ui_thread(self._stop_trading_impl)}")
+        ok_cancel_after, msg_cancel_after = self._cancel_open_orders_best_effort()
+        lines.append(f"[3/4] cancel after stop: {msg_cancel_after}")
+        lines.append(f"[4/4] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
+        if not ok_cancel_before or not ok_cancel_after:
+            lines.append("Внимание: cancel_all не полностью успешен, проверьте open orders.")
+        return "\n".join(lines)
+
+    def telegram_restart_hard(self) -> str:
+        lines: list[str] = []
+        ok_pull, pull_msg = self._git_pull_ff_only()
+        lines.append(f"[1/3] update: {pull_msg}")
+        lines.append(f"[2/3] {self._invoke_on_ui_thread(self._stop_trading_impl)}")
+        lines.append(f"[3/3] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
+        if not ok_pull:
+            lines.append("Обновление не применилось, запущена текущая локальная версия.")
+        return "\n".join(lines)
+
     def _drain_logs(self) -> None:
         while True:
             try:
@@ -891,6 +1136,7 @@ class BotikGui:
             if show_popup:
                 messagebox.showerror("Save failed", f".env save error:\n{exc}")
             return False
+        self._start_telegram_control_if_configured()
         self._enqueue_log(f"[settings] .env auto-saved: {ENV_PATH}")
         if show_popup:
             messagebox.showinfo("Saved", f".env updated:\n{ENV_PATH}")
@@ -937,20 +1183,31 @@ class BotikGui:
             return
         self._enqueue_log("[settings] save all completed")
 
-    def start_trading(self) -> None:
+    def _start_trading_impl(self, interactive: bool) -> str:
         self._flush_autosave()
         mode = self._load_execution_mode()
-        if mode == "live":
+        if interactive and mode == "live":
             if not messagebox.askyesno(
                 "Live Mode Warning",
                 "execution.mode=live. This can place real orders.\nContinue?",
             ):
-                return
+                return "Запуск отменен пользователем."
         cmd = self._cmd("-m", "src.botik.main", "--config", self.config_var.get())
-        self.trading.start(cmd, ROOT_DIR)
+        child_env = os.environ.copy()
+        # GUI supervisor owns Telegram control to keep it online even when trading is stopped.
+        child_env["BOTIK_DISABLE_INTERNAL_TELEGRAM"] = "1"
+        started = self.trading.start(cmd, ROOT_DIR, env=child_env)
+        return "Trading process started." if started else "Trading already running."
+
+    def start_trading(self) -> None:
+        self._enqueue_log(f"[ui] {self._start_trading_impl(interactive=True)}")
+
+    def _stop_trading_impl(self) -> str:
+        stopped = self.trading.stop()
+        return "Trading process stopped." if stopped else "Trading already stopped."
 
     def stop_trading(self) -> None:
-        self.trading.stop()
+        self._enqueue_log(f"[ui] {self._stop_trading_impl()}")
 
     def start_ml(self) -> None:
         self._flush_autosave()
@@ -1012,7 +1269,7 @@ class BotikGui:
 
     def _on_close(self) -> None:
         self._flush_autosave()
-        self.trading.stop()
+        self._stop_trading_impl()
         self.ml.stop()
         self.root.destroy()
 

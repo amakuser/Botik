@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import time
 import uuid
 from typing import Any
@@ -64,9 +65,16 @@ def main() -> None:
     state = TradingState()
     state.paused = config.start_paused
 
+    disable_internal_telegram = str(os.environ.get("BOTIK_DISABLE_INTERNAL_TELEGRAM", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     telegram_token = config.get_telegram_token()
     telegram_chat_id = config.get_telegram_chat_id()
-    if telegram_token:
+    if disable_internal_telegram:
+        log.info("Internal Telegram controller disabled by BOTIK_DISABLE_INTERNAL_TELEGRAM.")
+    elif telegram_token:
         start_telegram_bot_in_thread(telegram_token, state, config, allowed_chat_id=telegram_chat_id)
         log.info("Telegram bot started (chat: %s)", telegram_chat_id or "any")
     else:
