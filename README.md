@@ -34,7 +34,28 @@
   python -m ml_service.run_loop --config config.yaml
   ```
   Одноразовое обучение: `python -m ml_service.run_loop --train-once`.
+- **Экспорт lifecycle-датасета для ML** (одна строка = один `signal_id`):
+  ```bash
+  python tools/export_trade_dataset.py --db-path data/botik.db --out-csv data/ml/trades_dataset.csv
+  ```
 - Старый скрипт Telegram: `python PythonBot_Telegram.py` — требует `TELEGRAM_BOT_TOKEN` в `.env`.
+
+### Режимы запуска
+
+- **Windows GUI (локально):**
+  - `run_windows_gui.bat`
+  - или `python -m src.botik.gui.app`
+  - в GUI есть:
+    - Start/Stop для trading и ML
+    - Preflight
+    - live-лог
+    - LED-статусы `RUNNING / STOPPED / ERROR`
+    - Copy/Copy All для логов
+    - вкладка `Settings` для редактирования `.env` и `config.yaml` прямо в окне
+    - изменения в Settings сохраняются автоматически (auto-save)
+- **Linux/server CLI (headless):**
+  - `bash run_server_cli.sh config.yaml`
+  - или `python -m src.botik.main --config config.yaml`
 
 ## Локальное обучение на данных сервера
 
@@ -103,9 +124,10 @@ sudo bash /opt/Botik/deploy/update.sh /opt/Botik master
 ## Безопасность: как включить и остановить торговлю
 
 - **По умолчанию торговля выключена** (`start_paused=true`). Бот не выставляет ордера, пока не разрешено.
-- **Включить торговлю:** команда **/resume** в Telegram (после реализации управления).
+- **Включить торговлю:** команда **/resume** в Telegram.
 - **Остановить новые ордера:** команда **/pause** — новые ордера не выставляются, текущие можно снять вручную или через **/panic**.
 - **Срочная остановка:** команда **/panic** — отмена всех ордеров. Опционально закрытие позиции рыночным ордером только если в конфиге включено `allow_panic_market_close` (по умолчанию выключено).
+- Быстрые инструменты в Telegram: `/start` (кнопки), `/status`, `/scanner`, `/pairs`, `/pause`, `/resume`, `/panic`.
 - Дополнительные ограничения позиции в конфиге (`strategy`):
   - `stop_loss_pct`
   - `take_profit_pct`

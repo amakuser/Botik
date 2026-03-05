@@ -14,12 +14,24 @@ from src.botik.config import load_config
 from src.botik.control.telegram_bot import start_telegram_bot_in_thread
 from src.botik.execution.bybit_rest import BybitRestClient
 from src.botik.execution.paper import PaperTradingClient
+from src.botik.marketdata.universe_discovery import discover_top_spot_symbols
 from src.botik.marketdata.ws_public import BybitSpotOrderbookWS
 from src.botik.risk.manager import RiskManager
 from src.botik.risk.position import apply_fill, unrealized_pnl_pct
 from src.botik.state.state import TradingState
 from src.botik.storage.sqlite_store import get_connection, insert_fill, insert_metrics, insert_order
+from src.botik.storage.lifecycle_store import (
+    ensure_lifecycle_schema,
+    get_signal_id_for_order_link,
+    insert_execution_event,
+    insert_order_event,
+    insert_signal_snapshot,
+    set_order_signal_map,
+    upsert_outcome,
+)
 from src.botik.strategy.micro_spread import MicroSpreadStrategy
+from src.botik.strategy.pair_admission import evaluate_pair_admission
+from src.botik.strategy.symbol_scanner import pick_active_symbols
 from src.botik.utils.logging import setup_logging
 from src.botik.utils.time import utc_now_iso
 
@@ -62,6 +74,7 @@ def main() -> None:
 
     async def run_ws_metrics_trading() -> None:
         conn = get_connection(config.storage.path)
+        ensure_lifecycle_schema(conn)
 
         api_key = config.get_bybit_api_key()
         api_secret = config.get_bybit_api_secret()
@@ -88,6 +101,30 @@ def main() -> None:
         else:
             log.warning("Execution is disabled: set execution.mode=paper or BYBIT credentials for live mode.")
 
+        auto_universe_enabled = bool(config.strategy.auto_universe_enabled)
+        auto_universe_refresh_sec = max(float(config.strategy.auto_universe_refresh_sec), 30.0)
+
+        if auto_universe_enabled:
+            try:
+                discovered = await discover_top_spot_symbols(
+                    host=config.strategy.auto_universe_host,
+                    quote=config.strategy.auto_universe_quote,
+                    limit=config.strategy.auto_universe_size,
+                    min_turnover_24h=config.strategy.auto_universe_min_turnover_24h,
+                    exclude_st_tag_1=config.strategy.auto_universe_exclude_st_tag_1,
+                )
+                if discovered:
+                    config.symbols = discovered
+                    log.info(
+                        "Auto-universe bootstrap: symbols=%s top=%s",
+                        len(config.symbols),
+                        ",".join(config.symbols[:8]),
+                    )
+                else:
+                    log.warning("Auto-universe bootstrap returned empty list; using configured symbols.")
+            except Exception as exc:
+                log.warning("Auto-universe bootstrap failed; using configured symbols: %s", exc)
+
         if executor is not None:
             preflight = await executor.get_open_orders(config.symbols[0] if config.symbols else None)
             if preflight.get("retCode") != 0:
@@ -99,6 +136,18 @@ def main() -> None:
         risk_manager = RiskManager(config.risk)
         strategy = MicroSpreadStrategy(config)
         replace_interval_sec = config.strategy.replace_interval_ms / 1000.0
+        scanner_interval_sec = max(float(config.strategy.scanner_interval_sec), 1.0)
+        scanner_enabled = bool(config.strategy.scanner_enabled)
+        candidate_queue: asyncio.Queue[list[str]] = asyncio.Queue(maxsize=1)
+        state.set_active_symbols(list(config.symbols))
+        state.set_scanner_snapshot(
+            {
+                "enabled": scanner_enabled,
+                "selected": len(config.symbols),
+                "top_symbol": "",
+                "top_net_edge": 0.0,
+            }
+        )
 
         min_position_qty = config.strategy.min_position_qty_base
         hold_timeout_sec = config.strategy.position_hold_timeout_sec
@@ -111,6 +160,8 @@ def main() -> None:
 
         net_position_base: dict[str, float] = {s: 0.0 for s in config.symbols}
         avg_entry_price: dict[str, float] = {s: 0.0 for s in config.symbols}
+        position_signal_id: dict[str, str | None] = {s: None for s in config.symbols}
+        position_opened_wall_ms: dict[str, int | None] = {s: None for s in config.symbols}
         position_opened_at: dict[str, float | None] = {s: None for s in config.symbols}
         last_force_exit_ts: dict[str, float] = {s: 0.0 for s in config.symbols}
         seen_exec_ids: set[str] = set()
@@ -118,7 +169,9 @@ def main() -> None:
         async def refresh_positions_from_executions() -> None:
             if executor is None:
                 return
-            for symbol in config.symbols:
+            symbols_to_check: set[str] = set(state.get_active_symbols() or config.symbols)
+            symbols_to_check.update(s for s, q in net_position_base.items() if abs(q) >= min_position_qty)
+            for symbol in symbols_to_check:
                 try:
                     resp = await executor.get_execution_list(symbol=symbol, limit=100)
                 except Exception as exc:
@@ -151,12 +204,31 @@ def main() -> None:
                     if qty <= 0 or side not in {"buy", "sell"}:
                         continue
 
+                    order_link_id = item.get("orderLinkId")
+                    signal_id = get_signal_id_for_order_link(conn, str(order_link_id) if order_link_id else None)
+                    exec_fee = float(item.get("execFee") or 0.0)
+                    fee_currency = str(item.get("feeCurrency") or "").upper()
+                    symbol_u = symbol.upper()
+                    exec_time_ms = int(item.get("execTime") or 0) or int(time.time() * 1000)
+
+                    # For spot fills with fee in base asset, wallet position changes by net base amount:
+                    # buy => +qty-fee_base, sell => -(qty+fee_base).
+                    effective_qty = qty
+                    if fee_currency == symbol_u:
+                        if side == "buy":
+                            effective_qty = max(qty - exec_fee, 0.0)
+                        else:
+                            effective_qty = qty + max(exec_fee, 0.0)
+                    if effective_qty <= 0:
+                        continue
+
                     old_qty = net_position_base.get(symbol, 0.0)
+                    old_avg = avg_entry_price.get(symbol, 0.0)
                     new_qty, new_avg = apply_fill(
                         current_qty=old_qty,
-                        current_avg_entry=avg_entry_price.get(symbol, 0.0),
+                        current_avg_entry=old_avg,
                         side=side,
-                        fill_qty=qty,
+                        fill_qty=effective_qty,
                         fill_price=price,
                     )
                     net_position_base[symbol] = new_qty
@@ -164,8 +236,82 @@ def main() -> None:
 
                     if abs(old_qty) < min_position_qty and abs(new_qty) >= min_position_qty:
                         position_opened_at[symbol] = time.monotonic()
+                        position_opened_wall_ms[symbol] = exec_time_ms
+                        position_signal_id[symbol] = signal_id
                     elif abs(new_qty) < min_position_qty:
+                        opened_at = position_opened_at.get(symbol)
+                        hold_time_ms = int((time.monotonic() - opened_at) * 1000) if opened_at else 0
+                        qty_closed = abs(old_qty)
+                        entry_vwap = old_avg if old_avg > 0 else price
+                        exit_vwap = price
+                        gross_pnl = 0.0
+                        if qty_closed > 0:
+                            if old_qty > 0:
+                                gross_pnl = (exit_vwap - entry_vwap) * qty_closed
+                            else:
+                                gross_pnl = (entry_vwap - exit_vwap) * qty_closed
+                        exec_fee_quote = exec_fee * price if fee_currency == symbol_u else exec_fee
+                        net_pnl = gross_pnl - exec_fee_quote
+                        denom = entry_vwap * qty_closed
+                        net_edge_bps = (net_pnl / denom) * 10000.0 if denom > 0 else 0.0
+                        outcome_signal_id = position_signal_id.get(symbol) or signal_id
+                        if outcome_signal_id:
+                            upsert_outcome(
+                                conn,
+                                signal_id=outcome_signal_id,
+                                symbol=symbol,
+                                entry_vwap=entry_vwap,
+                                exit_vwap=exit_vwap,
+                                filled_qty=qty_closed,
+                                hold_time_ms=hold_time_ms,
+                                gross_pnl_quote=gross_pnl,
+                                net_pnl_quote=net_pnl,
+                                net_edge_bps=net_edge_bps,
+                                max_adverse_excursion_bps=0.0,
+                                max_favorable_excursion_bps=0.0,
+                                was_fully_filled=True,
+                                was_profitable=net_pnl > 0,
+                                exit_reason="position_flat",
+                            )
                         position_opened_at[symbol] = None
+                        position_opened_wall_ms[symbol] = None
+                        position_signal_id[symbol] = None
+
+                    insert_execution_event(
+                        conn,
+                        exec_id=exec_id,
+                        symbol=symbol,
+                        exec_price=price,
+                        exec_qty=qty,
+                        order_id=item.get("orderId"),
+                        order_link_id=order_link_id,
+                        signal_id=signal_id,
+                        side=item.get("side"),
+                        order_type=item.get("orderType"),
+                        exec_fee=exec_fee,
+                        fee_rate=float(item.get("feeRate") or 0.0) if item.get("feeRate") else None,
+                        fee_currency=item.get("feeCurrency"),
+                        is_maker=str(item.get("isMaker") or "").lower() == "true",
+                        exec_time_ms=exec_time_ms,
+                    )
+
+                    insert_order_event(
+                        conn,
+                        symbol=symbol,
+                        order_link_id=order_link_id,
+                        order_id=item.get("orderId"),
+                        signal_id=signal_id,
+                        side=item.get("side"),
+                        order_type=item.get("orderType"),
+                        price=price,
+                        qty=qty,
+                        order_status="Filled",
+                        avg_price=price,
+                        cum_exec_qty=float(item.get("execQty") or 0.0),
+                        cum_exec_value=float(item.get("execValue") or 0.0) if item.get("execValue") else None,
+                        created_time_ms=exec_time_ms,
+                        updated_time_ms=exec_time_ms,
+                    )
 
                     insert_fill(
                         conn,
@@ -174,7 +320,7 @@ def main() -> None:
                         price=str(price),
                         qty=str(qty),
                         filled_at_utc=utc_now_iso(),
-                        order_link_id=item.get("orderLinkId"),
+                        order_link_id=order_link_id,
                         exchange_order_id=item.get("orderId"),
                         fee=str(item.get("execFee") or ""),
                         fee_currency=item.get("feeCurrency"),
@@ -272,6 +418,20 @@ def main() -> None:
                 created_at_utc=utc_now_iso(),
                 exchange_order_id=(ret.get("result") or {}).get("orderId"),
             )
+            set_order_signal_map(conn, order_link_id, position_signal_id.get(symbol))
+            insert_order_event(
+                conn,
+                symbol=symbol,
+                order_link_id=order_link_id,
+                order_id=(ret.get("result") or {}).get("orderId"),
+                signal_id=position_signal_id.get(symbol),
+                side=side,
+                order_type="Limit",
+                time_in_force=force_exit_tif,
+                price=float(price_str),
+                qty=float(qty_str),
+                order_status="New",
+            )
             log.warning(
                 "Force-exit submitted: symbol=%s side=%s qty=%s price=%s tif=%s reason=%s pnl_pct=%s age=%.1fs",
                 symbol,
@@ -285,12 +445,144 @@ def main() -> None:
             )
             return True
 
+        async def guarded_place_order(intent: Any, time_in_force: str) -> dict[str, Any]:
+            """
+            Safety gateway for opening orders: pair admission + freshness + spread check.
+            """
+            if not config.strategy.strict_pair_filter:
+                return await executor.place_order(
+                    symbol=intent.symbol,
+                    side=intent.side,
+                    qty=_fmt_float(intent.qty),
+                    price=_fmt_float(intent.price),
+                    order_link_id=intent.order_link_id,
+                    time_in_force=time_in_force,
+                )
+
+            snapshot = state.get_pair_filter_snapshot(intent.symbol)
+            if not snapshot:
+                log.info("Guarded reject: symbol=%s reason=no_filter_snapshot", intent.symbol)
+                return {"retCode": 90001, "retMsg": "PAIR_FILTER_MISSING"}
+
+            if str(snapshot.get("status", "")).upper() != "PASS":
+                log.info(
+                    "Guarded reject: symbol=%s reason=status_%s",
+                    intent.symbol,
+                    snapshot.get("status"),
+                )
+                return {"retCode": 90002, "retMsg": "PAIR_FILTER_NOT_PASS"}
+
+            if bool(snapshot.get("stale_data", False)):
+                log.info("Guarded reject: symbol=%s reason=stale_data", intent.symbol)
+                return {"retCode": 90003, "retMsg": "STALE_DATA"}
+
+            # Re-check filter right before sending request.
+            live_decision = evaluate_pair_admission(symbol=intent.symbol, state=state, config=config)
+            if live_decision.status != "PASS":
+                log.info(
+                    "Guarded reject: symbol=%s reason=live_%s",
+                    intent.symbol,
+                    live_decision.reason,
+                )
+                return {"retCode": 90004, "retMsg": f"LIVE_FILTER_{live_decision.status}"}
+
+            ob = state.get_orderbook(intent.symbol)
+            if ob is None or ob.mid <= 0:
+                return {"retCode": 90005, "retMsg": "NO_ORDERBOOK"}
+
+            live_spread_bps = ((ob.best_ask - ob.best_bid) / ob.mid) * 10000.0
+            min_required_spread_bps = float(live_decision.metrics.get("min_required_spread_bps", 0.0))
+            if live_spread_bps < min_required_spread_bps:
+                log.info(
+                    "Guarded reject: symbol=%s reason=spread_now_below_required spread=%.4f required=%.4f",
+                    intent.symbol,
+                    live_spread_bps,
+                    min_required_spread_bps,
+                )
+                return {"retCode": 90006, "retMsg": "SPREAD_BELOW_REQUIRED"}
+
+            if time_in_force == "PostOnly":
+                if intent.side == "Buy" and intent.price >= ob.best_ask:
+                    return {"retCode": 90007, "retMsg": "POSTONLY_WOULD_TAKE"}
+                if intent.side == "Sell" and intent.price <= ob.best_bid:
+                    return {"retCode": 90007, "retMsg": "POSTONLY_WOULD_TAKE"}
+
+            return await executor.place_order(
+                symbol=intent.symbol,
+                side=intent.side,
+                qty=_fmt_float(intent.qty),
+                price=_fmt_float(intent.price),
+                order_link_id=intent.order_link_id,
+                time_in_force=time_in_force,
+            )
+
+        async def scanner_loop() -> None:
+            """
+            Independent worker: scans symbol universe and pushes active candidates to queue.
+            """
+            if not scanner_enabled:
+                return
+
+            last_pair_status_log_at = 0.0
+            while True:
+                await asyncio.sleep(scanner_interval_sec)
+                try:
+                    selected, summary = pick_active_symbols(state, config)
+                    if not selected:
+                        selected = list(config.symbols[: max(int(config.strategy.scanner_top_k), 1)])
+                        summary["selected"] = len(selected)
+                        summary["fallback"] = True
+                    else:
+                        summary["fallback"] = False
+
+                    while not candidate_queue.empty():
+                        candidate_queue.get_nowait()
+                    candidate_queue.put_nowait(selected)
+                    state.set_active_symbols(selected)
+                    state.set_scanner_snapshot(summary)
+
+                    now_mono = time.monotonic()
+                    if now_mono - last_pair_status_log_at >= 15:
+                        for symbol in config.symbols:
+                            snap = state.get_pair_filter_snapshot(symbol) or {}
+                            log.info(
+                                "PairFilter symbol=%s status=%s reason=%s median_spread_bps=%.4f trades_per_min=%.2f p95_trade_gap_ms=%.0f depth_bid_quote=%.2f depth_ask_quote=%.2f slippage_buy_bps=%.4f slippage_sell_bps=%.4f vol_1s_bps=%.4f min_required_spread_bps=%.4f stale_data=%s data_age_ms=%s",
+                                symbol,
+                                snap.get("status", "NA"),
+                                snap.get("reason", "NA"),
+                                float(snap.get("median_spread_bps", 0.0)),
+                                float(snap.get("trades_per_min", 0.0)),
+                                float(snap.get("p95_trade_gap_ms", 0.0)),
+                                float(snap.get("depth_bid_quote", 0.0)),
+                                float(snap.get("depth_ask_quote", 0.0)),
+                                float(snap.get("slippage_buy_bps", 0.0)),
+                                float(snap.get("slippage_sell_bps", 0.0)),
+                                float(snap.get("vol_1s_bps", 0.0)),
+                                float(snap.get("min_required_spread_bps", 0.0)),
+                                bool(snap.get("stale_data", True)),
+                                snap.get("data_age_ms", "NA"),
+                            )
+                        last_pair_status_log_at = now_mono
+                except Exception as exc:
+                    log.exception("Scanner loop error: %s", exc)
+
         async def trading_loop() -> None:
             if executor is None:
                 return
 
+            last_paused_log_at = 0.0
+            loop_no = 0
             while True:
                 await asyncio.sleep(replace_interval_sec)
+                loop_no += 1
+                active_symbols = state.get_active_symbols() or list(config.symbols)
+                if scanner_enabled:
+                    while True:
+                        try:
+                            active_symbols = candidate_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                    state.set_active_symbols(active_symbols)
 
                 if state.panic_requested:
                     try:
@@ -302,6 +594,19 @@ def main() -> None:
                     continue
 
                 if state.paused:
+                    now = time.monotonic()
+                    if now - last_paused_log_at >= 10:
+                        ws_books_ready = sum(1 for s in config.symbols if state.get_orderbook(s) is not None)
+                        active_ws_books_ready = sum(1 for s in active_symbols if state.get_orderbook(s) is not None)
+                        log.info(
+                            "Trading paused: ws_books=%s/%s active_ws_books=%s/%s active_symbols=%s; resume to enable order workflow.",
+                            ws_books_ready,
+                            len(config.symbols),
+                            active_ws_books_ready,
+                            len(active_symbols),
+                            ",".join(active_symbols[:8]) if active_symbols else "none",
+                        )
+                        last_paused_log_at = now
                     continue
 
                 try:
@@ -323,7 +628,8 @@ def main() -> None:
                     total_exposure = 0.0
                     symbol_exposure: dict[str, float] = {}
                     our_order_link_ids: list[tuple[str, str]] = []
-                    for order in (resp.get("result") or {}).get("list") or []:
+                    open_list = (resp.get("result") or {}).get("list") or []
+                    for order in open_list:
                         sym = order.get("symbol", "")
                         price = float(order.get("price") or 0)
                         qty = float(order.get("qty") or 0)
@@ -338,16 +644,54 @@ def main() -> None:
                         await executor.cancel_order(symbol=sym, order_link_id=link)
 
                     blocked_symbols: set[str] = set()
-                    for symbol in config.symbols:
+                    managed_symbols: set[str] = set(config.symbols)
+                    managed_symbols.update(s for s, q in net_position_base.items() if abs(q) >= min_position_qty)
+                    for symbol in managed_symbols:
                         if await maybe_force_exit(symbol):
                             blocked_symbols.add(symbol)
 
                     intents = strategy.get_intents(state)
+                    strategy_summary = strategy.get_last_summary()
                     normal_tif = "PostOnly" if config.strategy.maker_only else "GTC"
+                    risk_reject_count = 0
+                    place_fail_count = 0
+                    placed_count = 0
 
                     for intent in intents:
                         if intent.symbol in blocked_symbols:
                             continue
+
+                        signal_id = f"sig-{intent.order_link_id}"
+                        ob = state.get_orderbook(intent.symbol)
+                        pair = state.get_pair_filter_snapshot(intent.symbol) or {}
+                        best_bid = ob.best_bid if ob is not None else 0.0
+                        best_ask = ob.best_ask if ob is not None else 0.0
+                        mid = ob.mid if ob is not None else 0.0
+                        spread_bps = ((best_ask - best_bid) / mid) * 10000.0 if mid > 0 and best_ask >= best_bid else 0.0
+                        insert_signal_snapshot(
+                            conn,
+                            signal_id=signal_id,
+                            ts_signal_ms=int(time.time() * 1000),
+                            symbol=intent.symbol,
+                            side=intent.side,
+                            best_bid=best_bid,
+                            best_ask=best_ask,
+                            mid=mid,
+                            spread_bps=spread_bps,
+                            depth_bid_quote=float(pair.get("depth_bid_quote", 0.0)),
+                            depth_ask_quote=float(pair.get("depth_ask_quote", 0.0)),
+                            slippage_buy_bps_est=float(pair.get("slippage_buy_bps", 0.0)),
+                            slippage_sell_bps_est=float(pair.get("slippage_sell_bps", 0.0)),
+                            trades_per_min=float(pair.get("trades_per_min", 0.0)),
+                            p95_trade_gap_ms=float(pair.get("p95_trade_gap_ms", 0.0)),
+                            vol_1s_bps=float(pair.get("vol_1s_bps", 0.0)),
+                            min_required_spread_bps=float(pair.get("min_required_spread_bps", 0.0)),
+                            scanner_status=str(pair.get("status", "NA")),
+                            model_version="",
+                            order_size_quote=float(intent.price * intent.qty),
+                            order_size_base=float(intent.qty),
+                            entry_price=float(intent.price),
+                        )
 
                         risk = risk_manager.check_order(
                             intent.symbol,
@@ -358,17 +702,11 @@ def main() -> None:
                             symbol_exposure.get(intent.symbol, 0.0),
                         )
                         if not risk.allowed:
+                            risk_reject_count += 1
                             log.debug("Risk reject: %s", risk.reason)
                             continue
 
-                        ret = await executor.place_order(
-                            symbol=intent.symbol,
-                            side=intent.side,
-                            qty=_fmt_float(intent.qty),
-                            price=_fmt_float(intent.price),
-                            order_link_id=intent.order_link_id,
-                            time_in_force=normal_tif,
-                        )
+                        ret = await guarded_place_order(intent, normal_tif)
 
                         if ret.get("retCode") == 10004:
                             log.error("Stopping trading loop: invalid REST signature on place_order (10004).")
@@ -381,8 +719,10 @@ def main() -> None:
                                 ret.get("retCode"),
                                 ret.get("retMsg"),
                             )
+                            place_fail_count += 1
                             continue
 
+                        placed_count += 1
                         risk_manager.register_order_placed()
                         total_exposure += intent.price * intent.qty
                         symbol_exposure[intent.symbol] = (
@@ -399,6 +739,42 @@ def main() -> None:
                             created_at_utc=utc_now_iso(),
                             exchange_order_id=(ret.get("result") or {}).get("orderId"),
                         )
+                        set_order_signal_map(conn, intent.order_link_id, signal_id)
+                        insert_order_event(
+                            conn,
+                            symbol=intent.symbol,
+                            order_link_id=intent.order_link_id,
+                            order_id=(ret.get("result") or {}).get("orderId"),
+                            signal_id=signal_id,
+                            side=intent.side,
+                            order_type="Limit",
+                            time_in_force=normal_tif,
+                            price=float(intent.price),
+                            qty=float(intent.qty),
+                            order_status="New",
+                        )
+
+                    ws_books_ready = sum(1 for s in config.symbols if state.get_orderbook(s) is not None)
+                    active_ws_books_ready = sum(1 for s in active_symbols if state.get_orderbook(s) is not None)
+                    scanner_snapshot = state.get_scanner_snapshot()
+                    log.info(
+                        "Loop #%s: ws_books=%s/%s active_ws_books=%s/%s active_symbols=%s open_orders=%s mm_canceled=%s intents=%s placed=%s risk_reject=%s place_fail=%s blocked_symbols=%s scanner=%s strategy=%s",
+                        loop_no,
+                        ws_books_ready,
+                        len(config.symbols),
+                        active_ws_books_ready,
+                        len(active_symbols),
+                        ",".join(active_symbols[:8]) if active_symbols else "none",
+                        len(open_list),
+                        len(our_order_link_ids),
+                        len(intents),
+                        placed_count,
+                        risk_reject_count,
+                        place_fail_count,
+                        len(blocked_symbols),
+                        scanner_snapshot,
+                        strategy_summary,
+                    )
                 except Exception as exc:
                     log.exception("Trading loop error: %s", exc)
 
@@ -430,8 +806,66 @@ def main() -> None:
                         imbalance_top_n=ob.imbalance_top_n,
                     )
 
+        async def universe_loop() -> None:
+            if not auto_universe_enabled:
+                return
+
+            while True:
+                await asyncio.sleep(auto_universe_refresh_sec)
+                try:
+                    discovered = await discover_top_spot_symbols(
+                        host=config.strategy.auto_universe_host,
+                        quote=config.strategy.auto_universe_quote,
+                        limit=config.strategy.auto_universe_size,
+                        min_turnover_24h=config.strategy.auto_universe_min_turnover_24h,
+                        exclude_st_tag_1=config.strategy.auto_universe_exclude_st_tag_1,
+                    )
+                    if not discovered:
+                        continue
+
+                    # Keep symbols with open position in the universe to preserve exit control.
+                    protected = [s for s, q in net_position_base.items() if abs(q) >= min_position_qty]
+                    merged: list[str] = []
+                    seen: set[str] = set()
+                    for symbol in protected + discovered:
+                        s = symbol.strip().upper()
+                        if not s or s in seen:
+                            continue
+                        seen.add(s)
+                        merged.append(s)
+
+                    if not merged or merged == config.symbols:
+                        continue
+
+                    old_count = len(config.symbols)
+                    config.symbols = merged
+                    for s in merged:
+                        net_position_base.setdefault(s, 0.0)
+                        avg_entry_price.setdefault(s, 0.0)
+                        position_signal_id.setdefault(s, None)
+                        position_opened_wall_ms.setdefault(s, None)
+                        position_opened_at.setdefault(s, None)
+                        last_force_exit_ts.setdefault(s, 0.0)
+
+                    await ws.update_symbols(merged)
+
+                    # Keep current active symbols if possible, otherwise pick first scanner_top_k.
+                    current_active = [s for s in state.get_active_symbols() if s in set(merged)]
+                    if not current_active:
+                        current_active = merged[: max(int(config.strategy.scanner_top_k), 1)]
+                    state.set_active_symbols(current_active)
+
+                    log.info(
+                        "Universe refreshed: old=%s new=%s top=%s",
+                        old_count,
+                        len(merged),
+                        ",".join(merged[:8]),
+                    )
+                except Exception as exc:
+                    log.warning("Auto-universe refresh failed: %s", exc)
+
         try:
-            await asyncio.gather(ws.run(), metrics_loop(), trading_loop())
+            await asyncio.gather(ws.run(), metrics_loop(), scanner_loop(), universe_loop(), trading_loop())
         finally:
             conn.close()
 

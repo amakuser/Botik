@@ -29,7 +29,7 @@ class StrategyInventoryConfig(BaseModel):
 
 
 class StrategyConfig(BaseModel):
-    min_spread_ticks: int = 2
+    min_spread_ticks: int = 1
     replace_interval_ms: int = 5000
     order_ttl_sec: int = 60
     default_tick_size: float = 0.01
@@ -37,8 +37,8 @@ class StrategyConfig(BaseModel):
     # Spread scanner params.
     order_qty_base: float = 0.001
     entry_tick_offset: int = 1
-    target_profit: float = 0.0002
-    safety_buffer: float = 0.0001
+    target_profit: float = 0.0001
+    safety_buffer: float = 0.00005
     min_top_book_qty: float = 0.0
 
     # Execution behavior.
@@ -51,6 +51,39 @@ class StrategyConfig(BaseModel):
     stop_loss_pct: float = 0.003
     take_profit_pct: float = 0.005
     pnl_exit_enabled: bool = True
+    scanner_enabled: bool = True
+    scanner_interval_sec: int = 3
+    scanner_top_k: int = 6
+    auto_universe_enabled: bool = False
+    auto_universe_host: str = "api.bybit.com"
+    auto_universe_quote: str = "USDT"
+    auto_universe_exclude_st_tag_1: bool = True
+    auto_universe_size: int = 40
+    auto_universe_refresh_sec: int = 180
+    auto_universe_min_turnover_24h: float = 3_000_000.0
+
+    # Bootstrap profile for spread admission filter.
+    spread_window_sec: int = 60
+    trade_window_sec: int = 300
+    vol_window_sec: int = 60
+    min_hold_seconds: int = 15
+    cooldown_seconds: int = 60
+    order_notional_quote: float = 50.0
+    bootstrap_fee_entry_bps: float = 2.0
+    bootstrap_fee_exit_bps: float = 2.0
+    safety_buffer_bps: float = 0.5
+    target_edge_bps: float = 1.0
+    maker_only_entry: bool = True
+    min_trades_per_min: float = 10.0
+    max_p95_trade_gap_ms: int = 12000
+    max_max_gap_ms: int = 30000
+    depth_band_bps: float = 25.0
+    min_depth_multiplier: float = 8.0
+    max_total_slippage_bps: float = 4.0
+    max_vol_to_spread_ratio: float = 1.2
+    max_trade_silence_ms: int = 12000
+    max_book_silence_ms: int = 5000
+    strict_pair_filter: bool = True
 
     inventory: StrategyInventoryConfig = Field(default_factory=StrategyInventoryConfig)
 

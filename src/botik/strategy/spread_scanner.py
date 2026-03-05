@@ -57,7 +57,7 @@ def scan_spread(
             required_edge=target_profit + safety_buffer,
         )
 
-    tick = max(tick_size, 0.0) * max(entry_tick_offset, 1)
+    tick = max(tick_size, 0.0) * max(entry_tick_offset, 0)
     entry_price = best_bid + tick
     exit_price = best_ask - tick
     required_edge = target_profit + safety_buffer

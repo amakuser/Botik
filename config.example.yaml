@@ -17,7 +17,7 @@ symbols:
 ws_depth: 50
 
 strategy:
-  min_spread_ticks: 2
+  min_spread_ticks: 1
   replace_interval_ms: 5000
   order_ttl_sec: 60
   default_tick_size: 0.01
@@ -25,8 +25,8 @@ strategy:
   # Spread scanner
   order_qty_base: 0.001
   entry_tick_offset: 1
-  target_profit: 0.0002
-  safety_buffer: 0.0001
+  target_profit: 0.0001
+  safety_buffer: 0.00005
   min_top_book_qty: 0.0
 
   # Execution behavior
@@ -39,6 +39,39 @@ strategy:
   stop_loss_pct: 0.003
   take_profit_pct: 0.005
   pnl_exit_enabled: true
+  scanner_enabled: true
+  scanner_interval_sec: 3
+  scanner_top_k: 6
+  auto_universe_enabled: true
+  auto_universe_host: "api.bybit.com"
+  auto_universe_quote: "USDT"
+  auto_universe_exclude_st_tag_1: true
+  auto_universe_size: 40
+  auto_universe_refresh_sec: 180
+  auto_universe_min_turnover_24h: 3000000
+
+  # Pair admission bootstrap profile (balanced demo).
+  spread_window_sec: 60
+  trade_window_sec: 300
+  vol_window_sec: 60
+  min_hold_seconds: 15
+  cooldown_seconds: 60
+  order_notional_quote: 50
+  bootstrap_fee_entry_bps: 2
+  bootstrap_fee_exit_bps: 2
+  safety_buffer_bps: 0.5
+  target_edge_bps: 1
+  maker_only_entry: true
+  min_trades_per_min: 10
+  max_p95_trade_gap_ms: 12000
+  max_max_gap_ms: 30000
+  depth_band_bps: 25
+  min_depth_multiplier: 8
+  max_total_slippage_bps: 4
+  max_vol_to_spread_ratio: 1.2
+  max_trade_silence_ms: 12000
+  max_book_silence_ms: 5000
+  strict_pair_filter: true
 
   inventory:
     max_net_base_pct: 10.0

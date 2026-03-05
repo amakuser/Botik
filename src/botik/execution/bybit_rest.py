@@ -9,12 +9,14 @@ Features:
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
 import logging
 import time
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_UP
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -40,6 +42,7 @@ class BybitRestClient:
         self.recv_window = str(recv_window)
         self._rsa_private_key = None
         self.time_offset_ms = 0
+        self._spot_lot_filters: dict[str, dict[str, Decimal]] = {}
 
         # HMAC is the primary mode. RSA is used only if HMAC secret is not provided.
         if self.api_secret:
@@ -120,6 +123,113 @@ class BybitRestClient:
             return self._sign_rsa(payload), "3"
         raise RuntimeError("Unknown auth mode.")
 
+    @staticmethod
+    def _fmt_decimal(value: Decimal) -> str:
+        s = format(value, "f").rstrip("0").rstrip(".")
+        return s or "0"
+
+    @staticmethod
+    def _quantize_down(value: Decimal, step: Decimal) -> Decimal:
+        if step <= 0:
+            return value
+        return (value / step).to_integral_value(rounding=ROUND_DOWN) * step
+
+    @staticmethod
+    def _quantize_up(value: Decimal, step: Decimal) -> Decimal:
+        if step <= 0:
+            return value
+        return (value / step).to_integral_value(rounding=ROUND_UP) * step
+
+    async def _get_spot_lot_filters(self, symbol: str) -> dict[str, Decimal] | None:
+        symbol_u = symbol.upper().strip()
+        if not symbol_u:
+            return None
+        cached = self._spot_lot_filters.get(symbol_u)
+        if cached is not None:
+            return cached
+
+        out = await self._request(
+            "GET",
+            "/v5/market/instruments-info",
+            params={"category": "spot", "symbol": symbol_u},
+            retry_on_time_skew=False,
+            retry_on_transport=True,
+        )
+        if out.get("retCode") != 0:
+            logger.warning(
+                "Failed to load instrument filters for %s: retCode=%s retMsg=%s",
+                symbol_u,
+                out.get("retCode"),
+                out.get("retMsg"),
+            )
+            return None
+
+        items = (out.get("result") or {}).get("list") or []
+        if not items:
+            logger.warning("No instrument info returned for %s", symbol_u)
+            return None
+        lot = (items[0] or {}).get("lotSizeFilter") or {}
+
+        try:
+            qty_step = Decimal(str(lot.get("qtyStep") or lot.get("basePrecision") or "0.000001"))
+            min_qty = Decimal(str(lot.get("minOrderQty") or qty_step))
+            min_amt = Decimal(str(lot.get("minOrderAmt") or "0"))
+        except (InvalidOperation, ValueError, TypeError):
+            logger.warning("Invalid lotSizeFilter values for %s: %s", symbol_u, lot)
+            return None
+
+        if qty_step <= 0:
+            qty_step = Decimal("0.000001")
+        if min_qty <= 0:
+            min_qty = qty_step
+        if min_amt < 0:
+            min_amt = Decimal("0")
+
+        parsed = {
+            "qty_step": qty_step,
+            "min_qty": min_qty,
+            "min_amt": min_amt,
+        }
+        self._spot_lot_filters[symbol_u] = parsed
+        return parsed
+
+    async def _normalize_spot_qty(self, symbol: str, side: str, qty: str, price: str) -> str | None:
+        try:
+            qty_dec = Decimal(str(qty))
+            price_dec = Decimal(str(price))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+        if qty_dec <= 0:
+            return None
+        side_u = side.upper().strip()
+
+        filters = await self._get_spot_lot_filters(symbol)
+        if not filters:
+            return self._fmt_decimal(qty_dec)
+
+        qty_step = filters["qty_step"]
+        min_qty = filters["min_qty"]
+        min_amt = filters["min_amt"]
+
+        if qty_dec < min_qty:
+            if side_u == "SELL":
+                return None
+            qty_dec = min_qty
+        qty_dec = self._quantize_down(qty_dec, qty_step)
+        if qty_dec < min_qty:
+            if side_u == "SELL":
+                return None
+            qty_dec = self._quantize_up(min_qty, qty_step)
+
+        if min_amt > 0 and price_dec > 0 and (qty_dec * price_dec) < min_amt:
+            if side_u == "SELL":
+                return None
+            qty_dec = self._quantize_up(min_amt / price_dec, qty_step)
+
+        if qty_dec <= 0:
+            return None
+        return self._fmt_decimal(qty_dec)
+
     async def _send(
         self,
         method: str,
@@ -136,13 +246,16 @@ class BybitRestClient:
         }
 
         if method == "GET":
-            query = urlencode(sorted((params or {}).items()), doseq=True)
+            sorted_items = sorted((params or {}).items())
+            query = urlencode(sorted_items, doseq=True)
+            request_url = f"{url}?{query}" if query else url
             payload = ts + self.api_key + self.recv_window + query
             sig, sign_type = self._sign(payload)
             headers["X-BAPI-SIGN"] = sig
             headers["X-BAPI-SIGN-TYPE"] = sign_type
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, headers=headers, timeout=20) as resp:
+                # Send the exact same query string that was used in signature payload.
+                async with session.get(request_url, headers=headers, timeout=20) as resp:
                     return await resp.json()
 
         body_str = json.dumps(json_body, separators=(",", ":"), ensure_ascii=False) if json_body else "{}"
@@ -162,8 +275,35 @@ class BybitRestClient:
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
         retry_on_time_skew: bool = True,
+        retry_on_transport: bool = True,
     ) -> dict[str, Any]:
-        out = await self._send(method, path, params=params, json_body=json_body)
+        try:
+            out = await self._send(method, path, params=params, json_body=json_body)
+        except (asyncio.TimeoutError, aiohttp.ClientError, OSError) as exc:
+            should_retry = method.upper() == "GET" and retry_on_transport
+            if should_retry:
+                logger.warning(
+                    "Bybit transport error on %s %s: %s. Retry once.",
+                    method,
+                    path,
+                    exc,
+                )
+                await asyncio.sleep(0.3)
+                return await self._request(
+                    method,
+                    path,
+                    params=params,
+                    json_body=json_body,
+                    retry_on_time_skew=retry_on_time_skew,
+                    retry_on_transport=False,
+                )
+            logger.warning("Bybit transport error on %s %s: %s", method, path, exc)
+            return {
+                "retCode": -1,
+                "retMsg": f"transport_error:{type(exc).__name__}",
+                "result": {},
+            }
+
         code = out.get("retCode")
         if code == 0:
             return out
@@ -198,12 +338,18 @@ class BybitRestClient:
         order_link_id: str,
         time_in_force: str = "PostOnly",
     ) -> dict[str, Any]:
+        normalized_qty = await self._normalize_spot_qty(symbol=symbol, side=side, qty=qty, price=price)
+        if not normalized_qty:
+            return {"retCode": -2, "retMsg": "invalid_qty_after_normalization", "result": {}}
+        if normalized_qty != qty:
+            logger.info("Order qty normalized: symbol=%s qty=%s -> %s", symbol, qty, normalized_qty)
+
         body = {
             "category": "spot",
             "symbol": symbol,
             "side": side,
             "orderType": "Limit",
-            "qty": qty,
+            "qty": normalized_qty,
             "price": price,
             "timeInForce": time_in_force,
             "orderLinkId": order_link_id,
