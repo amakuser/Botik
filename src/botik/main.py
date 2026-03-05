@@ -20,6 +20,7 @@ from src.botik.marketdata.ws_public import BybitSpotOrderbookWS
 from src.botik.risk.manager import RiskManager
 from src.botik.risk.position import apply_fill, unrealized_pnl_pct
 from src.botik.state.state import TradingState
+from src.botik.version import get_app_version_label
 from src.botik.storage.sqlite_store import get_connection, insert_fill, insert_metrics, insert_order
 from src.botik.storage.lifecycle_store import (
     ensure_lifecycle_schema,
@@ -47,6 +48,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
+    app_version = get_app_version_label()
     setup_logging(
         log_dir=config.logging.dir,
         max_bytes=config.logging.max_bytes,
@@ -54,7 +56,8 @@ def main() -> None:
     )
     log = logging.getLogger("botik")
     log.info(
-        "Config loaded: host=%s ws=%s symbols=%s start_paused=%s execution_mode=%s",
+        "Config loaded: version=%s host=%s ws=%s symbols=%s start_paused=%s execution_mode=%s",
+        app_version,
         config.bybit.host,
         config.bybit.ws_public_host,
         config.symbols,

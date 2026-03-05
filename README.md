@@ -40,6 +40,25 @@
   ```
 - Старый скрипт Telegram: `python PythonBot_Telegram.py` — требует `TELEGRAM_BOT_TOKEN` в `.env`.
 
+## Версия приложения
+
+- Текущая версия хранится в файле `VERSION`:
+  - `version=1.0.0`
+  - `build=1`
+- Показать текущую версию:
+  ```bash
+  python tools/version_bump.py --show
+  ```
+- Увеличить только счётчик сборки:
+  ```bash
+  python tools/version_bump.py --increment 1
+  ```
+- Поставить новую базовую версию и сбросить счётчик:
+  ```bash
+  python tools/version_bump.py --set-version 1.1.0 --reset-build --increment 1
+  ```
+- GUI и Telegram supervisor показывают версию в статусе.
+
 ### Режимы запуска
 
 - **Windows GUI (локально):**

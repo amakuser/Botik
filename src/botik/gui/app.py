@@ -25,6 +25,8 @@ from tkinter import ttk, messagebox
 
 import yaml
 
+from src.botik.version import get_app_version_label
+
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 ENV_PATH = ROOT_DIR / ".env"
@@ -138,8 +140,9 @@ class ManagedProcess:
 
 class BotikGui:
     def __init__(self) -> None:
+        self.app_version = get_app_version_label()
         self.root = tk.Tk()
-        self.root.title("Botik Desktop")
+        self.root.title(f"Botik Desktop {self.app_version}")
         self.root.geometry("1180x790")
         self.root.minsize(1020, 700)
 
@@ -307,7 +310,7 @@ class BotikGui:
         root_frame = ttk.Frame(self.root, style="Root.TFrame", padding=12)
         root_frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(root_frame, text="Botik Control Console", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(root_frame, text=f"Botik Control Console {self.app_version}", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             root_frame,
             text="Desktop mode for local monitoring and settings. Server mode stays CLI/systemd.",
@@ -492,6 +495,8 @@ class BotikGui:
         ttk.Label(status_card, text="Status", style="Section.TLabel").pack(anchor=tk.W, pady=(0, 6))
         self.mode_label = ttk.Label(status_card, text="execution.mode: unknown", style="Body.TLabel")
         self.mode_label.pack(anchor=tk.W, pady=3)
+        self.version_label = ttk.Label(status_card, text=f"app.version: {self.app_version}", style="Body.TLabel")
+        self.version_label.pack(anchor=tk.W, pady=3)
         self.trading_row = ttk.Frame(status_card, style="Card.TFrame")
         self.trading_row.pack(fill=tk.X, pady=3)
         self.trading_led = tk.Canvas(self.trading_row, width=14, height=14, highlightthickness=0, bg="#FFFFFF")
@@ -751,6 +756,7 @@ class BotikGui:
         mode = self._load_execution_mode()
         return (
             "GUI supervisor:\n"
+            f"version={self.app_version}\n"
             f"trading={self._status_text(self.trading)}\n"
             f"ml={self._status_text(self.ml)}\n"
             f"execution.mode={mode}\n"
