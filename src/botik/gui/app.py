@@ -10,6 +10,7 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import os
 import queue
 import sqlite3
@@ -31,6 +32,12 @@ from src.botik.version import get_app_version_label
 ROOT_DIR = Path(__file__).resolve().parents[3]
 ENV_PATH = ROOT_DIR / ".env"
 DEFAULT_CONFIG_PATH = ROOT_DIR / "config.yaml"
+
+
+# Windows sleep control flags (SetThreadExecutionState).
+_ES_CONTINUOUS = 0x80000000
+_ES_SYSTEM_REQUIRED = 0x00000001
+_ES_AWAYMODE_REQUIRED = 0x00000040
 
 
 def _default_python() -> str:
@@ -138,6 +145,51 @@ class ManagedProcess:
         return True
 
 
+class SleepBlocker:
+    """
+    Keeps Windows system awake while GUI is running.
+    """
+
+    def __init__(self, on_output: Callable[[str], None]) -> None:
+        self.on_output = on_output
+        self.enabled = False
+        self.flags = 0
+
+    def enable(self) -> None:
+        if os.name != "nt":
+            return
+        try:
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            flags = _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED | _ES_AWAYMODE_REQUIRED
+            result = kernel32.SetThreadExecutionState(flags)
+            if not result:
+                # Fallback for systems where Away Mode is not supported.
+                flags = _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED
+                result = kernel32.SetThreadExecutionState(flags)
+            if result:
+                self.enabled = True
+                self.flags = flags
+                self.on_output("[ui] sleep blocker enabled")
+            else:
+                self.on_output("[ui] warning: failed to enable sleep blocker")
+        except Exception as exc:
+            self.on_output(f"[ui] warning: sleep blocker error: {exc}")
+
+    def disable(self) -> None:
+        if os.name != "nt":
+            return
+        try:
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            kernel32.SetThreadExecutionState(_ES_CONTINUOUS)
+            if self.enabled:
+                self.on_output("[ui] sleep blocker disabled")
+        except Exception as exc:
+            self.on_output(f"[ui] warning: failed to disable sleep blocker: {exc}")
+        finally:
+            self.enabled = False
+            self.flags = 0
+
+
 class BotikGui:
     def __init__(self) -> None:
         self.app_version = get_app_version_label()
@@ -149,6 +201,7 @@ class BotikGui:
         self.log_queue: queue.Queue[str] = queue.Queue()
         self.trading = ManagedProcess("trading", self._enqueue_log)
         self.ml = ManagedProcess("ml", self._enqueue_log)
+        self.sleep_blocker = SleepBlocker(self._enqueue_log)
 
         self.python_var = tk.StringVar(value=_default_python())
         self.config_var = tk.StringVar(value=str(DEFAULT_CONFIG_PATH))
@@ -194,6 +247,7 @@ class BotikGui:
         self._setup_autosave()
         self.load_settings()
         self._start_telegram_control_if_configured()
+        self.sleep_blocker.enable()
 
         self._update_status()
         self._drain_logs()
@@ -310,7 +364,12 @@ class BotikGui:
         root_frame = ttk.Frame(self.root, style="Root.TFrame", padding=12)
         root_frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(root_frame, text=f"Botik Control Console {self.app_version}", style="Title.TLabel").pack(anchor=tk.W)
+        self.title_label = ttk.Label(
+            root_frame,
+            text=f"Botik Control Console {self.app_version}",
+            style="Title.TLabel",
+        )
+        self.title_label.pack(anchor=tk.W)
         ttk.Label(
             root_frame,
             text="Desktop mode for local monitoring and settings. Server mode stays CLI/systemd.",
@@ -753,16 +812,27 @@ class BotikGui:
         )
 
     def _telegram_status_text_ui(self) -> str:
+        current_version = get_app_version_label()
         mode = self._load_execution_mode()
         return (
             "GUI supervisor:\n"
-            f"version={self.app_version}\n"
+            f"version={current_version}\n"
             f"trading={self._status_text(self.trading)}\n"
             f"ml={self._status_text(self.ml)}\n"
             f"execution.mode={mode}\n"
             f"commit={self._git_short_head()}\n"
             "Примечание: запущенный trading-процесс использует код версии на момент старта."
         )
+
+    def _refresh_app_version(self) -> None:
+        latest = get_app_version_label()
+        if latest == self.app_version:
+            return
+        self.app_version = latest
+        self.root.title(f"Botik Desktop {self.app_version}")
+        self.title_label.config(text=f"Botik Control Console {self.app_version}")
+        self.version_label.config(text=f"app.version: {self.app_version}")
+        self._enqueue_log(f"[ui] app.version updated -> {self.app_version}")
 
     def telegram_status_text(self) -> str:
         return str(self._invoke_on_ui_thread(self._telegram_status_text_ui))
@@ -863,6 +933,7 @@ class BotikGui:
         return "#7A7A7A"  # gray
 
     def _update_status(self) -> None:
+        self._refresh_app_version()
         mode = self._load_execution_mode()
         self.mode_label.config(text=f"execution.mode: {mode}")
         self.trading_label.config(text=f"trading: {self._status_text(self.trading)}")
@@ -1277,6 +1348,7 @@ class BotikGui:
         self._flush_autosave()
         self._stop_trading_impl()
         self.ml.stop()
+        self.sleep_blocker.disable()
         self.root.destroy()
 
     def run(self) -> None:
