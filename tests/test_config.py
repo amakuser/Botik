@@ -13,6 +13,10 @@ from config import load_config, get_daily_limits, get_bybit_settings
 
 
 def test_load_config_from_file():
+    old_api_key = os.environ.get("BYBIT_API_KEY")
+    old_api_secret = os.environ.get("BYBIT_API_SECRET")
+    os.environ["BYBIT_API_KEY"] = ""
+    os.environ["BYBIT_API_SECRET"] = ""
     with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
         f.write(b"""
 bybit:
@@ -36,6 +40,14 @@ dry_run: true
         assert bybit["api_key"] == "test"
         assert bybit["testnet"] is True
     finally:
+        if old_api_key is None:
+            os.environ.pop("BYBIT_API_KEY", None)
+        else:
+            os.environ["BYBIT_API_KEY"] = old_api_key
+        if old_api_secret is None:
+            os.environ.pop("BYBIT_API_SECRET", None)
+        else:
+            os.environ["BYBIT_API_SECRET"] = old_api_secret
         os.unlink(path)
 
 

@@ -50,26 +50,63 @@ class MicroSpreadStrategy(BaseStrategy):
         replace_interval_sec = self.config.strategy.replace_interval_ms / 1000.0
         min_spread_ticks = self.config.strategy.min_spread_ticks
         default_tick_size = self.config.strategy.default_tick_size
-        maker_only = self.config.strategy.maker_only
-        order_qty = self.config.strategy.order_qty_base
-
-        fee_rate = self.config.fees.maker_rate if maker_only else self.config.fees.taker_rate
-        # Keep scanner fee assumptions aligned with pair admission profile.
-        if self.config.strategy.strict_pair_filter:
-            bootstrap_buy_fee = max(self.config.strategy.bootstrap_fee_entry_bps, 0.0) / 10000.0
-            bootstrap_sell_fee = max(self.config.strategy.bootstrap_fee_exit_bps, 0.0) / 10000.0
-            # Conservative mode: do not underestimate fees vs configured trading fee.
-            buy_fee = max(max(fee_rate, 0.0), bootstrap_buy_fee) if bootstrap_buy_fee > 0 else max(fee_rate, 0.0)
-            sell_fee = max(max(fee_rate, 0.0), bootstrap_sell_fee) if bootstrap_sell_fee > 0 else max(fee_rate, 0.0)
-        else:
-            buy_fee = fee_rate
-            sell_fee = fee_rate
+        profiles_by_id = {
+            p.profile_id.strip(): p
+            for p in self.config.strategy.action_profiles
+            if p.profile_id and p.profile_id.strip()
+        }
+        default_profile_id = next(iter(profiles_by_id.keys()), None)
 
         for symbol in symbols:
             ob = state.get_orderbook(symbol)
             if ob is None:
                 summary["no_orderbook"] += 1
                 continue
+
+            active_profile_id = state.get_active_profile_id(symbol) or default_profile_id
+            active_profile = profiles_by_id.get(active_profile_id or "")
+            entry_tick_offset = (
+                active_profile.entry_tick_offset
+                if active_profile is not None
+                else self.config.strategy.entry_tick_offset
+            )
+            order_qty = (
+                active_profile.order_qty_base
+                if active_profile is not None
+                else self.config.strategy.order_qty_base
+            )
+            target_profit = (
+                active_profile.target_profit
+                if active_profile is not None
+                else self.config.strategy.target_profit
+            )
+            safety_buffer = (
+                active_profile.safety_buffer
+                if active_profile is not None
+                else self.config.strategy.safety_buffer
+            )
+            min_top_book_qty = (
+                active_profile.min_top_book_qty
+                if active_profile is not None
+                else self.config.strategy.min_top_book_qty
+            )
+            maker_only = (
+                active_profile.maker_only
+                if active_profile is not None and active_profile.maker_only is not None
+                else self.config.strategy.maker_only
+            )
+
+            fee_rate = self.config.fees.maker_rate if maker_only else self.config.fees.taker_rate
+            # Keep scanner fee assumptions aligned with pair admission profile.
+            if self.config.strategy.strict_pair_filter:
+                bootstrap_buy_fee = max(self.config.strategy.bootstrap_fee_entry_bps, 0.0) / 10000.0
+                bootstrap_sell_fee = max(self.config.strategy.bootstrap_fee_exit_bps, 0.0) / 10000.0
+                # Conservative mode: do not underestimate fees vs configured trading fee.
+                buy_fee = max(max(fee_rate, 0.0), bootstrap_buy_fee) if bootstrap_buy_fee > 0 else max(fee_rate, 0.0)
+                sell_fee = max(max(fee_rate, 0.0), bootstrap_sell_fee) if bootstrap_sell_fee > 0 else max(fee_rate, 0.0)
+            else:
+                buy_fee = fee_rate
+                sell_fee = fee_rate
 
             tick_size = state.get_tick_size(symbol) or default_tick_size
             if ob.spread_ticks < min_spread_ticks:
@@ -87,12 +124,12 @@ class MicroSpreadStrategy(BaseStrategy):
                 best_bid_size=ob.best_bid_size,
                 best_ask_size=ob.best_ask_size,
                 tick_size=tick_size,
-                entry_tick_offset=self.config.strategy.entry_tick_offset,
+                entry_tick_offset=entry_tick_offset,
                 buy_fee=buy_fee,
                 sell_fee=sell_fee,
-                target_profit=self.config.strategy.target_profit,
-                safety_buffer=self.config.strategy.safety_buffer,
-                min_top_book_qty=self.config.strategy.min_top_book_qty,
+                target_profit=target_profit,
+                safety_buffer=safety_buffer,
+                min_top_book_qty=min_top_book_qty,
             )
             if not scan.tradable:
                 logger.debug(
@@ -119,8 +156,46 @@ class MicroSpreadStrategy(BaseStrategy):
             self._last_replace_time[symbol] = now
             bid_link = f"mm-{symbol}-bid-{uuid.uuid4().hex[:12]}"
             ask_link = f"mm-{symbol}-ask-{uuid.uuid4().hex[:12]}"
-            intents.append(OrderIntent(symbol=symbol, side="Buy", price=bid_price, qty=order_qty, order_link_id=bid_link))
-            intents.append(OrderIntent(symbol=symbol, side="Sell", price=ask_price, qty=order_qty, order_link_id=ask_link))
+            intents.append(
+                OrderIntent(
+                    symbol=symbol,
+                    side="Buy",
+                    price=bid_price,
+                    qty=order_qty,
+                    order_link_id=bid_link,
+                    profile_id=active_profile_id,
+                    model_version="rules-v1",
+                    action_entry_tick_offset=entry_tick_offset,
+                    action_order_qty_base=order_qty,
+                    action_target_profit=target_profit,
+                    action_safety_buffer=safety_buffer,
+                    action_min_top_book_qty=min_top_book_qty,
+                    action_stop_loss_pct=active_profile.stop_loss_pct if active_profile is not None else None,
+                    action_take_profit_pct=active_profile.take_profit_pct if active_profile is not None else None,
+                    action_hold_timeout_sec=active_profile.hold_timeout_sec if active_profile is not None else None,
+                    action_maker_only=maker_only,
+                )
+            )
+            intents.append(
+                OrderIntent(
+                    symbol=symbol,
+                    side="Sell",
+                    price=ask_price,
+                    qty=order_qty,
+                    order_link_id=ask_link,
+                    profile_id=active_profile_id,
+                    model_version="rules-v1",
+                    action_entry_tick_offset=entry_tick_offset,
+                    action_order_qty_base=order_qty,
+                    action_target_profit=target_profit,
+                    action_safety_buffer=safety_buffer,
+                    action_min_top_book_qty=min_top_book_qty,
+                    action_stop_loss_pct=active_profile.stop_loss_pct if active_profile is not None else None,
+                    action_take_profit_pct=active_profile.take_profit_pct if active_profile is not None else None,
+                    action_hold_timeout_sec=active_profile.hold_timeout_sec if active_profile is not None else None,
+                    action_maker_only=maker_only,
+                )
+            )
             summary["symbols_quoted"] += 1
 
         summary["intents"] = len(intents)

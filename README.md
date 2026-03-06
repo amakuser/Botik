@@ -33,10 +33,17 @@
   ```bash
   python -m ml_service.run_loop --config config.yaml
   ```
-  Одноразовое обучение: `python -m ml_service.run_loop --train-once`.
+  Режимы:
+  - bootstrap (сбор статистики + автокалибровка): `python -m ml_service.run_loop --mode bootstrap`
+  - train (обучение lifecycle-модели): `python -m ml_service.run_loop --mode train --train-once`
+  - predict (скоринг последних сигналов активной моделью): `python -m ml_service.run_loop --mode predict --predict-once`
 - **Экспорт lifecycle-датасета для ML** (одна строка = один `signal_id`):
   ```bash
   python tools/export_trade_dataset.py --db-path data/botik.db --out-csv data/ml/trades_dataset.csv
+  ```
+  Опционально Parquet:
+  ```bash
+  python tools/export_trade_dataset.py --db-path data/botik.db --out-csv data/ml/trades_dataset.csv --out-parquet data/ml/trades_dataset.parquet
   ```
 - Старый скрипт Telegram: `python PythonBot_Telegram.py` — требует `TELEGRAM_BOT_TOKEN` в `.env`.
 
@@ -90,6 +97,8 @@ python tools/ml_remote_cycle.py --remote-user <user> --remote-host <host> --remo
 2. Запускает локальное обучение (`python -m ml_service.run_loop --train-once`).
 3. Отправляет артефакт модели на сервер.
 4. Активирует модель на сервере через `tools/promote_model.py`.
+
+Автокалибровка fee/slippage сохраняется в `data/ml/autocalibration.json` после накопления достаточного числа fills.
 
 ## Прод-развертывание (Linux, systemd)
 

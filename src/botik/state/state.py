@@ -50,6 +50,7 @@ class TradingState:
     paused: bool = True
     panic_requested: bool = False
     active_symbols: list[str] = field(default_factory=list)
+    active_profiles: dict[str, str] = field(default_factory=dict)
     scanner_snapshot: dict[str, Any] = field(default_factory=dict)
 
     def _now_ms(self) -> int:
@@ -168,6 +169,18 @@ class TradingState:
 
     def get_active_symbols(self) -> list[str]:
         return list(self.active_symbols)
+
+    def set_active_profiles(self, profiles: dict[str, str]) -> None:
+        self.active_profiles = {str(symbol): str(profile_id) for symbol, profile_id in profiles.items() if profile_id}
+
+    def get_active_profiles(self) -> dict[str, str]:
+        return dict(self.active_profiles)
+
+    def get_active_profile_id(self, symbol: str) -> str | None:
+        value = self.active_profiles.get(symbol)
+        if not value:
+            return None
+        return str(value)
 
     def set_scanner_snapshot(self, snapshot: dict[str, Any]) -> None:
         self.scanner_snapshot = dict(snapshot)

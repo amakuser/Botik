@@ -15,11 +15,14 @@ async def discover_top_spot_symbols(
     quote: str = "USDT",
     limit: int = 20,
     min_turnover_24h: float = 0.0,
+    min_raw_spread_bps: float = 0.0,
+    min_top_book_notional: float = 0.0,
     exclude_st_tag_1: bool = True,
 ) -> list[str]:
     """
-    Discover top spot symbols by 24h turnover from Bybit public REST.
+    Discover top spot symbols from Bybit public REST.
     Universe source is instruments-info (spot), filtered by quote/status/stTag.
+    Ranking prefers high raw spread, then top-of-book notional, then turnover24h.
     """
     quote_u = quote.upper().strip()
     instruments = await fetch_spot_instruments(host=host)
@@ -38,7 +41,7 @@ async def discover_top_spot_symbols(
         raise RuntimeError(f"discover_top_spot_symbols failed: retCode={out.get('retCode')} retMsg={out.get('retMsg')}")
 
     items = (out.get("result") or {}).get("list") or []
-    ranked: list[tuple[float, str]] = []
+    ranked: list[tuple[float, float, float, str]] = []
     for item in items:
         symbol = str(item.get("symbol") or "").upper()
         if not symbol:
@@ -54,9 +57,24 @@ async def discover_top_spot_symbols(
         ask = float(item.get("ask1Price") or 0.0)
         if bid <= 0 or ask <= 0 or ask <= bid:
             continue
+        bid_size = float(item.get("bid1Size") or 0.0)
+        ask_size = float(item.get("ask1Size") or 0.0)
+        if bid_size <= 0 or ask_size <= 0:
+            continue
 
-        ranked.append((turnover, symbol))
+        mid = (bid + ask) / 2.0
+        if mid <= 0:
+            continue
+        raw_spread_bps = ((ask - bid) / mid) * 10000.0
+        top_book_notional = min(bid * bid_size, ask * ask_size)
 
-    ranked.sort(key=lambda x: x[0], reverse=True)
+        if raw_spread_bps < max(min_raw_spread_bps, 0.0):
+            continue
+        if top_book_notional < max(min_top_book_notional, 0.0):
+            continue
+
+        ranked.append((raw_spread_bps, top_book_notional, turnover, symbol))
+
+    ranked.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
     size = max(int(limit), 1)
-    return [symbol for _, symbol in ranked[:size]]
+    return [symbol for _, _, _, symbol in ranked[:size]]

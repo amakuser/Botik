@@ -49,6 +49,11 @@ python tools/ml_remote_cycle.py --remote-user <user> --remote-host <host> --remo
 3. отправляет артефакт модели на сервер;
 4. активирует модель в `model_registry`.
 
+Режим ML-сервиса задаётся в `config.yaml`:
+- `ml.mode: bootstrap` — только сбор статистики и автокалибровка;
+- `ml.mode: train` — обучение lifecycle-модели;
+- `ml.mode: predict` — скоринг новых сигналов активной моделью.
+
 ## 5. Быстрая диагностика
 
 1. `python tools/preflight.py --config config.yaml`
@@ -56,3 +61,5 @@ python tools/ml_remote_cycle.py --remote-user <user> --remote-host <host> --remo
 3. Проверить логи:
    - `journalctl -u botik-trading.service -n 100 --no-pager`
    - `journalctl -u botik-ml.service -n 100 --no-pager`
+4. Проверить автокалибровку:
+   - `cat /opt/Botik/data/ml/autocalibration.json`

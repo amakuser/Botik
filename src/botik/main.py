@@ -17,6 +17,7 @@ from src.botik.execution.bybit_rest import BybitRestClient
 from src.botik.execution.paper import PaperTradingClient
 from src.botik.marketdata.universe_discovery import discover_top_spot_symbols
 from src.botik.marketdata.ws_public import BybitSpotOrderbookWS
+from src.botik.learning.bandit import GaussianThompsonBandit
 from src.botik.risk.manager import RiskManager
 from src.botik.risk.position import apply_fill, unrealized_pnl_pct
 from src.botik.state.state import TradingState
@@ -29,6 +30,7 @@ from src.botik.storage.lifecycle_store import (
     insert_order_event,
     insert_signal_snapshot,
     set_order_signal_map,
+    upsert_signal_reward,
     upsert_outcome,
 )
 from src.botik.strategy.micro_spread import MicroSpreadStrategy
@@ -122,6 +124,8 @@ def main() -> None:
                     quote=config.strategy.auto_universe_quote,
                     limit=config.strategy.auto_universe_size,
                     min_turnover_24h=config.strategy.auto_universe_min_turnover_24h,
+                    min_raw_spread_bps=config.strategy.auto_universe_min_raw_spread_bps,
+                    min_top_book_notional=config.strategy.auto_universe_min_top_book_notional,
                     exclude_st_tag_1=config.strategy.auto_universe_exclude_st_tag_1,
                 )
                 if discovered:
@@ -146,17 +150,27 @@ def main() -> None:
 
         risk_manager = RiskManager(config.risk)
         strategy = MicroSpreadStrategy(config)
+        profile_ids = [p.profile_id.strip() for p in config.strategy.action_profiles if p.profile_id.strip()]
+        if not profile_ids:
+            profile_ids = ["default"]
+        bandit_enabled = bool(config.strategy.bandit_enabled)
+        bandit = GaussianThompsonBandit(
+            conn=conn,
+            profile_ids=profile_ids,
+            epsilon=float(config.strategy.bandit_epsilon),
+        )
         replace_interval_sec = config.strategy.replace_interval_ms / 1000.0
         scanner_interval_sec = max(float(config.strategy.scanner_interval_sec), 1.0)
         scanner_enabled = bool(config.strategy.scanner_enabled)
         candidate_queue: asyncio.Queue[list[str]] = asyncio.Queue(maxsize=1)
         state.set_active_symbols(list(config.symbols))
+        state.set_active_profiles({symbol: profile_ids[0] for symbol in config.symbols})
         state.set_scanner_snapshot(
             {
                 "enabled": scanner_enabled,
                 "selected": len(config.symbols),
                 "top_symbol": "",
-                "top_net_edge": 0.0,
+                "top_score_bps": 0.0,
             }
         )
 
@@ -175,6 +189,9 @@ def main() -> None:
         position_opened_wall_ms: dict[str, int | None] = {s: None for s in config.symbols}
         position_opened_at: dict[str, float | None] = {s: None for s in config.symbols}
         last_force_exit_ts: dict[str, float] = {s: 0.0 for s in config.symbols}
+        symbol_hold_timeout_sec: dict[str, float] = {s: float(hold_timeout_sec) for s in config.symbols}
+        symbol_stop_loss_pct: dict[str, float] = {s: float(stop_loss_pct) for s in config.symbols}
+        symbol_take_profit_pct: dict[str, float] = {s: float(take_profit_pct) for s in config.symbols}
         seen_exec_ids: set[str] = set()
 
         async def refresh_positions_from_executions() -> None:
@@ -284,9 +301,19 @@ def main() -> None:
                                 was_profitable=net_pnl > 0,
                                 exit_reason="position_flat",
                             )
+                            upsert_signal_reward(
+                                conn,
+                                signal_id=outcome_signal_id,
+                                reward_net_edge_bps=net_edge_bps,
+                            )
+                            if bandit_enabled:
+                                bandit.update(signal_id=outcome_signal_id, reward_bps=net_edge_bps)
                         position_opened_at[symbol] = None
                         position_opened_wall_ms[symbol] = None
                         position_signal_id[symbol] = None
+                        symbol_hold_timeout_sec[symbol] = float(hold_timeout_sec)
+                        symbol_stop_loss_pct[symbol] = float(stop_loss_pct)
+                        symbol_take_profit_pct[symbol] = float(take_profit_pct)
 
                     insert_execution_event(
                         conn,
@@ -361,15 +388,18 @@ def main() -> None:
                 mark_price=mark_price,
             )
             age = time.monotonic() - opened_at
+            local_stop_loss = max(float(symbol_stop_loss_pct.get(symbol, stop_loss_pct)), 0.0)
+            local_take_profit = max(float(symbol_take_profit_pct.get(symbol, take_profit_pct)), 0.0)
+            local_hold_timeout = max(float(symbol_hold_timeout_sec.get(symbol, hold_timeout_sec)), 1.0)
 
             reason: str | None = None
             if pnl_exit_enabled and pnl_pct is not None:
-                if stop_loss_pct > 0 and pnl_pct <= -stop_loss_pct:
+                if local_stop_loss > 0 and pnl_pct <= -local_stop_loss:
                     reason = "stop_loss"
-                elif take_profit_pct > 0 and pnl_pct >= take_profit_pct:
+                elif local_take_profit > 0 and pnl_pct >= local_take_profit:
                     reason = "take_profit"
 
-            if reason is None and age >= hold_timeout_sec:
+            if reason is None and age >= local_hold_timeout:
                 reason = "hold_timeout"
 
             # Symbol has an open position: block opening additional inventory.
@@ -546,10 +576,22 @@ def main() -> None:
                     else:
                         summary["fallback"] = False
 
+                    if bandit_enabled:
+                        selected_profiles = bandit.select(
+                            selected,
+                            ctx=state.get_all_pair_filter_snapshots(),
+                        )
+                    else:
+                        selected_profiles = {symbol: profile_ids[0] for symbol in selected}
+                    summary["profiles"] = dict(selected_profiles)
+                    if summary.get("top_symbol"):
+                        summary["top_profile"] = selected_profiles.get(str(summary["top_symbol"]), "")
+
                     while not candidate_queue.empty():
                         candidate_queue.get_nowait()
                     candidate_queue.put_nowait(selected)
                     state.set_active_symbols(selected)
+                    state.set_active_profiles(selected_profiles)
                     state.set_scanner_snapshot(summary)
 
                     now_mono = time.monotonic()
@@ -663,7 +705,6 @@ def main() -> None:
 
                     intents = strategy.get_intents(state)
                     strategy_summary = strategy.get_last_summary()
-                    normal_tif = "PostOnly" if config.strategy.maker_only else "GTC"
                     risk_reject_count = 0
                     place_fail_count = 0
                     placed_count = 0
@@ -698,7 +739,17 @@ def main() -> None:
                             vol_1s_bps=float(pair.get("vol_1s_bps", 0.0)),
                             min_required_spread_bps=float(pair.get("min_required_spread_bps", 0.0)),
                             scanner_status=str(pair.get("status", "NA")),
-                            model_version="",
+                            model_version=str(intent.model_version or ""),
+                            profile_id=intent.profile_id,
+                            action_entry_tick_offset=intent.action_entry_tick_offset,
+                            action_order_qty_base=intent.action_order_qty_base,
+                            action_target_profit=intent.action_target_profit,
+                            action_safety_buffer=intent.action_safety_buffer,
+                            action_min_top_book_qty=intent.action_min_top_book_qty,
+                            action_stop_loss_pct=intent.action_stop_loss_pct,
+                            action_take_profit_pct=intent.action_take_profit_pct,
+                            action_hold_timeout_sec=intent.action_hold_timeout_sec,
+                            action_maker_only=intent.action_maker_only,
                             order_size_quote=float(intent.price * intent.qty),
                             order_size_base=float(intent.qty),
                             entry_price=float(intent.price),
@@ -717,7 +768,13 @@ def main() -> None:
                             log.debug("Risk reject: %s", risk.reason)
                             continue
 
-                        ret = await guarded_place_order(intent, normal_tif)
+                        maker_only_flag = (
+                            config.strategy.maker_only
+                            if intent.action_maker_only is None
+                            else bool(intent.action_maker_only)
+                        )
+                        time_in_force = "PostOnly" if maker_only_flag else "GTC"
+                        ret = await guarded_place_order(intent, time_in_force)
 
                         if ret.get("retCode") == 10004:
                             log.error("Stopping trading loop: invalid REST signature on place_order (10004).")
@@ -735,6 +792,12 @@ def main() -> None:
 
                         placed_count += 1
                         risk_manager.register_order_placed()
+                        if intent.action_hold_timeout_sec is not None:
+                            symbol_hold_timeout_sec[intent.symbol] = float(max(intent.action_hold_timeout_sec, 1))
+                        if intent.action_stop_loss_pct is not None:
+                            symbol_stop_loss_pct[intent.symbol] = float(max(intent.action_stop_loss_pct, 0.0))
+                        if intent.action_take_profit_pct is not None:
+                            symbol_take_profit_pct[intent.symbol] = float(max(intent.action_take_profit_pct, 0.0))
                         total_exposure += intent.price * intent.qty
                         symbol_exposure[intent.symbol] = (
                             symbol_exposure.get(intent.symbol, 0.0) + intent.price * intent.qty
@@ -759,7 +822,7 @@ def main() -> None:
                             signal_id=signal_id,
                             side=intent.side,
                             order_type="Limit",
-                            time_in_force=normal_tif,
+                            time_in_force=time_in_force,
                             price=float(intent.price),
                             qty=float(intent.qty),
                             order_status="New",
@@ -829,6 +892,8 @@ def main() -> None:
                         quote=config.strategy.auto_universe_quote,
                         limit=config.strategy.auto_universe_size,
                         min_turnover_24h=config.strategy.auto_universe_min_turnover_24h,
+                        min_raw_spread_bps=config.strategy.auto_universe_min_raw_spread_bps,
+                        min_top_book_notional=config.strategy.auto_universe_min_top_book_notional,
                         exclude_st_tag_1=config.strategy.auto_universe_exclude_st_tag_1,
                     )
                     if not discovered:
@@ -857,6 +922,9 @@ def main() -> None:
                         position_opened_wall_ms.setdefault(s, None)
                         position_opened_at.setdefault(s, None)
                         last_force_exit_ts.setdefault(s, 0.0)
+                        symbol_hold_timeout_sec.setdefault(s, float(hold_timeout_sec))
+                        symbol_stop_loss_pct.setdefault(s, float(stop_loss_pct))
+                        symbol_take_profit_pct.setdefault(s, float(take_profit_pct))
 
                     await ws.update_symbols(merged)
 
@@ -865,6 +933,7 @@ def main() -> None:
                     if not current_active:
                         current_active = merged[: max(int(config.strategy.scanner_top_k), 1)]
                     state.set_active_symbols(current_active)
+                    state.set_active_profiles({s: state.get_active_profile_id(s) or profile_ids[0] for s in current_active})
 
                     log.info(
                         "Universe refreshed: old=%s new=%s top=%s",

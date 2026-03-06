@@ -1,8 +1,10 @@
 """
-ML-сервис: отдельный процесс. Запуск: из корня проекта python -m ml_service.run_loop [--config config.yaml]
-- Online-аналитика: каждые N сек статистики за последние M минут (доля прибыльных котировок, средний спред, adverse selection) -> summary в БД/JSON.
-- Offline-обучение: по расписанию/по накоплению — dataset из metrics + fills, метка y, walk-forward, гейт через model_registry.
-Торговый процесс может опционально читать активную модель и использовать score как фильтр; RiskManager остаётся последней инстанцией.
+Lifecycle ML service process.
+
+Modes:
+- bootstrap: collect stats + autocalibration only
+- train: incremental training on closed lifecycle dataset
+- predict: score latest signals with active model
 """
 from __future__ import annotations
 
@@ -10,93 +12,263 @@ import argparse
 import asyncio
 import json
 import logging
+import statistics
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-# Добавляем корень проекта в path для импорта src.botik
-_root = Path(__file__).resolve().parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
+from ml_service.dataset import load_lifecycle_dataset
+from ml_service.evaluate import is_better_than_current
+from ml_service.train import load_model_bundle, predict_batch, train_lifecycle_models
 from src.botik.config import load_config
-from src.botik.storage.sqlite_store import get_connection, get_active_model, upsert_model_registry
+from src.botik.storage.lifecycle_store import ensure_lifecycle_schema
+from src.botik.storage.sqlite_store import get_active_model, get_connection, upsert_model_registry
 from src.botik.utils.logging import setup_logging
 from src.botik.utils.retention import run_retention
-
-from ml_service.dataset import get_feature_matrix_and_labels
-from ml_service.evaluate import is_better_than_current
-from ml_service.train import train_model
 
 logger = logging.getLogger(__name__)
 
 
-def run_online_analytics(conn, config, interval_sec: int = 60, window_minutes: int = 5) -> None:
-    """
-    Считает за последние window_minutes: доля «хороших» метрик (например spread >= min_spread),
-    средний спред, простая статистика. Пишет summary в JSON/файл или в отдельную таблицу.
-    Упрощённо: агрегат по metrics_1s за последние N минут.
-    """
-    from src.botik.utils.time import utc_now_iso
-    # Выбираем метрики за последние window_minutes (упрощённо — по ts_utc)
-    cutoff = (datetime.now(timezone.utc).replace(tzinfo=timezone.utc)).strftime("%Y-%m-%d")
-    cur = conn.execute(
-        """SELECT symbol, AVG(spread_ticks) as avg_spread, COUNT(*) as cnt
-           FROM metrics_1s WHERE ts_utc >= ? GROUP BY symbol""",
-        (cutoff,),
-    )
-    rows = cur.fetchall()
-    summary = {
-        "ts": utc_now_iso(),
-        "window_minutes": window_minutes,
-        "symbols": {r[0]: {"avg_spread_ticks": r[1], "count": r[2]} for r in rows},
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def run_bootstrap_stats(conn) -> dict[str, Any]:
+    stats = {
+        "signals_total": int(conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]),
+        "outcomes_total": int(conn.execute("SELECT COUNT(*) FROM outcomes").fetchone()[0]),
+        "executions_total": int(conn.execute("SELECT COUNT(*) FROM executions_raw").fetchone()[0]),
+        "signals_with_profile": int(
+            conn.execute("SELECT COUNT(*) FROM signals WHERE profile_id IS NOT NULL AND profile_id <> ''").fetchone()[0]
+        ),
     }
-    logger.info("Online analytics: %s", json.dumps(summary, ensure_ascii=False))
-    # Можно записать в таблицу или в data/ml_summary.json
-    out_path = Path("data/ml_summary.json")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+    logger.info("ML bootstrap stats: %s", stats)
+    return stats
 
 
-def run_offline_training(conn, config, model_dir: str = "data/models") -> None:
-    """Обучает модель по данным из БД; если лучше текущей — записывает в model_registry как активную."""
-    for symbol in config.symbols:
-        X, y = get_feature_matrix_and_labels(conn, symbol, limit=50000)
-        if len(X) < 500:
-            logger.warning("Мало данных для %s: %d", symbol, len(X))
+def run_autocalibration(
+    conn,
+    *,
+    min_fills: int,
+    safety_buffer_bps: float,
+    target_edge_bps: float,
+    out_path: Path,
+) -> dict[str, Any] | None:
+    fills = conn.execute(
+        """
+        SELECT fee_rate
+        FROM executions_raw
+        WHERE fee_rate IS NOT NULL AND fee_rate > 0
+        ORDER BY exec_time_ms DESC
+        LIMIT ?
+        """,
+        (max(min_fills * 5, min_fills),),
+    ).fetchall()
+    fee_rates = [_safe_float(row[0]) for row in fills if _safe_float(row[0]) > 0]
+    if len(fee_rates) < min_fills:
+        logger.info("Autocalibration skipped: not enough fills with fee_rate (%s/%s).", len(fee_rates), min_fills)
+        return None
+
+    fee_rate_med = statistics.median(fee_rates[: max(min_fills, 1)])
+    fee_bps = fee_rate_med * 10000.0
+
+    slips_rows = conn.execute(
+        """
+        SELECT s.entry_price, o.entry_vwap
+        FROM outcomes o
+        JOIN signals s ON s.signal_id = o.signal_id
+        WHERE s.entry_price IS NOT NULL
+          AND s.entry_price > 0
+          AND o.entry_vwap IS NOT NULL
+          AND o.entry_vwap > 0
+        ORDER BY o.closed_at_utc DESC
+        LIMIT ?
+        """,
+        (max(min_fills * 3, min_fills),),
+    ).fetchall()
+    slippages = []
+    for entry_price, entry_vwap in slips_rows:
+        p0 = _safe_float(entry_price)
+        p1 = _safe_float(entry_vwap)
+        if p0 <= 0 or p1 <= 0:
             continue
-        model_id, path, metrics = train_model(X, y, model_dir=model_dir)
-        if not model_id:
-            continue
-        active = get_active_model(conn)
-        current_json = active["metrics_json"] if active else None
-        if is_better_than_current(metrics, current_json):
-            upsert_model_registry(
-                conn,
-                model_id=model_id,
-                path_or_payload=path,
-                metrics_json=json.dumps(metrics),
-                created_at_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                is_active=True,
-            )
-            logger.info("Новая модель активирована: %s", model_id)
-        else:
-            upsert_model_registry(
-                conn,
-                model_id=model_id,
-                path_or_payload=path,
-                metrics_json=json.dumps(metrics),
-                created_at_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                is_active=False,
-            )
+        slippages.append(abs((p1 - p0) / p0) * 10000.0)
+
+    if len(slippages) < min_fills:
+        logger.info("Autocalibration skipped: not enough realized slippage samples (%s/%s).", len(slippages), min_fills)
+        return None
+
+    slip_med = statistics.median(slippages[: max(min_fills, 1)])
+    total_slippage_bps = slip_med * 2.0
+    min_required_spread_bps = (
+        fee_bps
+        + fee_bps
+        + total_slippage_bps
+        + float(max(safety_buffer_bps, 0.0))
+        + float(max(target_edge_bps, 0.0))
+    )
+
+    payload = {
+        "ts_utc": _utc_now_iso(),
+        "sample_fills": len(fee_rates),
+        "sample_slippage": len(slippages),
+        "fee_rate_median": fee_rate_med,
+        "fee_bps_median": fee_bps,
+        "slippage_one_side_bps_median": slip_med,
+        "slippage_total_bps_median": total_slippage_bps,
+        "recommended_fee_entry_bps": fee_bps,
+        "recommended_fee_exit_bps": fee_bps,
+        "recommended_total_slippage_bps": total_slippage_bps,
+        "recommended_min_required_spread_bps": min_required_spread_bps,
+    }
+    _write_json(out_path, payload)
+    logger.info("Autocalibration updated: %s", payload)
+    return payload
+
+
+def run_train_once(
+    conn,
+    *,
+    target_edge_bps: float,
+    limit_rows: int,
+    min_closed_trades: int,
+    batch_size: int,
+    model_dir: str,
+) -> dict[str, Any] | None:
+    dataset = load_lifecycle_dataset(
+        conn,
+        target_edge_bps=target_edge_bps,
+        limit=limit_rows,
+        closed_only=True,
+    )
+    rows = int(dataset["X"].shape[0])
+    if rows < min_closed_trades:
+        logger.info(
+            "Training skipped: closed trades %s < min_closed_trades_to_train %s",
+            rows,
+            min_closed_trades,
+        )
+        return None
+
+    model_id, model_path, metrics = train_lifecycle_models(
+        dataset["X"],
+        dataset["y_open"],
+        dataset["y_edge"],
+        batch_size=batch_size,
+        model_dir=model_dir,
+    )
+    if not model_id:
+        logger.warning("Training returned empty model_id.")
+        return None
+
+    active = get_active_model(conn)
+    current_metrics_json = active["metrics_json"] if active else None
+    activate = is_better_than_current(metrics, current_metrics_json)
+    upsert_model_registry(
+        conn,
+        model_id=model_id,
+        path_or_payload=model_path,
+        metrics_json=json.dumps(metrics),
+        created_at_utc=_utc_now_iso(),
+        is_active=activate,
+    )
+    logger.info(
+        "ML train done: model_id=%s rows=%s activate=%s metrics=%s",
+        model_id,
+        rows,
+        activate,
+        metrics,
+    )
+    return {"model_id": model_id, "model_path": model_path, "metrics": metrics, "activated": activate}
+
+
+def run_predict_once(
+    conn,
+    *,
+    target_edge_bps: float,
+    predict_limit_rows: int,
+    predict_top_k: int,
+) -> list[dict[str, Any]]:
+    active = get_active_model(conn)
+    if not active:
+        logger.info("Predict skipped: no active model in model_registry.")
+        return []
+
+    bundle = load_model_bundle(active["path_or_payload"])
+    dataset = load_lifecycle_dataset(
+        conn,
+        target_edge_bps=target_edge_bps,
+        limit=max(predict_limit_rows, 1),
+        closed_only=False,
+    )
+    X = dataset["X"]
+    rows = dataset["rows"]
+    if X.shape[0] == 0:
+        logger.info("Predict skipped: no signals in lifecycle tables.")
+        return []
+
+    pred = predict_batch(bundle, X)
+    open_prob = pred.get("open_probability")
+    expected_edge = pred.get("expected_net_edge_bps")
+    if open_prob is None:
+        return []
+
+    records: list[dict[str, Any]] = []
+    for idx, row in enumerate(rows):
+        rec = {
+            "signal_id": str(row["signal_id"]),
+            "symbol": str(row["symbol"]),
+            "side": str(row["side"]),
+            "open_probability": float(open_prob[idx]),
+        }
+        if expected_edge is not None:
+            rec["expected_net_edge_bps"] = float(expected_edge[idx])
+        records.append(rec)
+
+    records.sort(
+        key=lambda item: (
+            float(item.get("open_probability", 0.0)),
+            float(item.get("expected_net_edge_bps", 0.0)),
+        ),
+        reverse=True,
+    )
+    top = records[: max(int(predict_top_k), 1)]
+    logger.info("ML predict top=%s sample=%s", len(top), top[:3])
+    return top
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="ML service (отдельный процесс)")
-    parser.add_argument("--config", type=str, default=None)
-    parser.add_argument("--online-interval", type=int, default=60)
-    parser.add_argument("--train-once", action="store_true", help="Один запуск обучения без цикла")
+    parser = argparse.ArgumentParser(description="Lifecycle ML service")
+    parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
+    parser.add_argument("--mode", choices=["bootstrap", "train", "predict"], default=None)
+    parser.add_argument("--online-interval", type=int, default=None, help="Loop interval seconds")
+    parser.add_argument("--train-once", action="store_true", help="Legacy alias for --mode train (single run)")
+    parser.add_argument("--predict-once", action="store_true", help="Run predict one time and exit")
+    parser.add_argument("--limit-rows", type=int, default=None, help="Lifecycle rows limit for training")
+    parser.add_argument("--batch-size", type=int, default=None, help="Batch size for partial_fit")
+    parser.add_argument("--min-closed-trades", type=int, default=None, help="Min closed trades for training")
+    parser.add_argument("--target-edge-bps", type=float, default=None, help="Override target edge threshold in bps")
+    parser.add_argument("--min-fills-for-autocalibration", type=int, default=None)
+    parser.add_argument("--autocalibration-out", type=str, default=None)
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -105,41 +277,81 @@ def main() -> None:
         max_bytes=config.logging.max_bytes,
         backup_count=config.logging.backup_count,
     )
-    conn = get_connection(config.storage.path)
 
-    if args.train_once:
-        run_offline_training(conn, config)
-        conn.close()
+    if not config.ml.enabled:
+        logger.warning("ML service is disabled by config.ml.enabled=false.")
         return
 
-    last_train_day: list[int] = [-1]  # mutable to allow update in closure
+    mode = str(args.mode or config.ml.mode).strip().lower()
+    if args.train_once:
+        mode = "train"
+    if args.predict_once:
+        mode = "predict"
+    if mode not in {"bootstrap", "train", "predict"}:
+        mode = "bootstrap"
 
-    async def loop() -> None:
+    interval_sec = int(args.online_interval or config.ml.run_interval_sec)
+    limit_rows = int(args.limit_rows or config.ml.train_limit_rows)
+    batch_size = int(args.batch_size or config.ml.train_batch_size)
+    min_closed = int(args.min_closed_trades or config.ml.min_closed_trades_to_train)
+    target_edge_bps = float(args.target_edge_bps if args.target_edge_bps is not None else config.strategy.target_edge_bps)
+    min_fills_for_autocalib = int(args.min_fills_for_autocalibration or config.ml.min_fills_for_autocalibration)
+    autocalib_out = Path(args.autocalibration_out or config.ml.autocalibration_path)
+    model_dir = str(config.ml.model_dir)
+    predict_top_k = int(config.ml.predict_top_k)
+
+    conn = get_connection(config.storage.path)
+    ensure_lifecycle_schema(conn)
+
+    async def run_loop() -> None:
+        last_train_day: int | None = None
         while True:
-            run_online_analytics(conn, config, interval_sec=args.online_interval, window_minutes=5)
-            today = datetime.now(timezone.utc).date().toordinal()
-            if today != last_train_day[0]:
-                last_train_day[0] = today
-                run_offline_training(conn, config)
-                run_retention(
+            run_bootstrap_stats(conn)
+
+            if mode == "train":
+                today = datetime.now(timezone.utc).date().toordinal()
+                if args.train_once or last_train_day != today:
+                    last_train_day = today
+                    run_train_once(
+                        conn,
+                        target_edge_bps=target_edge_bps,
+                        limit_rows=limit_rows,
+                        min_closed_trades=min_closed,
+                        batch_size=batch_size,
+                        model_dir=model_dir,
+                    )
+                    run_retention(
+                        conn,
+                        config.storage.path,
+                        retention_days=config.retention_days,
+                        max_size_gb=config.retention_max_db_size_gb,
+                        run_vacuum=True,
+                    )
+            elif mode == "predict":
+                run_predict_once(
                     conn,
-                    config.storage.path,
-                    retention_days=config.retention_days,
-                    max_size_gb=config.retention_max_db_size_gb,
-                    run_vacuum=True,
+                    target_edge_bps=target_edge_bps,
+                    predict_limit_rows=max(limit_rows, 500),
+                    predict_top_k=predict_top_k,
                 )
-            await asyncio.sleep(args.online_interval)
 
-    asyncio.run(loop())
+            run_autocalibration(
+                conn,
+                min_fills=min_fills_for_autocalib,
+                safety_buffer_bps=float(config.strategy.safety_buffer_bps),
+                target_edge_bps=target_edge_bps,
+                out_path=autocalib_out,
+            )
 
+            if args.train_once or args.predict_once:
+                break
+            await asyncio.sleep(max(interval_sec, 10))
 
-# --- Как проверить: python -m ml_service.run_loop --train-once при наличии данных в БД.
-# --- Частые ошибки: запускать в одном процессе с торговлей (нагрузка); не проверять гейт перед активацией модели.
-# --- Что улучшить позже: расписание обучения (cron); расчёт y по fills и horizon_seconds; запись summary в БД.
+    try:
+        asyncio.run(run_loop())
+    finally:
+        conn.close()
+
 
 if __name__ == "__main__":
     main()
-
-# --- Как проверить: python -m ml_service.run_loop --train-once при наличии metrics_1s в БД; проверить data/models и model_registry.
-# --- Частые ошибки: запускать в одном процессе с торговлей; не задать PYTHONPATH/запуск не из корня — импорт src.botik падает.
-# --- Что улучшить позже: расчёт метки y по fills и horizon_seconds; использование активной модели в торговом цикле как фильтра.

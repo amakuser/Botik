@@ -49,6 +49,31 @@ strategy:
   auto_universe_size: 40
   auto_universe_refresh_sec: 180
   auto_universe_min_turnover_24h: 3000000
+  auto_universe_min_raw_spread_bps: 0
+  auto_universe_min_top_book_notional: 0
+  bandit_enabled: true
+  bandit_epsilon: 0.05
+  action_profiles:
+    - profile_id: "safe"
+      entry_tick_offset: 1
+      order_qty_base: 0.001
+      target_profit: 0.0001
+      safety_buffer: 0.00005
+      min_top_book_qty: 0.0
+      stop_loss_pct: 0.003
+      take_profit_pct: 0.005
+      hold_timeout_sec: 180
+      maker_only: true
+    - profile_id: "aggr"
+      entry_tick_offset: 1
+      order_qty_base: 0.0015
+      target_profit: 0.00012
+      safety_buffer: 0.00006
+      min_top_book_qty: 0.0
+      stop_loss_pct: 0.0035
+      take_profit_pct: 0.006
+      hold_timeout_sec: 120
+      maker_only: true
 
   # Pair admission bootstrap profile (balanced demo).
   spread_window_sec: 60
@@ -98,6 +123,18 @@ allow_panic_market_close: false
 execution:
   mode: "live"   # live | paper
   paper_fill_on_cross: true
+
+ml:
+  mode: "bootstrap"   # bootstrap | train | predict
+  enabled: true
+  run_interval_sec: 300
+  model_dir: "data/models"
+  train_limit_rows: 200000
+  train_batch_size: 64
+  min_closed_trades_to_train: 120
+  min_fills_for_autocalibration: 20
+  autocalibration_path: "data/ml/autocalibration.json"
+  predict_top_k: 10
 
 storage:
   path: "data/botik.db"

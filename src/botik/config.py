@@ -28,6 +28,19 @@ class StrategyInventoryConfig(BaseModel):
     max_position_value_usdt: float = 500.0
 
 
+class ActionProfileConfig(BaseModel):
+    profile_id: str
+    entry_tick_offset: int = 1
+    order_qty_base: float = 0.001
+    target_profit: float = 0.0001
+    safety_buffer: float = 0.00005
+    min_top_book_qty: float = 0.0
+    stop_loss_pct: float | None = None
+    take_profit_pct: float | None = None
+    hold_timeout_sec: int | None = None
+    maker_only: bool | None = None
+
+
 class StrategyConfig(BaseModel):
     min_spread_ticks: int = 1
     replace_interval_ms: int = 5000
@@ -61,6 +74,11 @@ class StrategyConfig(BaseModel):
     auto_universe_size: int = 40
     auto_universe_refresh_sec: int = 180
     auto_universe_min_turnover_24h: float = 3_000_000.0
+    auto_universe_min_raw_spread_bps: float = 0.0
+    auto_universe_min_top_book_notional: float = 0.0
+    bandit_enabled: bool = True
+    bandit_epsilon: float = 0.05
+    action_profiles: list[ActionProfileConfig] = Field(default_factory=list)
 
     # Bootstrap profile for spread admission filter.
     spread_window_sec: int = 60
@@ -86,6 +104,17 @@ class StrategyConfig(BaseModel):
     strict_pair_filter: bool = True
 
     inventory: StrategyInventoryConfig = Field(default_factory=StrategyInventoryConfig)
+
+    def get_action_profile(self, profile_id: str | None) -> ActionProfileConfig | None:
+        if not profile_id:
+            return None
+        target = profile_id.strip()
+        if not target:
+            return None
+        for profile in self.action_profiles:
+            if profile.profile_id.strip() == target:
+                return profile
+        return None
 
 
 class RiskConfig(BaseModel):
@@ -122,6 +151,19 @@ class ExecutionConfig(BaseModel):
     paper_fill_on_cross: bool = True
 
 
+class MlConfig(BaseModel):
+    mode: str = "bootstrap"  # bootstrap | train | predict
+    enabled: bool = True
+    run_interval_sec: int = 300
+    model_dir: str = "data/models"
+    train_limit_rows: int = 200000
+    train_batch_size: int = 64
+    min_closed_trades_to_train: int = 120
+    min_fills_for_autocalibration: int = 20
+    autocalibration_path: str = "data/ml/autocalibration.json"
+    predict_top_k: int = 10
+
+
 class AppConfig(BaseModel):
     bybit: BybitConfig = Field(default_factory=BybitConfig)
     symbols: list[str] = Field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
@@ -137,6 +179,7 @@ class AppConfig(BaseModel):
     retention_max_db_size_gb: float = 50.0
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    ml: MlConfig = Field(default_factory=MlConfig)
 
     def get_bybit_api_key(self) -> str | None:
         return os.environ.get(self.bybit.api_key_env)

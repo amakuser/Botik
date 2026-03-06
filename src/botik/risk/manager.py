@@ -24,6 +24,17 @@ class OrderIntent:
     price: float
     qty: float
     order_link_id: str
+    profile_id: str | None = None
+    model_version: str | None = None
+    action_entry_tick_offset: int | None = None
+    action_order_qty_base: float | None = None
+    action_target_profit: float | None = None
+    action_safety_buffer: float | None = None
+    action_min_top_book_qty: float | None = None
+    action_stop_loss_pct: float | None = None
+    action_take_profit_pct: float | None = None
+    action_hold_timeout_sec: int | None = None
+    action_maker_only: bool | None = None
 
 
 @dataclass
