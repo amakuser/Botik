@@ -51,6 +51,7 @@ class TradingState:
     panic_requested: bool = False
     active_symbols: list[str] = field(default_factory=list)
     active_profiles: dict[str, str] = field(default_factory=dict)
+    active_policy_meta: dict[str, dict[str, Any]] = field(default_factory=dict)
     scanner_snapshot: dict[str, Any] = field(default_factory=dict)
 
     def _now_ms(self) -> int:
@@ -181,6 +182,15 @@ class TradingState:
         if not value:
             return None
         return str(value)
+
+    def set_active_policy_meta(self, meta: dict[str, dict[str, Any]]) -> None:
+        self.active_policy_meta = {str(symbol): dict(values) for symbol, values in meta.items()}
+
+    def get_active_policy_meta(self, symbol: str) -> dict[str, Any]:
+        return dict(self.active_policy_meta.get(symbol, {}))
+
+    def get_all_active_policy_meta(self) -> dict[str, dict[str, Any]]:
+        return {k: dict(v) for k, v in self.active_policy_meta.items()}
 
     def set_scanner_snapshot(self, snapshot: dict[str, Any]) -> None:
         self.scanner_snapshot = dict(snapshot)

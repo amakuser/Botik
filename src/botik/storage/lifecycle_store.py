@@ -59,6 +59,10 @@ def ensure_lifecycle_schema(conn: sqlite3.Connection) -> None:
             action_take_profit_pct REAL,
             action_hold_timeout_sec INTEGER,
             action_maker_only INTEGER,
+            policy_used TEXT,
+            pred_open_prob REAL,
+            pred_exp_edge_bps REAL,
+            active_model_id TEXT,
             reward_net_edge_bps REAL,
             reward_updated_at_utc TEXT,
             order_size_quote REAL,
@@ -159,6 +163,10 @@ def ensure_lifecycle_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "signals", "action_take_profit_pct", "REAL")
     _ensure_column(conn, "signals", "action_hold_timeout_sec", "INTEGER")
     _ensure_column(conn, "signals", "action_maker_only", "INTEGER")
+    _ensure_column(conn, "signals", "policy_used", "TEXT")
+    _ensure_column(conn, "signals", "pred_open_prob", "REAL")
+    _ensure_column(conn, "signals", "pred_exp_edge_bps", "REAL")
+    _ensure_column(conn, "signals", "active_model_id", "TEXT")
     _ensure_column(conn, "signals", "reward_net_edge_bps", "REAL")
     _ensure_column(conn, "signals", "reward_updated_at_utc", "TEXT")
     conn.commit()
@@ -216,6 +224,10 @@ def insert_signal_snapshot(
     action_take_profit_pct: float | None = None,
     action_hold_timeout_sec: int | None = None,
     action_maker_only: bool | None = None,
+    policy_used: str | None = None,
+    pred_open_prob: float | None = None,
+    pred_exp_edge_bps: float | None = None,
+    active_model_id: str | None = None,
     order_size_quote: float = 0.0,
     order_size_base: float = 0.0,
     entry_price: float = 0.0,
@@ -228,9 +240,10 @@ def insert_signal_snapshot(
             trades_per_min, p95_trade_gap_ms, vol_1s_bps, min_required_spread_bps,
             scanner_status, model_version, profile_id, action_entry_tick_offset, action_order_qty_base,
             action_target_profit, action_safety_buffer, action_min_top_book_qty, action_stop_loss_pct,
-            action_take_profit_pct, action_hold_timeout_sec, action_maker_only, reward_net_edge_bps,
-            reward_updated_at_utc, order_size_quote, order_size_base, entry_price, created_at_utc
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            action_take_profit_pct, action_hold_timeout_sec, action_maker_only, policy_used, pred_open_prob,
+            pred_exp_edge_bps, active_model_id, reward_net_edge_bps, reward_updated_at_utc, order_size_quote,
+            order_size_base, entry_price, created_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(signal_id) DO NOTHING
         """,
         (
@@ -262,6 +275,10 @@ def insert_signal_snapshot(
             action_take_profit_pct,
             action_hold_timeout_sec,
             1 if action_maker_only else 0 if action_maker_only is not None else None,
+            policy_used,
+            pred_open_prob,
+            pred_exp_edge_bps,
+            active_model_id,
             None,
             None,
             order_size_quote,

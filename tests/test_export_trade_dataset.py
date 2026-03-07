@@ -136,11 +136,12 @@ def test_export_dataset_labels_from_net_edge_and_fills(tmp_path: Path) -> None:
     by_signal = {row["signal_id"]: row for row in exported}
     assert by_signal["sig-1"]["label_fill"] == "1"
     assert by_signal["sig-1"]["label_open"] == "1"
+    assert by_signal["sig-1"]["policy_used"] in {"", "None"}
     assert by_signal["sig-1"]["profile_id"] == "aggr"
     assert by_signal["sig-1"]["total_exec_qty"] == "1.0"
+    assert by_signal["sig-1"]["order_notional_quote"] == "50.0"
     assert by_signal["sig-1"]["net_edge_bps"] == "6.5"
 
     assert by_signal["sig-2"]["label_fill"] == "0"
     assert by_signal["sig-2"]["label_open"] == "0"
     assert by_signal["sig-2"]["profile_id"] == "safe"
-

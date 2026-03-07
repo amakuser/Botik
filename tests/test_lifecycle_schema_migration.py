@@ -27,6 +27,10 @@ def test_lifecycle_schema_contains_action_and_reward_columns(tmp_path: Path) -> 
         assert "action_take_profit_pct" in signal_cols
         assert "action_hold_timeout_sec" in signal_cols
         assert "action_maker_only" in signal_cols
+        assert "policy_used" in signal_cols
+        assert "pred_open_prob" in signal_cols
+        assert "pred_exp_edge_bps" in signal_cols
+        assert "active_model_id" in signal_cols
         assert "reward_net_edge_bps" in signal_cols
         assert "reward_updated_at_utc" in signal_cols
 
@@ -60,7 +64,8 @@ def test_lifecycle_schema_migrates_existing_signals_table(tmp_path: Path) -> Non
         signal_cols = _table_columns(conn, "signals")
         assert "profile_id" in signal_cols
         assert "action_order_qty_base" in signal_cols
+        assert "policy_used" in signal_cols
+        assert "pred_open_prob" in signal_cols
         assert "reward_net_edge_bps" in signal_cols
     finally:
         conn.close()
-

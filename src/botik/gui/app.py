@@ -197,6 +197,11 @@ class BotikGui:
         self.root.title(f"Botik Desktop {self.app_version}")
         self.root.geometry("1180x790")
         self.root.minsize(1020, 700)
+        if os.name == "nt":
+            try:
+                self.root.state("zoomed")
+            except tk.TclError:
+                pass
 
         self.log_queue: queue.Queue[str] = queue.Queue()
         self.trading = ManagedProcess("trading", self._enqueue_log)
@@ -205,6 +210,8 @@ class BotikGui:
 
         self.python_var = tk.StringVar(value=_default_python())
         self.config_var = tk.StringVar(value=str(DEFAULT_CONFIG_PATH))
+        self.runtime_python_name_var = tk.StringVar(value="")
+        self.runtime_config_name_var = tk.StringVar(value="")
 
         self.env_vars: dict[str, tk.StringVar] = {
             "TELEGRAM_BOT_TOKEN": tk.StringVar(),
@@ -246,6 +253,7 @@ class BotikGui:
         self._setup_edit_shortcuts()
         self._setup_autosave()
         self.load_settings()
+        self._refresh_runtime_labels()
         self._start_telegram_control_if_configured()
         self.sleep_blocker.enable()
 
@@ -307,6 +315,14 @@ class BotikGui:
         ]
         for var in cfg_vars:
             var.trace_add("write", lambda *_: self._schedule_autosave_cfg())
+        self.python_var.trace_add("write", lambda *_: self._refresh_runtime_labels())
+        self.config_var.trace_add("write", lambda *_: self._refresh_runtime_labels())
+
+    def _refresh_runtime_labels(self) -> None:
+        py_name = Path(self.python_var.get()).name or "python"
+        cfg_name = Path(self.config_var.get()).name or "config.yaml"
+        self.runtime_python_name_var.set(py_name)
+        self.runtime_config_name_var.set(cfg_name)
 
     def _schedule_autosave_env(self) -> None:
         if self._suspend_autosave:
@@ -430,17 +446,15 @@ class BotikGui:
         left = ttk.Frame(self.control_tab, style="Root.TFrame")
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), pady=4)
         right = ttk.Frame(self.control_tab, style="Root.TFrame")
-        right.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=4)
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0), pady=4)
 
         path_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         path_card.pack(fill=tk.X)
-        ttk.Label(path_card, text="Runtime Paths", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W, columnspan=2)
-
+        ttk.Label(path_card, text="Runtime", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W, columnspan=4)
         ttk.Label(path_card, text="Python", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=6)
-        ttk.Entry(path_card, textvariable=self.python_var, width=95).grid(row=1, column=1, sticky=tk.EW, padx=8)
-        ttk.Label(path_card, text="Config", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=6)
-        ttk.Entry(path_card, textvariable=self.config_var, width=95).grid(row=2, column=1, sticky=tk.EW, padx=8)
-        path_card.columnconfigure(1, weight=1)
+        ttk.Label(path_card, textvariable=self.runtime_python_name_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=6)
+        ttk.Label(path_card, text="Config", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=6, padx=(18, 0))
+        ttk.Label(path_card, textvariable=self.runtime_config_name_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=6)
 
         action_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         action_card.pack(fill=tk.X, pady=8)
@@ -493,11 +507,12 @@ class BotikGui:
         ttk.Label(open_card, text="Открытые ордера (биржа)", style="Body.TLabel").pack(anchor=tk.W)
         self.open_orders_tree = ttk.Treeview(
             open_card,
-            columns=("symbol", "side", "price", "qty", "status"),
+            columns=("n", "symbol", "side", "price", "qty", "status"),
             show="headings",
             height=5,
         )
         for col, title, width in [
+            ("n", "№", 44),
             ("symbol", "Symbol", 95),
             ("side", "Side", 60),
             ("price", "Price", 90),
@@ -513,12 +528,14 @@ class BotikGui:
         ttk.Label(history_card, text="История ордеров (локальная БД)", style="Body.TLabel").pack(anchor=tk.W)
         self.order_history_tree = ttk.Treeview(
             history_card,
-            columns=("time", "symbol", "side", "status", "price", "qty"),
+            columns=("n", "date", "time", "symbol", "side", "status", "price", "qty"),
             show="headings",
             height=5,
         )
         for col, title, width in [
-            ("time", "Time", 130),
+            ("n", "№", 44),
+            ("date", "Дата", 95),
+            ("time", "Время", 95),
             ("symbol", "Symbol", 90),
             ("side", "Side", 60),
             ("status", "Status", 90),
@@ -528,26 +545,6 @@ class BotikGui:
             self.order_history_tree.heading(col, text=title)
             self.order_history_tree.column(col, width=width, anchor=tk.W)
         self.order_history_tree.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-
-        log_card = ttk.Frame(left, style="Card.TFrame", padding=10)
-        log_card.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(log_card, text="Live Log", style="Section.TLabel").pack(anchor=tk.W, pady=(0, 6))
-        self.log_text = tk.Text(
-            log_card,
-            wrap=tk.WORD,
-            height=24,
-            bg="#FFFDF8",
-            fg="#1E3C34",
-            insertbackground="#1E3C34",
-            relief=tk.FLAT,
-            font=("Consolas", 10),
-        )
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-        self.log_text.bind("<Control-c>", self._on_ctrl_c)
-        self.log_text.bind("<Button-3>", self._show_log_context_menu)
-        self.log_menu = tk.Menu(self.root, tearoff=0)
-        self.log_menu.add_command(label="Copy Selected", command=self.copy_selected_log)
-        self.log_menu.add_command(label="Copy All", command=self.copy_all_log)
 
         status_card = ttk.Frame(right, style="Card.TFrame", padding=10)
         status_card.pack(fill=tk.X)
@@ -578,6 +575,26 @@ class BotikGui:
             style="Body.TLabel",
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=6)
+
+        log_card = ttk.Frame(right, style="Card.TFrame", padding=10)
+        log_card.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(log_card, text="Live Log", style="Section.TLabel").pack(anchor=tk.W, pady=(0, 6))
+        self.log_text = tk.Text(
+            log_card,
+            wrap=tk.WORD,
+            height=24,
+            bg="#FFFDF8",
+            fg="#1E3C34",
+            insertbackground="#1E3C34",
+            relief=tk.FLAT,
+            font=("Consolas", 10),
+        )
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+        self.log_text.bind("<Control-c>", self._on_ctrl_c)
+        self.log_text.bind("<Button-3>", self._show_log_context_menu)
+        self.log_menu = tk.Menu(self.root, tearoff=0)
+        self.log_menu.add_command(label="Copy Selected", command=self.copy_selected_log)
+        self.log_menu.add_command(label="Copy All", command=self.copy_all_log)
 
     def _build_settings_tab(self) -> None:
         settings_root = ttk.Frame(self.settings_tab, style="Root.TFrame")
@@ -969,6 +986,21 @@ class BotikGui:
             return "n/a"
         return f"{v:.{precision}f}"
 
+    @staticmethod
+    def _split_local_datetime(ts_raw: str) -> tuple[str, str]:
+        raw = str(ts_raw or "").strip()
+        if not raw:
+            return "", ""
+        try:
+            normalized = raw.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(normalized)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            local_dt = dt.astimezone()
+            return local_dt.strftime("%Y-%m-%d"), local_dt.strftime("%H:%M:%S")
+        except Exception:
+            return "", raw
+
     def _resolve_db_path(self, raw_cfg: dict[str, Any]) -> Path:
         rel = str((raw_cfg.get("storage") or {}).get("path") or "data/botik.db")
         path = Path(rel)
@@ -1106,10 +1138,11 @@ class BotikGui:
             return out
 
         open_list = (open_resp.get("result") or {}).get("list") or []
-        rows: list[tuple[str, str, str, str, str]] = []
-        for item in open_list[:80]:
+        rows: list[tuple[str, str, str, str, str, str]] = []
+        for idx, item in enumerate(open_list[:80], start=1):
             rows.append(
                 (
+                    str(idx),
                     str(item.get("symbol") or ""),
                     str(item.get("side") or ""),
                     str(item.get("price") or ""),
@@ -1121,7 +1154,11 @@ class BotikGui:
         out["open_orders_count"] = len(open_list)
         return out
 
-    def _read_local_order_history(self, db_path: Path, limit: int = 80) -> list[tuple[str, str, str, str, str, str]]:
+    def _read_local_order_history(
+        self,
+        db_path: Path,
+        limit: int = 80,
+    ) -> list[tuple[str, str, str, str, str, str, str, str]]:
         if not db_path.exists():
             return []
         conn = sqlite3.connect(str(db_path))
@@ -1135,14 +1172,29 @@ class BotikGui:
                 """,
                 (max(limit, 1),),
             ).fetchall()
-            return [(str(r[0] or ""), str(r[1] or ""), str(r[2] or ""), str(r[3] or ""), str(r[4] or ""), str(r[5] or "")) for r in rows]
+            out_rows: list[tuple[str, str, str, str, str, str, str, str]] = []
+            for idx, r in enumerate(rows, start=1):
+                date_str, time_str = self._split_local_datetime(str(r[0] or ""))
+                out_rows.append(
+                    (
+                        str(idx),
+                        date_str,
+                        time_str,
+                        str(r[1] or ""),
+                        str(r[2] or ""),
+                        str(r[3] or ""),
+                        str(r[4] or ""),
+                        str(r[5] or ""),
+                    )
+                )
+            return out_rows
         except sqlite3.Error as exc:
             self._enqueue_log(f"[ui] db read error: {exc}")
             return []
         finally:
             conn.close()
 
-    def _read_local_open_orders(self, db_path: Path, limit: int = 80) -> list[tuple[str, str, str, str, str]]:
+    def _read_local_open_orders(self, db_path: Path, limit: int = 80) -> list[tuple[str, str, str, str, str, str]]:
         if not db_path.exists():
             return []
         conn = sqlite3.connect(str(db_path))
@@ -1157,7 +1209,17 @@ class BotikGui:
                 """,
                 (max(limit, 1),),
             ).fetchall()
-            return [(str(r[0] or ""), str(r[1] or ""), str(r[2] or ""), str(r[3] or ""), str(r[4] or "")) for r in rows]
+            return [
+                (
+                    str(idx),
+                    str(r[0] or ""),
+                    str(r[1] or ""),
+                    str(r[2] or ""),
+                    str(r[3] or ""),
+                    str(r[4] or ""),
+                )
+                for idx, r in enumerate(rows, start=1)
+            ]
         except sqlite3.Error:
             return []
         finally:

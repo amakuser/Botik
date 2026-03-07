@@ -156,20 +156,12 @@ def export_dataset(
                     p95_trade_gap_ms,
                     vol_1s_bps,
                     min_required_spread_bps,
-                    model_version,
+                    policy_used,
                     profile_id,
-                    action_entry_tick_offset,
-                    action_order_qty_base,
-                    action_target_profit,
-                    action_safety_buffer,
-                    action_min_top_book_qty,
-                    action_stop_loss_pct,
-                    action_take_profit_pct,
-                    action_hold_timeout_sec,
-                    action_maker_only,
-                    reward_net_edge_bps,
+                    pred_open_prob,
+                    pred_exp_edge_bps,
+                    active_model_id,
                     order_size_quote,
-                    order_size_base,
                     entry_price
                 FROM signals
                 ORDER BY ts_signal_ms
@@ -184,17 +176,6 @@ def export_dataset(
             "symbol",
             "side",
             "ts_signal_ms",
-            "model_version",
-            "profile_id",
-            "action_entry_tick_offset",
-            "action_order_qty_base",
-            "action_target_profit",
-            "action_safety_buffer",
-            "action_min_top_book_qty",
-            "action_stop_loss_pct",
-            "action_take_profit_pct",
-            "action_hold_timeout_sec",
-            "action_maker_only",
             "spread_bps_at_signal",
             "depth_bid_quote_at_signal",
             "depth_ask_quote_at_signal",
@@ -204,23 +185,19 @@ def export_dataset(
             "p95_trade_gap_ms_at_signal",
             "vol_1s_bps_at_signal",
             "min_required_spread_bps",
-            "order_size_quote",
-            "order_size_base",
-            "entry_price_decision",
-            "entry_fill_time_ms",
-            "entry_fill_ratio",
-            "total_exec_qty",
-            "total_exec_quote",
+            "policy_used",
+            "profile_id",
+            "pred_open_prob",
+            "pred_exp_edge_bps",
+            "order_notional_quote",
             "entry_vwap",
             "exit_vwap",
-            "hold_time_ms",
+            "total_exec_qty",
             "total_fees_quote",
             "net_pnl_quote",
             "net_edge_bps",
-            "reward_net_edge_bps",
             "label_open",
             "label_fill",
-            "exit_reason",
         ]
         rows_to_write: list[dict[str, Any]] = []
         with out_csv.open("w", newline="", encoding="utf-8") as f:
@@ -238,14 +215,10 @@ def export_dataset(
                 total_exec_qty = float(agg.get("total_exec_qty", 0.0))
                 total_exec_quote = float(agg.get("total_exec_quote", 0.0))
                 total_fees_quote = float(agg.get("total_fees_quote", 0.0))
-                order_size_base = float(row["order_size_base"] or 0.0)
-
-                entry_fill_ratio = (total_exec_qty / order_size_base) if order_size_base > 0 else 0.0
                 entry_vwap_exec = (total_exec_quote / total_exec_qty) if total_exec_qty > 0 else None
                 entry_vwap = out.get("entry_vwap", entry_vwap_exec)
                 net_edge_bps = out.get("net_edge_bps")
-                reward_net_edge_bps = row["reward_net_edge_bps"] if row["reward_net_edge_bps"] is not None else net_edge_bps
-                label_open = 1 if (net_edge_bps is not None and float(net_edge_bps) > float(target_edge_bps)) else 0
+                label_open = 1 if out else 0
                 label_fill = 1 if total_exec_qty > 0 else 0
 
                 export_row = {
@@ -253,17 +226,6 @@ def export_dataset(
                     "symbol": row["symbol"],
                     "side": row["side"],
                     "ts_signal_ms": row["ts_signal_ms"],
-                    "model_version": row["model_version"],
-                    "profile_id": row["profile_id"],
-                    "action_entry_tick_offset": row["action_entry_tick_offset"],
-                    "action_order_qty_base": row["action_order_qty_base"],
-                    "action_target_profit": row["action_target_profit"],
-                    "action_safety_buffer": row["action_safety_buffer"],
-                    "action_min_top_book_qty": row["action_min_top_book_qty"],
-                    "action_stop_loss_pct": row["action_stop_loss_pct"],
-                    "action_take_profit_pct": row["action_take_profit_pct"],
-                    "action_hold_timeout_sec": row["action_hold_timeout_sec"],
-                    "action_maker_only": row["action_maker_only"],
                     "spread_bps_at_signal": row["spread_bps"],
                     "depth_bid_quote_at_signal": row["depth_bid_quote"],
                     "depth_ask_quote_at_signal": row["depth_ask_quote"],
@@ -273,23 +235,19 @@ def export_dataset(
                     "p95_trade_gap_ms_at_signal": row["p95_trade_gap_ms"],
                     "vol_1s_bps_at_signal": row["vol_1s_bps"],
                     "min_required_spread_bps": row["min_required_spread_bps"],
-                    "order_size_quote": row["order_size_quote"],
-                    "order_size_base": row["order_size_base"],
-                    "entry_price_decision": row["entry_price"],
-                    "entry_fill_time_ms": agg.get("first_exec_time_ms", 0),
-                    "entry_fill_ratio": entry_fill_ratio,
-                    "total_exec_qty": total_exec_qty,
-                    "total_exec_quote": total_exec_quote,
+                    "policy_used": row["policy_used"],
+                    "profile_id": row["profile_id"],
+                    "pred_open_prob": row["pred_open_prob"],
+                    "pred_exp_edge_bps": row["pred_exp_edge_bps"],
+                    "order_notional_quote": row["order_size_quote"],
                     "entry_vwap": entry_vwap,
                     "exit_vwap": out.get("exit_vwap"),
-                    "hold_time_ms": out.get("hold_time_ms"),
+                    "total_exec_qty": total_exec_qty,
                     "total_fees_quote": total_fees_quote,
                     "net_pnl_quote": out.get("net_pnl_quote"),
                     "net_edge_bps": net_edge_bps,
-                    "reward_net_edge_bps": reward_net_edge_bps,
                     "label_open": label_open,
                     "label_fill": label_fill,
-                    "exit_reason": out.get("exit_reason"),
                 }
                 writer.writerow(export_row)
                 rows_to_write.append(export_row)

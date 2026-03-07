@@ -7,17 +7,20 @@ import argparse
 import asyncio
 import logging
 import os
+import sqlite3
 import time
 import uuid
 from typing import Any
 
-from src.botik.config import load_config
+from src.botik.config import ActionProfileConfig, load_config
 from src.botik.control.telegram_bot import start_telegram_bot_in_thread
 from src.botik.execution.bybit_rest import BybitRestClient
 from src.botik.execution.paper import PaperTradingClient
 from src.botik.marketdata.universe_discovery import discover_top_spot_symbols
 from src.botik.marketdata.ws_public import BybitSpotOrderbookWS
 from src.botik.learning.bandit import GaussianThompsonBandit
+from src.botik.learning.policy import PolicySelector
+from src.botik.learning.policy_manager import ModelBundle, load_active_model
 from src.botik.risk.manager import RiskManager
 from src.botik.risk.position import apply_fill, unrealized_pnl_pct
 from src.botik.state.state import TradingState
@@ -42,6 +45,41 @@ from src.botik.utils.time import utc_now_iso
 
 def _fmt_float(value: float) -> str:
     return f"{value:.8f}".rstrip("0").rstrip(".")
+
+
+_KNOWN_QUOTE_SUFFIXES = (
+    "USDT",
+    "USDC",
+    "BTC",
+    "ETH",
+    "EUR",
+    "TRY",
+    "BRL",
+    "RUB",
+)
+
+
+def _split_symbol_base_quote(symbol: str) -> tuple[str, str]:
+    s = str(symbol or "").upper().strip()
+    for quote in _KNOWN_QUOTE_SUFFIXES:
+        if s.endswith(quote) and len(s) > len(quote):
+            return s[: -len(quote)], quote
+    return s, ""
+
+
+def _fee_to_quote(symbol: str, fee: float, fee_currency: str, exec_price: float) -> float:
+    fee_abs = max(float(fee or 0.0), 0.0)
+    if fee_abs <= 0:
+        return 0.0
+    fee_ccy = str(fee_currency or "").upper().strip()
+    if not fee_ccy:
+        return fee_abs
+    base_ccy, quote_ccy = _split_symbol_base_quote(symbol)
+    if quote_ccy and fee_ccy == quote_ccy:
+        return fee_abs
+    if base_ccy and fee_ccy == base_ccy and exec_price > 0:
+        return fee_abs * float(exec_price)
+    return fee_abs
 
 
 def main() -> None:
@@ -153,18 +191,52 @@ def main() -> None:
         profile_ids = [p.profile_id.strip() for p in config.strategy.action_profiles if p.profile_id.strip()]
         if not profile_ids:
             profile_ids = ["default"]
+        policy_profiles = list(config.strategy.action_profiles)
+        if not policy_profiles:
+            policy_profiles = [
+                ActionProfileConfig(
+                    profile_id="default",
+                    entry_tick_offset=config.strategy.entry_tick_offset,
+                    order_qty_base=config.strategy.order_qty_base,
+                    target_profit=config.strategy.target_profit,
+                    safety_buffer=config.strategy.safety_buffer,
+                    min_top_book_qty=config.strategy.min_top_book_qty,
+                    stop_loss_pct=config.strategy.stop_loss_pct,
+                    take_profit_pct=config.strategy.take_profit_pct,
+                    hold_timeout_sec=config.strategy.position_hold_timeout_sec,
+                    maker_only=config.strategy.maker_only,
+                )
+            ]
         bandit_enabled = bool(config.strategy.bandit_enabled)
         bandit = GaussianThompsonBandit(
             conn=conn,
             profile_ids=profile_ids,
             epsilon=float(config.strategy.bandit_epsilon),
         )
+        policy_selector = PolicySelector(bandit=bandit)
+        policy_mode = str(config.ml.mode).strip().lower()
+        policy_model: ModelBundle | None = None
+        policy_model_last_check_ts = 0.0
+        policy_model_id = ""
         replace_interval_sec = config.strategy.replace_interval_ms / 1000.0
         scanner_interval_sec = max(float(config.strategy.scanner_interval_sec), 1.0)
         scanner_enabled = bool(config.strategy.scanner_enabled)
         candidate_queue: asyncio.Queue[list[str]] = asyncio.Queue(maxsize=1)
         state.set_active_symbols(list(config.symbols))
         state.set_active_profiles({symbol: profile_ids[0] for symbol in config.symbols})
+        state.set_active_policy_meta(
+            {
+                symbol: {
+                    "policy_used": "Static",
+                    "profile_id": profile_ids[0],
+                    "pred_open_prob": None,
+                    "pred_exp_edge_bps": None,
+                    "active_model_id": None,
+                    "reason": "startup",
+                }
+                for symbol in config.symbols
+            }
+        )
         state.set_scanner_snapshot(
             {
                 "enabled": scanner_enabled,
@@ -193,6 +265,61 @@ def main() -> None:
         symbol_stop_loss_pct: dict[str, float] = {s: float(stop_loss_pct) for s in config.symbols}
         symbol_take_profit_pct: dict[str, float] = {s: float(take_profit_pct) for s in config.symbols}
         seen_exec_ids: set[str] = set()
+
+        def _sum_signal_fees_quote(conn_db: sqlite3.Connection, signal_id: str, symbol: str) -> float:
+            rows = conn_db.execute(
+                """
+                SELECT exec_fee, fee_currency, exec_price
+                FROM executions_raw
+                WHERE signal_id = ?
+                """,
+                (signal_id,),
+            ).fetchall()
+            total = 0.0
+            for exec_fee, fee_currency, exec_price in rows:
+                total += _fee_to_quote(symbol, float(exec_fee or 0.0), str(fee_currency or ""), float(exec_price or 0.0))
+            return total
+
+        def _load_signal_entry_basis(conn_db: sqlite3.Connection, signal_id: str) -> tuple[float, float]:
+            row = conn_db.execute(
+                """
+                SELECT entry_price, order_size_base
+                FROM signals
+                WHERE signal_id = ?
+                LIMIT 1
+                """,
+                (signal_id,),
+            ).fetchone()
+            if not row:
+                return 0.0, 0.0
+            return float(row[0] or 0.0), float(row[1] or 0.0)
+
+        def _maybe_refresh_policy_model(force: bool = False) -> None:
+            nonlocal policy_model, policy_model_last_check_ts, policy_model_id
+            if policy_mode != "predict":
+                return
+            now_mono = time.monotonic()
+            if not force and now_mono - policy_model_last_check_ts < 30.0:
+                return
+            policy_model_last_check_ts = now_mono
+            try:
+                loaded = load_active_model(conn)
+            except Exception as exc:
+                if policy_model is not None:
+                    log.warning("Policy model reload failed, keeping previous model: %s", exc)
+                    return
+                log.warning("Policy model unavailable: %s", exc)
+                return
+            if loaded is None:
+                if policy_model is not None:
+                    log.warning("Policy model disabled: no active model in registry, fallback to bandit.")
+                policy_model = None
+                policy_model_id = ""
+                return
+            if loaded.model_id != policy_model_id:
+                policy_model = loaded
+                policy_model_id = loaded.model_id
+                log.info("Policy model loaded: model_id=%s", policy_model_id)
 
         async def refresh_positions_from_executions() -> None:
             if executor is None:
@@ -237,18 +364,37 @@ def main() -> None:
                     exec_fee = float(item.get("execFee") or 0.0)
                     fee_currency = str(item.get("feeCurrency") or "").upper()
                     symbol_u = symbol.upper()
+                    base_ccy, _quote_ccy = _split_symbol_base_quote(symbol_u)
                     exec_time_ms = int(item.get("execTime") or 0) or int(time.time() * 1000)
 
                     # For spot fills with fee in base asset, wallet position changes by net base amount:
                     # buy => +qty-fee_base, sell => -(qty+fee_base).
                     effective_qty = qty
-                    if fee_currency == symbol_u:
+                    if base_ccy and fee_currency == base_ccy:
                         if side == "buy":
                             effective_qty = max(qty - exec_fee, 0.0)
                         else:
                             effective_qty = qty + max(exec_fee, 0.0)
                     if effective_qty <= 0:
                         continue
+
+                    insert_execution_event(
+                        conn,
+                        exec_id=exec_id,
+                        symbol=symbol,
+                        exec_price=price,
+                        exec_qty=qty,
+                        order_id=item.get("orderId"),
+                        order_link_id=order_link_id,
+                        signal_id=signal_id,
+                        side=item.get("side"),
+                        order_type=item.get("orderType"),
+                        exec_fee=exec_fee,
+                        fee_rate=float(item.get("feeRate") or 0.0) if item.get("feeRate") else None,
+                        fee_currency=item.get("feeCurrency"),
+                        is_maker=str(item.get("isMaker") or "").lower() == "true",
+                        exec_time_ms=exec_time_ms,
+                    )
 
                     old_qty = net_position_base.get(symbol, 0.0)
                     old_avg = avg_entry_price.get(symbol, 0.0)
@@ -278,11 +424,18 @@ def main() -> None:
                                 gross_pnl = (exit_vwap - entry_vwap) * qty_closed
                             else:
                                 gross_pnl = (entry_vwap - exit_vwap) * qty_closed
-                        exec_fee_quote = exec_fee * price if fee_currency == symbol_u else exec_fee
-                        net_pnl = gross_pnl - exec_fee_quote
-                        denom = entry_vwap * qty_closed
-                        net_edge_bps = (net_pnl / denom) * 10000.0 if denom > 0 else 0.0
                         outcome_signal_id = position_signal_id.get(symbol) or signal_id
+                        total_fees_quote = (
+                            _sum_signal_fees_quote(conn, outcome_signal_id, symbol)
+                            if outcome_signal_id
+                            else _fee_to_quote(symbol, exec_fee, fee_currency, price)
+                        )
+                        net_pnl = gross_pnl - total_fees_quote
+                        entry_basis_price, entry_basis_qty = (
+                            _load_signal_entry_basis(conn, outcome_signal_id) if outcome_signal_id else (0.0, 0.0)
+                        )
+                        denom = entry_basis_price * entry_basis_qty if entry_basis_price > 0 and entry_basis_qty > 0 else entry_vwap * qty_closed
+                        net_edge_bps = (net_pnl / denom) * 10000.0 if denom > 0 else 0.0
                         if outcome_signal_id:
                             upsert_outcome(
                                 conn,
@@ -306,32 +459,13 @@ def main() -> None:
                                 signal_id=outcome_signal_id,
                                 reward_net_edge_bps=net_edge_bps,
                             )
-                            if bandit_enabled:
-                                bandit.update(signal_id=outcome_signal_id, reward_bps=net_edge_bps)
+                            policy_selector.update_reward(signal_id=outcome_signal_id, reward_bps=net_edge_bps)
                         position_opened_at[symbol] = None
                         position_opened_wall_ms[symbol] = None
                         position_signal_id[symbol] = None
                         symbol_hold_timeout_sec[symbol] = float(hold_timeout_sec)
                         symbol_stop_loss_pct[symbol] = float(stop_loss_pct)
                         symbol_take_profit_pct[symbol] = float(take_profit_pct)
-
-                    insert_execution_event(
-                        conn,
-                        exec_id=exec_id,
-                        symbol=symbol,
-                        exec_price=price,
-                        exec_qty=qty,
-                        order_id=item.get("orderId"),
-                        order_link_id=order_link_id,
-                        signal_id=signal_id,
-                        side=item.get("side"),
-                        order_type=item.get("orderType"),
-                        exec_fee=exec_fee,
-                        fee_rate=float(item.get("feeRate") or 0.0) if item.get("feeRate") else None,
-                        fee_currency=item.get("feeCurrency"),
-                        is_maker=str(item.get("isMaker") or "").lower() == "true",
-                        exec_time_ms=exec_time_ms,
-                    )
 
                     insert_order_event(
                         conn,
@@ -576,14 +710,53 @@ def main() -> None:
                     else:
                         summary["fallback"] = False
 
-                    if bandit_enabled:
-                        selected_profiles = bandit.select(
-                            selected,
-                            ctx=state.get_all_pair_filter_snapshots(),
+                    _maybe_refresh_policy_model()
+                    pair_ctx = state.get_all_pair_filter_snapshots()
+                    if policy_mode == "predict":
+                        if policy_model is not None:
+                            selected_profiles = policy_selector.select(
+                                pass_symbols=selected,
+                                profiles=policy_profiles,
+                                ctx=pair_ctx,
+                                model=policy_model,
+                                eps=float(config.strategy.bandit_epsilon),
+                            )
+                        elif bandit_enabled:
+                            selected_profiles = policy_selector.select(
+                                pass_symbols=selected,
+                                profiles=policy_profiles,
+                                ctx=pair_ctx,
+                                model=None,
+                                eps=float(config.strategy.bandit_epsilon),
+                            )
+                        else:
+                            selected_profiles = {symbol: profile_ids[0] for symbol in selected}
+                    elif bandit_enabled:
+                        selected_profiles = policy_selector.select(
+                            pass_symbols=selected,
+                            profiles=policy_profiles,
+                            ctx=pair_ctx,
+                            model=None,
+                            eps=float(config.strategy.bandit_epsilon),
                         )
                     else:
                         selected_profiles = {symbol: profile_ids[0] for symbol in selected}
+                    policy_meta = policy_selector.get_last_selection_meta()
+                    for symbol in selected_profiles:
+                        policy_meta.setdefault(
+                            symbol,
+                            {
+                                "policy_used": "Bandit" if bandit_enabled else "Static",
+                                "profile_id": selected_profiles[symbol],
+                                "pred_open_prob": None,
+                                "pred_exp_edge_bps": None,
+                                "active_model_id": policy_model.model_id if policy_model is not None else None,
+                                "reason": "default",
+                            },
+                        )
                     summary["profiles"] = dict(selected_profiles)
+                    summary["policy_mode"] = policy_mode
+                    summary["policy_model_id"] = policy_model.model_id if policy_model is not None else ""
                     if summary.get("top_symbol"):
                         summary["top_profile"] = selected_profiles.get(str(summary["top_symbol"]), "")
 
@@ -592,6 +765,7 @@ def main() -> None:
                     candidate_queue.put_nowait(selected)
                     state.set_active_symbols(selected)
                     state.set_active_profiles(selected_profiles)
+                    state.set_active_policy_meta(policy_meta)
                     state.set_scanner_snapshot(summary)
 
                     now_mono = time.monotonic()
@@ -614,6 +788,21 @@ def main() -> None:
                                 float(snap.get("min_required_spread_bps", 0.0)),
                                 bool(snap.get("stale_data", True)),
                                 snap.get("data_age_ms", "NA"),
+                            )
+                        for symbol in selected:
+                            snap = state.get_pair_filter_snapshot(symbol) or {}
+                            meta = policy_meta.get(symbol) or {}
+                            log.info(
+                                "Policy=%s, sym=%s, profile=%s, pred_open_prob=%s, pred_edge=%sbps, fee_entry=%.4f, fee_exit=%.4f, reason=%s, stale=%s",
+                                str(meta.get("policy_used") or ("ML" if policy_model is not None else "Bandit")),
+                                symbol,
+                                str(meta.get("profile_id") or selected_profiles.get(symbol, "")),
+                                "n/a" if meta.get("pred_open_prob") is None else f"{float(meta.get('pred_open_prob')):.4f}",
+                                "n/a" if meta.get("pred_exp_edge_bps") is None else f"{float(meta.get('pred_exp_edge_bps')):.4f}",
+                                float(snap.get("fee_entry_bps", 0.0)),
+                                float(snap.get("fee_exit_bps", 0.0)),
+                                str(snap.get("reason", "NA")),
+                                1 if bool(snap.get("stale_data", True)) else 0,
                             )
                         last_pair_status_log_at = now_mono
                 except Exception as exc:
@@ -716,6 +905,7 @@ def main() -> None:
                         signal_id = f"sig-{intent.order_link_id}"
                         ob = state.get_orderbook(intent.symbol)
                         pair = state.get_pair_filter_snapshot(intent.symbol) or {}
+                        policy_meta = state.get_active_policy_meta(intent.symbol)
                         best_bid = ob.best_bid if ob is not None else 0.0
                         best_ask = ob.best_ask if ob is not None else 0.0
                         mid = ob.mid if ob is not None else 0.0
@@ -750,6 +940,18 @@ def main() -> None:
                             action_take_profit_pct=intent.action_take_profit_pct,
                             action_hold_timeout_sec=intent.action_hold_timeout_sec,
                             action_maker_only=intent.action_maker_only,
+                            policy_used=str(policy_meta.get("policy_used") or ("ML" if policy_model is not None else "Bandit")),
+                            pred_open_prob=(
+                                float(policy_meta.get("pred_open_prob"))
+                                if policy_meta.get("pred_open_prob") is not None
+                                else None
+                            ),
+                            pred_exp_edge_bps=(
+                                float(policy_meta.get("pred_exp_edge_bps"))
+                                if policy_meta.get("pred_exp_edge_bps") is not None
+                                else None
+                            ),
+                            active_model_id=str(policy_meta.get("active_model_id") or policy_model_id or ""),
                             order_size_quote=float(intent.price * intent.qty),
                             order_size_base=float(intent.qty),
                             entry_price=float(intent.price),
@@ -934,6 +1136,20 @@ def main() -> None:
                         current_active = merged[: max(int(config.strategy.scanner_top_k), 1)]
                     state.set_active_symbols(current_active)
                     state.set_active_profiles({s: state.get_active_profile_id(s) or profile_ids[0] for s in current_active})
+                    state.set_active_policy_meta(
+                        {
+                            s: state.get_active_policy_meta(s)
+                            or {
+                                "policy_used": "Static",
+                                "profile_id": state.get_active_profile_id(s) or profile_ids[0],
+                                "pred_open_prob": None,
+                                "pred_exp_edge_bps": None,
+                                "active_model_id": policy_model_id,
+                                "reason": "universe_refresh",
+                            }
+                            for s in current_active
+                        }
+                    )
 
                     log.info(
                         "Universe refreshed: old=%s new=%s top=%s",

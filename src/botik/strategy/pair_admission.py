@@ -3,6 +3,8 @@ Pair admission filter for spread strategy (PASS/WATCH/REJECT).
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import statistics
 import time
 from dataclasses import dataclass
@@ -21,6 +23,34 @@ class PairAdmissionDecision:
     stale_data: bool
     data_age_ms: int
     metrics: dict[str, float | int | bool | str]
+
+
+_AUTOCALIB_CACHE: dict[str, tuple[float, dict[str, float | int | str]]] = {}
+
+
+def _load_autocalibration(path: str) -> dict[str, float | int | str]:
+    if not path:
+        return {}
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        mtime = p.stat().st_mtime
+    except OSError:
+        return {}
+    cache_key = str(p.resolve())
+    cached = _AUTOCALIB_CACHE.get(cache_key)
+    if cached and cached[0] == mtime:
+        return dict(cached[1])
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    normalized = {str(k): v for k, v in payload.items()}
+    _AUTOCALIB_CACHE[cache_key] = (mtime, normalized)
+    return dict(normalized)
 
 
 def _percentile(values: list[float], p: float) -> float:
@@ -118,6 +148,8 @@ def evaluate_pair_admission(
 ) -> PairAdmissionDecision:
     now = now_ms if now_ms is not None else int(time.time() * 1000)
     s_cfg = config.strategy
+    autocalib = _load_autocalibration(config.ml.autocalibration_path)
+    autocalib_ready = int(autocalib.get("sample_fills") or 0) >= int(config.ml.min_fills_for_autocalibration)
 
     ob = state.get_orderbook(symbol)
     levels = state.get_orderbook_levels(symbol)
@@ -172,9 +204,20 @@ def evaluate_pair_admission(
             depth_band_bps=s_cfg.depth_band_bps,
         )
 
+    local_max_total_slippage_bps = max(float(s_cfg.max_total_slippage_bps), 0.0)
+    if autocalib_ready:
+        recommended_slippage = autocalib.get("recommended_total_slippage_bps")
+        if recommended_slippage is None:
+            recommended_slippage = autocalib.get("recommended_max_total_slippage_bps")
+        if recommended_slippage is not None:
+            try:
+                local_max_total_slippage_bps = max(float(recommended_slippage), 0.0)
+            except (TypeError, ValueError):
+                pass
+
     vwap_buy = _simulate_vwap_buy(asks, s_cfg.order_notional_quote) if asks else None
     vwap_sell = _simulate_vwap_sell(bids, s_cfg.order_notional_quote) if bids else None
-    fallback_slippage_one_side_bps = max(s_cfg.max_total_slippage_bps, 0.0) / 2.0
+    fallback_slippage_one_side_bps = local_max_total_slippage_bps / 2.0
     slippage_buy_bps = (
         ((vwap_buy - best_ask) / best_ask) * 10000.0
         if (vwap_buy is not None and best_ask > 0)
@@ -187,13 +230,24 @@ def evaluate_pair_admission(
     )
     total_slippage_bps = max(slippage_buy_bps, 0.0) + max(slippage_sell_bps, 0.0)
 
+    local_bootstrap_fee_entry_bps = max(float(s_cfg.bootstrap_fee_entry_bps), 0.0)
+    local_bootstrap_fee_exit_bps = max(float(s_cfg.bootstrap_fee_exit_bps), 0.0)
+    if autocalib_ready:
+        try:
+            if autocalib.get("recommended_fee_entry_bps") is not None:
+                local_bootstrap_fee_entry_bps = max(float(autocalib.get("recommended_fee_entry_bps")), 0.0)
+            if autocalib.get("recommended_fee_exit_bps") is not None:
+                local_bootstrap_fee_exit_bps = max(float(autocalib.get("recommended_fee_exit_bps")), 0.0)
+        except (TypeError, ValueError):
+            pass
+
     configured_fee_bps = (
         max(config.fees.maker_rate, 0.0) * 10000.0
         if s_cfg.maker_only_entry
         else max(config.fees.taker_rate, 0.0) * 10000.0
     )
-    fee_entry_bps = max(s_cfg.bootstrap_fee_entry_bps, configured_fee_bps)
-    fee_exit_bps = max(s_cfg.bootstrap_fee_exit_bps, configured_fee_bps)
+    fee_entry_bps = max(local_bootstrap_fee_entry_bps, configured_fee_bps)
+    fee_exit_bps = max(local_bootstrap_fee_exit_bps, configured_fee_bps)
     min_required_spread_bps = (
         fee_entry_bps
         + fee_exit_bps
@@ -213,7 +267,7 @@ def evaluate_pair_admission(
     cond_gap_p95 = p95_trade_gap_ms <= float(s_cfg.max_p95_trade_gap_ms)
     cond_gap_max = max_trade_gap_ms_window <= float(s_cfg.max_max_gap_ms)
     cond_depth = min(depth_bid_quote, depth_ask_quote) >= depth_floor
-    cond_slippage = total_slippage_bps <= s_cfg.max_total_slippage_bps
+    cond_slippage = total_slippage_bps <= local_max_total_slippage_bps
     cond_spread = median_spread_bps >= min_required_spread_bps
     cond_vol = vol_1s_bps <= (median_spread_bps * s_cfg.max_vol_to_spread_ratio if median_spread_bps > 0 else 0.0)
 
@@ -237,7 +291,7 @@ def evaluate_pair_admission(
         stale_data
         or (not cond_depth and min(depth_bid_quote, depth_ask_quote) < depth_floor * 0.5)
         or (not cond_gap_max and max_trade_gap_ms_window > s_cfg.max_max_gap_ms * 1.5)
-        or (not cond_slippage and total_slippage_bps > s_cfg.max_total_slippage_bps * 1.5)
+        or (not cond_slippage and total_slippage_bps > local_max_total_slippage_bps * 1.5)
     )
 
     gate = state.get_pair_gate_state(symbol)
@@ -293,6 +347,8 @@ def evaluate_pair_admission(
         "p95_abs_move_1s_bps": p95_abs_move_1s_bps,
         "fee_entry_bps": fee_entry_bps,
         "fee_exit_bps": fee_exit_bps,
+        "max_total_slippage_bps": local_max_total_slippage_bps,
+        "autocalibration_applied": autocalib_ready,
         "min_required_spread_bps": min_required_spread_bps,
         "stale_data": stale_data,
         "data_age_ms": data_age_ms,
