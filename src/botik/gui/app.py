@@ -297,10 +297,10 @@ class BotikGui:
             65: "select_all", # A
         }
         keysym_map = {
-            "c": "copy", "Ñ": "copy",
-            "x": "cut", "Ñ‡": "cut",
-            "v": "paste", "Ð¼": "paste",
-            "a": "select_all", "Ñ„": "select_all",
+            "c": "copy", "с": "copy",
+            "x": "cut", "ч": "cut",
+            "v": "paste", "м": "paste",
+            "a": "select_all", "ф": "select_all",
         }
         action = keycode_map.get(getattr(event, "keycode", -1))
         if action is None:
@@ -500,23 +500,23 @@ class BotikGui:
 
         account_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         account_card.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(account_card, text="Ð¡Ñ‡ÐµÑ‚ Ð¸ Ð¾Ñ€Ð´ÐµÑ€Ð°", style="Section.TLabel").grid(
+        ttk.Label(account_card, text="Счет и ордера", style="Section.TLabel").grid(
             row=0, column=0, columnspan=6, sticky=tk.W
         )
-        ttk.Label(account_card, text="Ð‘Ð°Ð»Ð°Ð½Ñ USDT", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Label(account_card, text="Баланс USDT", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
         ttk.Label(account_card, textvariable=self.balance_total_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=4)
-        ttk.Label(account_card, text="Ð”Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0), pady=4)
+        ttk.Label(account_card, text="Доступно", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0), pady=4)
         ttk.Label(account_card, textvariable=self.balance_available_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=4)
-        ttk.Label(account_card, text="ÐšÐ¾ÑˆÐµÐ»ÐµÐº", style="Body.TLabel").grid(row=1, column=4, sticky=tk.W, padx=(16, 0), pady=4)
+        ttk.Label(account_card, text="Кошелек", style="Body.TLabel").grid(row=1, column=4, sticky=tk.W, padx=(16, 0), pady=4)
         ttk.Label(account_card, textvariable=self.balance_wallet_var, style="Body.TLabel").grid(row=1, column=5, sticky=tk.W, pady=4)
 
-        ttk.Label(account_card, text="ÐžÑ‚ÐºÑ€Ñ‹Ñ‚Ñ‹Ðµ Ð¾Ñ€Ð´ÐµÑ€Ð°", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
+        ttk.Label(account_card, text="Открытые ордера", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
         ttk.Label(account_card, textvariable=self.open_orders_var, style="Body.TLabel").grid(row=2, column=1, sticky=tk.W, pady=4)
         ttk.Label(account_card, text="API", style="Body.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(16, 0), pady=4)
         ttk.Label(account_card, textvariable=self.api_status_var, style="Body.TLabel").grid(row=2, column=3, columnspan=2, sticky=tk.W, pady=4)
-        ttk.Label(account_card, text="ÐžÐ±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾", style="Body.TLabel").grid(row=2, column=5, sticky=tk.E, pady=4)
+        ttk.Label(account_card, text="Обновлено", style="Body.TLabel").grid(row=2, column=5, sticky=tk.E, pady=4)
         ttk.Label(account_card, textvariable=self.snapshot_time_var, style="Body.TLabel").grid(row=2, column=6, sticky=tk.W, pady=4, padx=(6, 0))
-        ttk.Button(account_card, text="ÐžÐ±Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ Ð´Ð°Ð½Ð½Ñ‹Ðµ", command=self.refresh_runtime_snapshot).grid(
+        ttk.Button(account_card, text="Обновить данные", command=self.refresh_runtime_snapshot).grid(
             row=1, column=6, rowspan=1, sticky=tk.E, padx=(14, 0), pady=2
         )
         account_card.columnconfigure(6, weight=1)
@@ -528,7 +528,7 @@ class BotikGui:
 
         open_card = ttk.Frame(orders_frame, style="Card.TFrame")
         open_card.grid(row=0, column=0, sticky=tk.NSEW, padx=(0, 6))
-        ttk.Label(open_card, text="ÐžÑ‚ÐºÑ€Ñ‹Ñ‚Ñ‹Ðµ Ð¾Ñ€Ð´ÐµÑ€Ð° (Ð±Ð¸Ñ€Ð¶Ð°)", style="Body.TLabel").pack(anchor=tk.W)
+        ttk.Label(open_card, text="Открытые ордера (биржа)", style="Body.TLabel").pack(anchor=tk.W)
         self.open_orders_tree = ttk.Treeview(
             open_card,
             columns=("n", "symbol", "side", "price", "qty", "status"),
@@ -536,7 +536,7 @@ class BotikGui:
             height=5,
         )
         for col, title, width in [
-            ("n", "â„–", 44),
+            ("n", "№", 44),
             ("symbol", "Symbol", 95),
             ("side", "Side", 60),
             ("price", "Price", 90),
@@ -549,7 +549,7 @@ class BotikGui:
 
         history_card = ttk.Frame(orders_frame, style="Card.TFrame")
         history_card.grid(row=0, column=1, sticky=tk.NSEW, padx=(6, 0))
-        ttk.Label(history_card, text="Ð˜ÑÑ‚Ð¾Ñ€Ð¸Ñ Ð¾Ñ€Ð´ÐµÑ€Ð¾Ð² (Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ð°Ñ Ð‘Ð”)", style="Body.TLabel").pack(anchor=tk.W)
+        ttk.Label(history_card, text="История ордеров (локальная БД)", style="Body.TLabel").pack(anchor=tk.W)
         self.order_history_tree = ttk.Treeview(
             history_card,
             columns=("n", "date", "time", "symbol", "side", "status", "price", "qty"),
@@ -557,9 +557,9 @@ class BotikGui:
             height=5,
         )
         for col, title, width in [
-            ("n", "â„–", 44),
-            ("date", "Ð”Ð°Ñ‚Ð°", 95),
-            ("time", "Ð’Ñ€ÐµÐ¼Ñ", 95),
+            ("n", "№", 44),
+            ("date", "Дата", 95),
+            ("time", "Время", 95),
             ("symbol", "Symbol", 90),
             ("side", "Side", 60),
             ("status", "Status", 90),
@@ -879,12 +879,12 @@ class BotikGui:
         ctx = self._invoke_on_ui_thread(self._live_rest_context)
         mode = str(ctx.get("mode") or "paper").lower()
         if mode != "live":
-            return True, "mode=paper: Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚Ñ‹Ñ… Ð¾Ñ€Ð´ÐµÑ€Ð¾Ð² Ð½Ð° Ð±Ð¸Ñ€Ð¶Ðµ Ð½ÐµÑ‚"
+            return True, "mode=paper: открытых ордеров на бирже нет"
         api_key = str(ctx.get("api_key") or "")
         api_secret = str(ctx.get("api_secret") or "")
         rsa_key_path = str(ctx.get("rsa_key_path") or "")
         if not api_key or (not api_secret and not rsa_key_path):
-            return False, "Ð½ÐµÑ‚ API-ÐºÐ»ÑŽÑ‡ÐµÐ¹ Ð´Ð»Ñ cancel_all"
+            return False, "нет API-ключей для cancel_all"
         return asyncio.run(
             self._cancel_open_orders_live(
                 host=str(ctx.get("host") or "api-demo.bybit.com"),
@@ -906,7 +906,7 @@ class BotikGui:
             f"ml.state={self.ml_training_state_var.get()}\n"
             f"execution.mode={mode}\n"
             f"commit={self._git_short_head()}\n"
-            "ÐŸÑ€Ð¸Ð¼ÐµÑ‡Ð°Ð½Ð¸Ðµ: Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½Ð½Ñ‹Ð¹ trading-Ð¿Ñ€Ð¾Ñ†ÐµÑÑ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÑ‚ ÐºÐ¾Ð´ Ð²ÐµÑ€ÑÐ¸Ð¸ Ð½Ð° Ð¼Ð¾Ð¼ÐµÐ½Ñ‚ ÑÑ‚Ð°Ñ€Ñ‚Ð°."
+            "Примечание: запущенный trading-процесс использует код версии на момент старта."
         )
 
     def _refresh_app_version(self) -> None:
@@ -925,18 +925,18 @@ class BotikGui:
     def telegram_balance_text(self) -> str:
         snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
         return (
-            "Ð¡Ñ€ÐµÐ´ÑÑ‚Ð²Ð°:\n"
-            f"Ð±Ð°Ð»Ð°Ð½Ñ={snapshot.get('balance_total', 'n/a')}\n"
-            f"Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾={snapshot.get('balance_available', 'n/a')}\n"
-            f"ÐºÐ¾ÑˆÐµÐ»ÐµÐº={snapshot.get('balance_wallet', 'n/a')}\n"
+            "Средства:\n"
+            f"баланс={snapshot.get('balance_total', 'n/a')}\n"
+            f"доступно={snapshot.get('balance_available', 'n/a')}\n"
+            f"кошелек={snapshot.get('balance_wallet', 'n/a')}\n"
             f"api={snapshot.get('api_status', 'n/a')}\n"
-            f"Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾={snapshot.get('updated_at', '-')}"
+            f"обновлено={snapshot.get('updated_at', '-')}"
         )
 
     def telegram_orders_text(self) -> str:
         snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
         rows = list(snapshot.get("open_orders_rows") or [])
-        lines = [f"ÐÐºÑ‚Ð¸Ð²Ð½Ñ‹Ðµ Ð¾Ñ€Ð´ÐµÑ€Ð°: {snapshot.get('open_orders_count', 0)}"]
+        lines = [f"Активные ордера: {snapshot.get('open_orders_count', 0)}"]
         for row in rows[:12]:
             symbol, side, price, qty, status = row
             lines.append(f"{symbol} {side} price={price} qty={qty} status={status}")
@@ -952,8 +952,8 @@ class BotikGui:
     def telegram_pull_updates(self) -> str:
         ok, msg = self._git_pull_ff_only()
         if self.trading.running:
-            msg += "\nTrading ÑƒÐ¶Ðµ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½ Ð½Ð° ÑÑ‚Ð°Ñ€Ð¾Ð¹ Ð²ÐµÑ€ÑÐ¸Ð¸. ÐÑƒÐ¶ÐµÐ½ Ñ€ÐµÑÑ‚Ð°Ñ€Ñ‚ Ð´Ð»Ñ Ð¿Ñ€Ð¸Ð¼ÐµÐ½ÐµÐ½Ð¸Ñ Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ð¹."
-        return msg if ok else f"ÐžÑˆÐ¸Ð±ÐºÐ° Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ñ:\n{msg}"
+            msg += "\nTrading уже запущен на старой версии. Нужен рестарт для применения обновлений."
+        return msg if ok else f"Ошибка обновления:\n{msg}"
 
     def telegram_restart_soft(self) -> str:
         lines: list[str] = []
@@ -964,7 +964,7 @@ class BotikGui:
         lines.append(f"[3/4] cancel after stop: {msg_cancel_after}")
         lines.append(f"[4/4] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
         if not ok_cancel_before or not ok_cancel_after:
-            lines.append("Ð’Ð½Ð¸Ð¼Ð°Ð½Ð¸Ðµ: cancel_all Ð½Ðµ Ð¿Ð¾Ð»Ð½Ð¾ÑÑ‚ÑŒÑŽ ÑƒÑÐ¿ÐµÑˆÐµÐ½, Ð¿Ñ€Ð¾Ð²ÐµÑ€ÑŒÑ‚Ðµ open orders.")
+            lines.append("Внимание: cancel_all не полностью успешен, проверьте open orders.")
         return "\n".join(lines)
 
     def telegram_restart_hard(self) -> str:
@@ -974,7 +974,7 @@ class BotikGui:
         lines.append(f"[2/3] {self._invoke_on_ui_thread(self._stop_trading_impl)}")
         lines.append(f"[3/3] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
         if not ok_pull:
-            lines.append("ÐžÐ±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ðµ Ð½Ðµ Ð¿Ñ€Ð¸Ð¼ÐµÐ½Ð¸Ð»Ð¾ÑÑŒ, Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½Ð° Ñ‚ÐµÐºÑƒÑ‰Ð°Ñ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ð°Ñ Ð²ÐµÑ€ÑÐ¸Ñ.")
+            lines.append("Обновление не применилось, запущена текущая локальная версия.")
         return "\n".join(lines)
 
     def _drain_logs(self) -> None:
@@ -1310,13 +1310,13 @@ class BotikGui:
         host = str((raw_cfg.get("bybit") or {}).get("host") or "api-demo.bybit.com").strip()
 
         if not api_key:
-            snapshot["api_status"] = "Ð½ÐµÑ‚ BYBIT_API_KEY"
+            snapshot["api_status"] = "нет BYBIT_API_KEY"
             local_open = self._read_local_open_orders(db_path)
             snapshot["open_orders_rows"] = local_open
             snapshot["open_orders_count"] = len(local_open)
             return snapshot
         if not api_secret and not rsa_key_path:
-            snapshot["api_status"] = "Ð½ÐµÑ‚ ÑÐµÐºÑ€ÐµÑ‚Ð° API (HMAC/RSA)"
+            snapshot["api_status"] = "нет секрета API (HMAC/RSA)"
             local_open = self._read_local_open_orders(db_path)
             snapshot["open_orders_rows"] = local_open
             snapshot["open_orders_count"] = len(local_open)
