@@ -11,6 +11,26 @@ from typing import Any
 # Включение WAL и создание таблиц при первом подключении
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, name: str, ddl: str) -> None:
+    cols = _table_columns(conn, table)
+    if name in cols:
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+        (table,),
+    ).fetchone()
+    return bool(row)
+
+
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript("""
@@ -75,6 +95,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             is_active INTEGER DEFAULT 0
         );
     """)
+    _ensure_column(conn, "orders", "entry_price", "REAL")
+    _ensure_column(conn, "orders", "exit_price", "REAL")
     conn.commit()
 
 
@@ -124,6 +146,33 @@ def update_order_status(
             "UPDATE orders SET status=?, updated_at_utc=? WHERE order_link_id=?",
             (status, updated_at_utc, order_link_id),
         )
+    conn.commit()
+
+
+def update_orders_entry_exit_for_signal(
+    conn: sqlite3.Connection,
+    *,
+    signal_id: str,
+    entry_price: float | None,
+    exit_price: float | None,
+    updated_at_utc: str,
+) -> None:
+    if not signal_id:
+        return
+    if not _table_exists(conn, "order_signal_map"):
+        return
+    conn.execute(
+        """
+        UPDATE orders
+        SET entry_price = ?, exit_price = ?, updated_at_utc = ?
+        WHERE order_link_id IN (
+            SELECT order_link_id
+            FROM order_signal_map
+            WHERE signal_id = ?
+        )
+        """,
+        (entry_price, exit_price, updated_at_utc, signal_id),
+    )
     conn.commit()
 
 

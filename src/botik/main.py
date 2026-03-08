@@ -29,7 +29,13 @@ from src.botik.risk.manager import RiskManager
 from src.botik.risk.position import apply_fill, unrealized_pnl_pct
 from src.botik.state.state import TradingState
 from src.botik.version import get_app_version_label
-from src.botik.storage.sqlite_store import get_connection, insert_fill, insert_metrics, insert_order
+from src.botik.storage.sqlite_store import (
+    get_connection,
+    insert_fill,
+    insert_metrics,
+    insert_order,
+    update_orders_entry_exit_for_signal,
+)
 from src.botik.storage.lifecycle_store import (
     ensure_lifecycle_schema,
     get_signal_id_for_order_link,
@@ -171,6 +177,7 @@ def _hot_reload_runtime_modules() -> None:
         insert_fill as _insert_fill,
         insert_metrics as _insert_metrics,
         insert_order as _insert_order,
+        update_orders_entry_exit_for_signal as _update_orders_entry_exit_for_signal,
     )
     from src.botik.strategy.micro_spread import MicroSpreadStrategy as _MicroSpreadStrategy
     from src.botik.strategy.pair_admission import evaluate_pair_admission as _evaluate_pair_admission
@@ -195,6 +202,7 @@ def _hot_reload_runtime_modules() -> None:
     globals()["insert_fill"] = _insert_fill
     globals()["insert_metrics"] = _insert_metrics
     globals()["insert_order"] = _insert_order
+    globals()["update_orders_entry_exit_for_signal"] = _update_orders_entry_exit_for_signal
     globals()["ensure_lifecycle_schema"] = _ensure_lifecycle_schema
     globals()["get_signal_id_for_order_link"] = _get_signal_id_for_order_link
     globals()["insert_execution_event"] = _insert_execution_event
@@ -614,6 +622,13 @@ def main() -> None:
                                 conn,
                                 signal_id=outcome_signal_id,
                                 reward_net_edge_bps=net_edge_bps,
+                            )
+                            update_orders_entry_exit_for_signal(
+                                conn,
+                                signal_id=outcome_signal_id,
+                                entry_price=entry_vwap,
+                                exit_price=exit_vwap,
+                                updated_at_utc=utc_now_iso(),
                             )
                             policy_selector.update_reward(signal_id=outcome_signal_id, reward_bps=net_edge_bps)
                         position_opened_at[symbol] = None

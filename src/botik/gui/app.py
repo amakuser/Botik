@@ -553,7 +553,7 @@ class BotikGui:
         ttk.Label(history_card, text="История ордеров (локальная БД)", style="Body.TLabel").pack(anchor=tk.W)
         self.order_history_tree = ttk.Treeview(
             history_card,
-            columns=("n", "date", "time", "symbol", "side", "status", "price", "qty"),
+            columns=("n", "date", "time", "symbol", "side", "status", "price", "qty", "entry", "exit"),
             show="headings",
             height=5,
         )
@@ -566,6 +566,8 @@ class BotikGui:
             ("status", "Status", 90),
             ("price", "Price", 90),
             ("qty", "Qty", 90),
+            ("entry", "Entry", 90),
+            ("exit", "Exit", 90),
         ]:
             self.order_history_tree.heading(col, text=title)
             self.order_history_tree.column(col, width=width, anchor=tk.W)
@@ -1415,23 +1417,38 @@ class BotikGui:
         self,
         db_path: Path,
         limit: int = 80,
-    ) -> list[tuple[str, str, str, str, str, str, str, str]]:
+    ) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
         if not db_path.exists():
             return []
         conn = sqlite3.connect(str(db_path))
         try:
-            rows = conn.execute(
-                """
-                SELECT COALESCE(updated_at_utc, created_at_utc) AS ts, symbol, side, status, price, qty
-                FROM orders
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (max(limit, 1),),
-            ).fetchall()
-            out_rows: list[tuple[str, str, str, str, str, str, str, str]] = []
+            cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(orders)").fetchall()}
+            has_entry_exit = "entry_price" in cols and "exit_price" in cols
+            if has_entry_exit:
+                rows = conn.execute(
+                    """
+                    SELECT COALESCE(updated_at_utc, created_at_utc) AS ts, symbol, side, status, price, qty, entry_price, exit_price
+                    FROM orders
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (max(limit, 1),),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT COALESCE(updated_at_utc, created_at_utc) AS ts, symbol, side, status, price, qty
+                    FROM orders
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (max(limit, 1),),
+                ).fetchall()
+            out_rows: list[tuple[str, str, str, str, str, str, str, str, str, str]] = []
             for idx, r in enumerate(rows, start=1):
                 date_str, time_str = self._split_local_datetime(str(r[0] or ""))
+                entry_price = r[6] if has_entry_exit and len(r) > 6 else ""
+                exit_price = r[7] if has_entry_exit and len(r) > 7 else ""
                 out_rows.append(
                     (
                         str(idx),
@@ -1442,6 +1459,8 @@ class BotikGui:
                         str(r[3] or ""),
                         str(r[4] or ""),
                         str(r[5] or ""),
+                        self._fmt_num(entry_price, precision=8) if entry_price not in ("", None) else "",
+                        self._fmt_num(exit_price, precision=8) if exit_price not in ("", None) else "",
                     )
                 )
             return out_rows
