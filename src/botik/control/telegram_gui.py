@@ -76,9 +76,20 @@ def run_gui_telegram_bot(
     token: str,
     actions: GuiTelegramActions,
     allowed_chat_id: str | None = None,
+    stop_event: threading.Event | None = None,
 ) -> None:
     bot = TeleBot(token)
     reply_kb = _main_keyboard()
+    stop_event = stop_event or threading.Event()
+
+    def polling_stop_watcher() -> None:
+        stop_event.wait()
+        try:
+            bot.stop_polling()
+        except Exception:
+            pass
+
+    threading.Thread(target=polling_stop_watcher, daemon=True).start()
 
     def is_allowed_chat(chat_id: int | str) -> bool:
         if allowed_chat_id is None:
@@ -207,25 +218,28 @@ def run_gui_telegram_bot(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to set GUI Telegram commands: %s", exc)
 
-    while True:
+    while not stop_event.is_set():
         try:
             bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
         except Exception as exc:  # noqa: BLE001
+            if stop_event.is_set():
+                break
             logger.warning("GUI Telegram polling error, restart in 3s: %s", exc)
             time.sleep(3)
+    logger.info("GUI Telegram bot stopped")
 
 
 def start_gui_telegram_bot_in_thread(
     token: str,
     actions: GuiTelegramActions,
     allowed_chat_id: str | None = None,
+    stop_event: threading.Event | None = None,
 ) -> threading.Thread:
     t = threading.Thread(
         target=run_gui_telegram_bot,
         args=(token, actions),
-        kwargs={"allowed_chat_id": allowed_chat_id},
+        kwargs={"allowed_chat_id": allowed_chat_id, "stop_event": stop_event},
         daemon=True,
     )
     t.start()
     return t
-

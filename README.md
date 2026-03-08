@@ -172,6 +172,7 @@ sudo bash /opt/Botik/deploy/update.sh /opt/Botik master
 
 - [docs/PLAN.md](docs/PLAN.md) — план проекта и шаги разработки.
 - [docs/PROD_RUNBOOK.md](docs/PROD_RUNBOOK.md) — запуск/обновление на сервере.
+- [docs/WINDOWS_PACKAGING.md](docs/WINDOWS_PACKAGING.md) — сборка `botik.exe` и Windows-инсталлятора.
 - [docs/AGENT_PROMPTS.md](docs/AGENT_PROMPTS.md) — подсказки для AI и структура кода.
 
 ---

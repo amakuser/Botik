@@ -28,11 +28,13 @@ from tkinter import ttk, messagebox
 import yaml
 
 from src.botik.version import get_app_version_label
+from src.botik.utils.runtime import runtime_root
 
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
+ROOT_DIR = runtime_root(__file__, levels_up=3)
 ENV_PATH = ROOT_DIR / ".env"
 DEFAULT_CONFIG_PATH = ROOT_DIR / "config.yaml"
+GUI_LOG_PATH = ROOT_DIR / "logs" / "gui.log"
 
 
 # Windows sleep control flags (SetThreadExecutionState).
@@ -256,6 +258,7 @@ class BotikGui:
         self._runtime_refresh_lock = threading.Lock()
         self._runtime_refresh_inflight = False
         self._telegram_thread: threading.Thread | None = None
+        self._telegram_stop_event: threading.Event | None = None
         self._telegram_missing_token_reported = False
 
         self._setup_style()
@@ -711,6 +714,13 @@ class BotikGui:
 
     def _enqueue_log(self, text: str) -> None:
         self.log_queue.put(text)
+        try:
+            GUI_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with GUI_LOG_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(f"{ts} {text}\n")
+        except OSError:
+            pass
 
     def _invoke_on_ui_thread(self, fn: Callable[[], Any], timeout_sec: float = 45.0) -> Any:
         if threading.current_thread() is threading.main_thread():
@@ -749,6 +759,7 @@ class BotikGui:
 
         from src.botik.control.telegram_gui import GuiTelegramActions, start_gui_telegram_bot_in_thread
 
+        self._telegram_stop_event = threading.Event()
         actions = GuiTelegramActions(
             status=self.telegram_status_text,
             balance=self.telegram_balance_text,
@@ -763,6 +774,7 @@ class BotikGui:
             token=token,
             actions=actions,
             allowed_chat_id=chat_id,
+            stop_event=self._telegram_stop_event,
         )
         self._enqueue_log("[telegram-gui] control bot started")
 
@@ -1754,6 +1766,10 @@ class BotikGui:
 
     def _on_close(self) -> None:
         self._flush_autosave()
+        if self._telegram_stop_event is not None:
+            self._telegram_stop_event.set()
+        if self._telegram_thread is not None and self._telegram_thread.is_alive():
+            self._telegram_thread.join(timeout=2.0)
         self._stop_trading_impl(stop_ml=True)
         self.sleep_blocker.disable()
         self.root.destroy()

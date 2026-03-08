@@ -44,9 +44,10 @@ from src.botik.strategy.micro_spread import MicroSpreadStrategy
 from src.botik.strategy.pair_admission import evaluate_pair_admission
 from src.botik.strategy.symbol_scanner import pick_active_symbols
 from src.botik.utils.logging import setup_logging
+from src.botik.utils.runtime import runtime_root
 from src.botik.utils.time import utc_now_iso
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = runtime_root(__file__, levels_up=2)
 VERSION_FILE = ROOT_DIR / "version.txt"
 
 

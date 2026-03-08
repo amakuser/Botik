@@ -1,0 +1,62 @@
+name: windows-package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master, main ]
+    paths:
+      - "src/**"
+      - "botik.spec"
+      - "installer.iss"
+      - "requirements.txt"
+      - "build_windows_installer.bat"
+      - ".github/workflows/windows-package.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Update version.txt from commit
+        shell: pwsh
+        run: |
+          (git rev-parse HEAD).Trim() | Set-Content -Path version.txt -Encoding utf8
+
+      - name: Build one-file EXE
+        run: python -m PyInstaller --noconfirm --clean botik.spec
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: botik-exe
+          path: dist/botik.exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: botik-installer
+          path: dist/installer/BotikInstaller.exe
+

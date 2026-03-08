@@ -24,13 +24,15 @@ from typing import TYPE_CHECKING
 from telebot import TeleBot
 from telebot import types
 
+from src.botik.utils.runtime import runtime_root
+
 if TYPE_CHECKING:
     from src.botik.config import AppConfig
     from src.botik.state.state import TradingState
 
 logger = logging.getLogger(__name__)
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
+ROOT_DIR = runtime_root(__file__, levels_up=3)
 VERSION_FILE = ROOT_DIR / "version.txt"
 
 BTN_STATUS = "Статус"
@@ -125,10 +127,13 @@ def perform_update(repo_root: Path, version_file: Path) -> tuple[str, str]:
     - ("up_to_date", version)
     - ("updated", new_version)
     - ("dirty_tree", status_output)
+    - ("repo_unavailable", current_version_or_empty)
     - ("remote_unavailable", "")
     - ("pull_failed", stderr_or_output)
     """
     current_version = _resolve_local_version(repo_root, version_file)
+    if not (repo_root / ".git").exists():
+        return "repo_unavailable", current_version
     code, worktree = _run_git(["status", "--porcelain"], repo_root)
     if code != 0:
         return "pull_failed", worktree
@@ -291,6 +296,16 @@ def run_telegram_bot(
             if status == "remote_unavailable":
                 state.set_update_in_progress(False, "remote_unavailable")
                 send_text(chat_id, "Не удалось получить версию из GitHub.")
+                return
+
+            if status == "repo_unavailable":
+                state.set_update_in_progress(False, "repo_unavailable")
+                send_text(
+                    chat_id,
+                    "Локальный git-репозиторий не найден (режим установленного приложения).\n"
+                    "Используйте установщик новой версии. "
+                    f"Текущая версия: {(payload or current_version)[:12] if (payload or current_version) else 'unknown'}.",
+                )
                 return
 
             if status == "dirty_tree":

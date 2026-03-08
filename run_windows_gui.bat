@@ -2,6 +2,12 @@
 setlocal
 cd /d "%~dp0"
 
+rem Prefer packaged executable when available.
+if exist "dist\botik.exe" (
+  start "" "dist\botik.exe"
+  exit /b 0
+)
+
 rem Prefer GUI interpreter (pythonw) to avoid console-only launch.
 if exist ".venv\Scripts\pythonw.exe" (
   if exist "src\botik\gui\app.pyw" (
