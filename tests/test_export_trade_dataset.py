@@ -13,6 +13,34 @@ from src.botik.storage.lifecycle_store import (
 from tools.export_trade_dataset import export_dataset
 
 
+EXPECTED_EXPORT_COLUMNS = [
+    "signal_id",
+    "symbol",
+    "side",
+    "ts_signal_ms",
+    "spread_bps_at_signal",
+    "depth_bid_quote_at_signal",
+    "depth_ask_quote_at_signal",
+    "slippage_buy_bps_est",
+    "slippage_sell_bps_est",
+    "trades_per_min_at_signal",
+    "p95_trade_gap_ms_at_signal",
+    "vol_1s_bps_at_signal",
+    "min_required_spread_bps",
+    "policy_used",
+    "profile_id",
+    "order_notional_quote",
+    "entry_vwap",
+    "exit_vwap",
+    "total_exec_qty",
+    "total_fees_quote",
+    "net_pnl_quote",
+    "net_edge_bps",
+    "label_open",
+    "label_fill",
+]
+
+
 def test_export_dataset_labels_from_net_edge_and_fills(tmp_path: Path) -> None:
     db_path = tmp_path / "botik.db"
     out_csv = tmp_path / "dataset.csv"
@@ -131,7 +159,9 @@ def test_export_dataset_labels_from_net_edge_and_fills(tmp_path: Path) -> None:
     assert rows == 2
 
     with out_csv.open("r", encoding="utf-8") as f:
-        exported = list(csv.DictReader(f))
+        reader = csv.DictReader(f)
+        assert reader.fieldnames == EXPECTED_EXPORT_COLUMNS
+        exported = list(reader)
 
     by_signal = {row["signal_id"]: row for row in exported}
     assert by_signal["sig-1"]["label_fill"] == "1"

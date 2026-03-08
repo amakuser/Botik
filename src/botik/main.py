@@ -227,15 +227,16 @@ def main() -> None:
         state.set_active_policy_meta(
             {
                 symbol: {
-                    "policy_used": "Static",
-                    "profile_id": profile_ids[0],
-                    "pred_open_prob": None,
-                    "pred_exp_edge_bps": None,
-                    "active_model_id": None,
-                    "reason": "startup",
-                }
-                for symbol in config.symbols
+                "policy_used": "Static",
+                "profile_id": profile_ids[0],
+                "pred_open_prob": None,
+                "pred_exp_edge_bps": None,
+                "active_model_id": None,
+                "model_id": None,
+                "reason": "startup",
             }
+            for symbol in config.symbols
+        }
         )
         state.set_scanner_snapshot(
             {
@@ -751,6 +752,7 @@ def main() -> None:
                                 "pred_open_prob": None,
                                 "pred_exp_edge_bps": None,
                                 "active_model_id": policy_model.model_id if policy_model is not None else None,
+                                "model_id": policy_model.model_id if policy_model is not None else None,
                                 "reason": "default",
                             },
                         )
@@ -952,6 +954,12 @@ def main() -> None:
                                 else None
                             ),
                             active_model_id=str(policy_meta.get("active_model_id") or policy_model_id or ""),
+                            model_id=str(
+                                policy_meta.get("model_id")
+                                or policy_meta.get("active_model_id")
+                                or policy_model_id
+                                or ""
+                            ),
                             order_size_quote=float(intent.price * intent.qty),
                             order_size_base=float(intent.qty),
                             entry_price=float(intent.price),
@@ -1145,6 +1153,7 @@ def main() -> None:
                                 "pred_open_prob": None,
                                 "pred_exp_edge_bps": None,
                                 "active_model_id": policy_model_id,
+                                "model_id": policy_model_id,
                                 "reason": "universe_refresh",
                             }
                             for s in current_active

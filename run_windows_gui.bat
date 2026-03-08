@@ -4,7 +4,11 @@ cd /d "%~dp0"
 
 rem Prefer GUI interpreter (pythonw) to avoid console-only launch.
 if exist ".venv\Scripts\pythonw.exe" (
-  start "" ".venv\Scripts\pythonw.exe" -m src.botik.gui.app
+  if exist "src\botik\gui\app.pyw" (
+    start "" ".venv\Scripts\pythonw.exe" "src\botik\gui\app.pyw"
+  ) else (
+    start "" ".venv\Scripts\pythonw.exe" -m src.botik.gui.app
+  )
   exit /b 0
 )
 

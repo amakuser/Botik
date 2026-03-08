@@ -1,4 +1,4 @@
-"""
+﻿"""
 Desktop GUI launcher for local operation (Windows/Linux desktop).
 
 Features:
@@ -17,6 +17,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -239,6 +240,15 @@ class BotikGui:
         self.open_orders_var = tk.StringVar(value="0")
         self.api_status_var = tk.StringVar(value="not checked")
         self.snapshot_time_var = tk.StringVar(value="-")
+        self.ml_model_id_var = tk.StringVar(value="bootstrap")
+        self.ml_training_state_var = tk.StringVar(value="idle")
+        self.ml_progress_text_var = tk.StringVar(value="0%")
+        self.ml_net_edge_var = tk.StringVar(value="n/a")
+        self.ml_win_rate_var = tk.StringVar(value="n/a")
+        self.ml_fill_rate_var = tk.StringVar(value="n/a")
+        self.ml_training_paused = False
+        self._ml_progress_running = False
+        self._ml_chart_points: deque[float] = deque(maxlen=60)
 
         self._suspend_autosave = False
         self._autosave_env_after_id: str | None = None
@@ -260,6 +270,7 @@ class BotikGui:
         self._update_status()
         self._drain_logs()
         self._schedule_runtime_refresh(initial_delay_ms=1000)
+        self.root.bind("<Escape>", self._toggle_window_state)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _setup_edit_shortcuts(self) -> None:
@@ -283,10 +294,10 @@ class BotikGui:
             65: "select_all", # A
         }
         keysym_map = {
-            "c": "copy", "с": "copy",
-            "x": "cut", "ч": "cut",
-            "v": "paste", "м": "paste",
-            "a": "select_all", "ф": "select_all",
+            "c": "copy", "Ñ": "copy",
+            "x": "cut", "Ñ‡": "cut",
+            "v": "paste", "Ð¼": "paste",
+            "a": "select_all", "Ñ„": "select_all",
         }
         action = keycode_map.get(getattr(event, "keycode", -1))
         if action is None:
@@ -460,39 +471,49 @@ class BotikGui:
         action_card.pack(fill=tk.X, pady=8)
         ttk.Label(action_card, text="Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
 
-        ttk.Button(action_card, text="Start Trading", command=self.start_trading).grid(row=1, column=0, sticky=tk.EW, padx=4, pady=6)
-        ttk.Button(action_card, text="Stop Trading", command=self.stop_trading).grid(row=1, column=1, sticky=tk.EW, padx=4, pady=6)
-        ttk.Button(action_card, text="Run Preflight", command=self.run_preflight, style="Accent.TButton").grid(row=1, column=2, sticky=tk.EW, padx=4, pady=6)
+        ttk.Button(action_card, text="Start (Trade+ML)", command=self.start_trading).grid(
+            row=1, column=0, sticky=tk.EW, padx=4, pady=6
+        )
+        ttk.Button(action_card, text="Stop (Trade+ML)", command=self.stop_trading).grid(
+            row=1, column=1, sticky=tk.EW, padx=4, pady=6
+        )
+        ttk.Button(action_card, text="Pause Training", command=self.pause_training).grid(
+            row=1, column=2, sticky=tk.EW, padx=4, pady=6
+        )
 
-        ttk.Button(action_card, text="Start ML", command=self.start_ml).grid(row=2, column=0, sticky=tk.EW, padx=4, pady=6)
-        ttk.Button(action_card, text="Stop ML", command=self.stop_ml).grid(row=2, column=1, sticky=tk.EW, padx=4, pady=6)
-        ttk.Button(action_card, text="Clear Log", command=self.clear_log).grid(row=2, column=2, sticky=tk.EW, padx=4, pady=6)
+        ttk.Button(action_card, text="Run Preflight", command=self.run_preflight, style="Accent.TButton").grid(
+            row=2, column=0, sticky=tk.EW, padx=4, pady=6
+        )
+        ttk.Button(action_card, text="Clear Log", command=self.clear_log).grid(row=2, column=1, sticky=tk.EW, padx=4, pady=6)
+        ttk.Button(action_card, text="Copy Chart", command=self.copy_ml_chart).grid(row=2, column=2, sticky=tk.EW, padx=4, pady=6)
         ttk.Button(action_card, text="Copy Selected", command=self.copy_selected_log).grid(row=3, column=0, sticky=tk.EW, padx=4, pady=6)
         ttk.Button(action_card, text="Copy All", command=self.copy_all_log).grid(row=3, column=1, sticky=tk.EW, padx=4, pady=6)
-        ttk.Label(action_card, text="Tip: right click in log for copy menu", style="Body.TLabel").grid(row=3, column=2, sticky=tk.EW, padx=4, pady=6)
+        ttk.Label(action_card, text="Tip: right click in log for copy menu", style="Body.TLabel").grid(
+            row=3, column=2, sticky=tk.EW, padx=4, pady=6
+        )
 
         for i in range(3):
             action_card.columnconfigure(i, weight=1)
 
         account_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         account_card.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(account_card, text="Счет и ордера", style="Section.TLabel").grid(
+        ttk.Label(account_card, text="Ð¡Ñ‡ÐµÑ‚ Ð¸ Ð¾Ñ€Ð´ÐµÑ€Ð°", style="Section.TLabel").grid(
             row=0, column=0, columnspan=6, sticky=tk.W
         )
-        ttk.Label(account_card, text="Баланс USDT", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Label(account_card, text="Ð‘Ð°Ð»Ð°Ð½Ñ USDT", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
         ttk.Label(account_card, textvariable=self.balance_total_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=4)
-        ttk.Label(account_card, text="Доступно", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0), pady=4)
+        ttk.Label(account_card, text="Ð”Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0), pady=4)
         ttk.Label(account_card, textvariable=self.balance_available_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=4)
-        ttk.Label(account_card, text="Кошелек", style="Body.TLabel").grid(row=1, column=4, sticky=tk.W, padx=(16, 0), pady=4)
+        ttk.Label(account_card, text="ÐšÐ¾ÑˆÐµÐ»ÐµÐº", style="Body.TLabel").grid(row=1, column=4, sticky=tk.W, padx=(16, 0), pady=4)
         ttk.Label(account_card, textvariable=self.balance_wallet_var, style="Body.TLabel").grid(row=1, column=5, sticky=tk.W, pady=4)
 
-        ttk.Label(account_card, text="Открытые ордера", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
+        ttk.Label(account_card, text="ÐžÑ‚ÐºÑ€Ñ‹Ñ‚Ñ‹Ðµ Ð¾Ñ€Ð´ÐµÑ€Ð°", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
         ttk.Label(account_card, textvariable=self.open_orders_var, style="Body.TLabel").grid(row=2, column=1, sticky=tk.W, pady=4)
         ttk.Label(account_card, text="API", style="Body.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(16, 0), pady=4)
         ttk.Label(account_card, textvariable=self.api_status_var, style="Body.TLabel").grid(row=2, column=3, columnspan=2, sticky=tk.W, pady=4)
-        ttk.Label(account_card, text="Обновлено", style="Body.TLabel").grid(row=2, column=5, sticky=tk.E, pady=4)
+        ttk.Label(account_card, text="ÐžÐ±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾", style="Body.TLabel").grid(row=2, column=5, sticky=tk.E, pady=4)
         ttk.Label(account_card, textvariable=self.snapshot_time_var, style="Body.TLabel").grid(row=2, column=6, sticky=tk.W, pady=4, padx=(6, 0))
-        ttk.Button(account_card, text="Обновить данные", command=self.refresh_runtime_snapshot).grid(
+        ttk.Button(account_card, text="ÐžÐ±Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ Ð´Ð°Ð½Ð½Ñ‹Ðµ", command=self.refresh_runtime_snapshot).grid(
             row=1, column=6, rowspan=1, sticky=tk.E, padx=(14, 0), pady=2
         )
         account_card.columnconfigure(6, weight=1)
@@ -504,7 +525,7 @@ class BotikGui:
 
         open_card = ttk.Frame(orders_frame, style="Card.TFrame")
         open_card.grid(row=0, column=0, sticky=tk.NSEW, padx=(0, 6))
-        ttk.Label(open_card, text="Открытые ордера (биржа)", style="Body.TLabel").pack(anchor=tk.W)
+        ttk.Label(open_card, text="ÐžÑ‚ÐºÑ€Ñ‹Ñ‚Ñ‹Ðµ Ð¾Ñ€Ð´ÐµÑ€Ð° (Ð±Ð¸Ñ€Ð¶Ð°)", style="Body.TLabel").pack(anchor=tk.W)
         self.open_orders_tree = ttk.Treeview(
             open_card,
             columns=("n", "symbol", "side", "price", "qty", "status"),
@@ -512,7 +533,7 @@ class BotikGui:
             height=5,
         )
         for col, title, width in [
-            ("n", "№", 44),
+            ("n", "â„–", 44),
             ("symbol", "Symbol", 95),
             ("side", "Side", 60),
             ("price", "Price", 90),
@@ -525,7 +546,7 @@ class BotikGui:
 
         history_card = ttk.Frame(orders_frame, style="Card.TFrame")
         history_card.grid(row=0, column=1, sticky=tk.NSEW, padx=(6, 0))
-        ttk.Label(history_card, text="История ордеров (локальная БД)", style="Body.TLabel").pack(anchor=tk.W)
+        ttk.Label(history_card, text="Ð˜ÑÑ‚Ð¾Ñ€Ð¸Ñ Ð¾Ñ€Ð´ÐµÑ€Ð¾Ð² (Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ð°Ñ Ð‘Ð”)", style="Body.TLabel").pack(anchor=tk.W)
         self.order_history_tree = ttk.Treeview(
             history_card,
             columns=("n", "date", "time", "symbol", "side", "status", "price", "qty"),
@@ -533,9 +554,9 @@ class BotikGui:
             height=5,
         )
         for col, title, width in [
-            ("n", "№", 44),
-            ("date", "Дата", 95),
-            ("time", "Время", 95),
+            ("n", "â„–", 44),
+            ("date", "Ð”Ð°Ñ‚Ð°", 95),
+            ("time", "Ð’Ñ€ÐµÐ¼Ñ", 95),
             ("symbol", "Symbol", 90),
             ("side", "Side", 60),
             ("status", "Status", 90),
@@ -566,12 +587,45 @@ class BotikGui:
         self.ml_label = ttk.Label(self.ml_row, text="ml: stopped", style="Body.TLabel")
         self.ml_label.pack(side=tk.LEFT)
 
+        ml_card = ttk.Frame(right, style="Card.TFrame", padding=10)
+        ml_card.pack(fill=tk.X, pady=8)
+        ttk.Label(ml_card, text="ML Panel", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        ttk.Label(ml_card, text="Model", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=3)
+        ttk.Label(ml_card, textvariable=self.ml_model_id_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=3)
+        ttk.Label(ml_card, text="State", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=3, padx=(12, 0))
+        ttk.Label(ml_card, textvariable=self.ml_training_state_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=3)
+
+        ttk.Label(ml_card, text="Progress", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=3)
+        self.ml_progress = ttk.Progressbar(ml_card, mode="indeterminate", maximum=100)
+        self.ml_progress.grid(row=2, column=1, columnspan=2, sticky=tk.EW, pady=3, padx=(0, 8))
+        ttk.Label(ml_card, textvariable=self.ml_progress_text_var, style="Body.TLabel").grid(row=2, column=3, sticky=tk.W, pady=3)
+
+        ttk.Label(ml_card, text="net_edge(avg20)", style="Body.TLabel").grid(row=3, column=0, sticky=tk.W, pady=3)
+        ttk.Label(ml_card, textvariable=self.ml_net_edge_var, style="Body.TLabel").grid(row=3, column=1, sticky=tk.W, pady=3)
+        ttk.Label(ml_card, text="win_rate", style="Body.TLabel").grid(row=3, column=2, sticky=tk.W, pady=3, padx=(12, 0))
+        ttk.Label(ml_card, textvariable=self.ml_win_rate_var, style="Body.TLabel").grid(row=3, column=3, sticky=tk.W, pady=3)
+
+        ttk.Label(ml_card, text="fill_rate", style="Body.TLabel").grid(row=4, column=0, sticky=tk.W, pady=3)
+        ttk.Label(ml_card, textvariable=self.ml_fill_rate_var, style="Body.TLabel").grid(row=4, column=1, sticky=tk.W, pady=3)
+        ttk.Button(ml_card, text="Copy Chart", command=self.copy_ml_chart).grid(row=4, column=3, sticky=tk.E, pady=3)
+
+        self.ml_chart_canvas = tk.Canvas(
+            ml_card,
+            height=60,
+            bg="#F8FBFA",
+            highlightthickness=1,
+            highlightbackground="#D3E4DE",
+        )
+        self.ml_chart_canvas.grid(row=5, column=0, columnspan=4, sticky=tk.EW, pady=(6, 0))
+        for i in range(4):
+            ml_card.columnconfigure(i, weight=1)
+
         hint = ttk.Frame(right, style="Card.TFrame", padding=10)
         hint.pack(fill=tk.X, pady=8)
         ttk.Label(hint, text="Hint", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             hint,
-            text="For first local run use execution.mode=paper,\nthen run Preflight and Start Trading.",
+            text="Use Start (Trade+ML) for unified runtime.\nPause Training keeps trading active and pauses ML updates.",
             style="Body.TLabel",
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=6)
@@ -813,12 +867,12 @@ class BotikGui:
         ctx = self._invoke_on_ui_thread(self._live_rest_context)
         mode = str(ctx.get("mode") or "paper").lower()
         if mode != "live":
-            return True, "mode=paper: открытых ордеров на бирже нет"
+            return True, "mode=paper: Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚Ñ‹Ñ… Ð¾Ñ€Ð´ÐµÑ€Ð¾Ð² Ð½Ð° Ð±Ð¸Ñ€Ð¶Ðµ Ð½ÐµÑ‚"
         api_key = str(ctx.get("api_key") or "")
         api_secret = str(ctx.get("api_secret") or "")
         rsa_key_path = str(ctx.get("rsa_key_path") or "")
         if not api_key or (not api_secret and not rsa_key_path):
-            return False, "нет API-ключей для cancel_all"
+            return False, "Ð½ÐµÑ‚ API-ÐºÐ»ÑŽÑ‡ÐµÐ¹ Ð´Ð»Ñ cancel_all"
         return asyncio.run(
             self._cancel_open_orders_live(
                 host=str(ctx.get("host") or "api-demo.bybit.com"),
@@ -836,9 +890,11 @@ class BotikGui:
             f"version={current_version}\n"
             f"trading={self._status_text(self.trading)}\n"
             f"ml={self._status_text(self.ml)}\n"
+            f"ml.model={self.ml_model_id_var.get()}\n"
+            f"ml.state={self.ml_training_state_var.get()}\n"
             f"execution.mode={mode}\n"
             f"commit={self._git_short_head()}\n"
-            "Примечание: запущенный trading-процесс использует код версии на момент старта."
+            "ÐŸÑ€Ð¸Ð¼ÐµÑ‡Ð°Ð½Ð¸Ðµ: Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½Ð½Ñ‹Ð¹ trading-Ð¿Ñ€Ð¾Ñ†ÐµÑÑ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÑ‚ ÐºÐ¾Ð´ Ð²ÐµÑ€ÑÐ¸Ð¸ Ð½Ð° Ð¼Ð¾Ð¼ÐµÐ½Ñ‚ ÑÑ‚Ð°Ñ€Ñ‚Ð°."
         )
 
     def _refresh_app_version(self) -> None:
@@ -857,18 +913,18 @@ class BotikGui:
     def telegram_balance_text(self) -> str:
         snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
         return (
-            "Средства:\n"
-            f"баланс={snapshot.get('balance_total', 'n/a')}\n"
-            f"доступно={snapshot.get('balance_available', 'n/a')}\n"
-            f"кошелек={snapshot.get('balance_wallet', 'n/a')}\n"
+            "Ð¡Ñ€ÐµÐ´ÑÑ‚Ð²Ð°:\n"
+            f"Ð±Ð°Ð»Ð°Ð½Ñ={snapshot.get('balance_total', 'n/a')}\n"
+            f"Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾={snapshot.get('balance_available', 'n/a')}\n"
+            f"ÐºÐ¾ÑˆÐµÐ»ÐµÐº={snapshot.get('balance_wallet', 'n/a')}\n"
             f"api={snapshot.get('api_status', 'n/a')}\n"
-            f"обновлено={snapshot.get('updated_at', '-')}"
+            f"Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾={snapshot.get('updated_at', '-')}"
         )
 
     def telegram_orders_text(self) -> str:
         snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
         rows = list(snapshot.get("open_orders_rows") or [])
-        lines = [f"Активные ордера: {snapshot.get('open_orders_count', 0)}"]
+        lines = [f"ÐÐºÑ‚Ð¸Ð²Ð½Ñ‹Ðµ Ð¾Ñ€Ð´ÐµÑ€Ð°: {snapshot.get('open_orders_count', 0)}"]
         for row in rows[:12]:
             symbol, side, price, qty, status = row
             lines.append(f"{symbol} {side} price={price} qty={qty} status={status}")
@@ -884,8 +940,8 @@ class BotikGui:
     def telegram_pull_updates(self) -> str:
         ok, msg = self._git_pull_ff_only()
         if self.trading.running:
-            msg += "\nTrading уже запущен на старой версии. Нужен рестарт для применения обновлений."
-        return msg if ok else f"Ошибка обновления:\n{msg}"
+            msg += "\nTrading ÑƒÐ¶Ðµ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½ Ð½Ð° ÑÑ‚Ð°Ñ€Ð¾Ð¹ Ð²ÐµÑ€ÑÐ¸Ð¸. ÐÑƒÐ¶ÐµÐ½ Ñ€ÐµÑÑ‚Ð°Ñ€Ñ‚ Ð´Ð»Ñ Ð¿Ñ€Ð¸Ð¼ÐµÐ½ÐµÐ½Ð¸Ñ Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ð¹."
+        return msg if ok else f"ÐžÑˆÐ¸Ð±ÐºÐ° Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ñ:\n{msg}"
 
     def telegram_restart_soft(self) -> str:
         lines: list[str] = []
@@ -896,7 +952,7 @@ class BotikGui:
         lines.append(f"[3/4] cancel after stop: {msg_cancel_after}")
         lines.append(f"[4/4] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
         if not ok_cancel_before or not ok_cancel_after:
-            lines.append("Внимание: cancel_all не полностью успешен, проверьте open orders.")
+            lines.append("Ð’Ð½Ð¸Ð¼Ð°Ð½Ð¸Ðµ: cancel_all Ð½Ðµ Ð¿Ð¾Ð»Ð½Ð¾ÑÑ‚ÑŒÑŽ ÑƒÑÐ¿ÐµÑˆÐµÐ½, Ð¿Ñ€Ð¾Ð²ÐµÑ€ÑŒÑ‚Ðµ open orders.")
         return "\n".join(lines)
 
     def telegram_restart_hard(self) -> str:
@@ -906,7 +962,7 @@ class BotikGui:
         lines.append(f"[2/3] {self._invoke_on_ui_thread(self._stop_trading_impl)}")
         lines.append(f"[3/3] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
         if not ok_pull:
-            lines.append("Обновление не применилось, запущена текущая локальная версия.")
+            lines.append("ÐžÐ±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ðµ Ð½Ðµ Ð¿Ñ€Ð¸Ð¼ÐµÐ½Ð¸Ð»Ð¾ÑÑŒ, Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½Ð° Ñ‚ÐµÐºÑƒÑ‰Ð°Ñ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ð°Ñ Ð²ÐµÑ€ÑÐ¸Ñ.")
         return "\n".join(lines)
 
     def _drain_logs(self) -> None:
@@ -934,6 +990,18 @@ class BotikGui:
         canvas.delete("all")
         canvas.create_oval(2, 2, 12, 12, fill=color, outline=color)
 
+    def _toggle_window_state(self, _event: tk.Event | None = None) -> str:
+        if os.name == "nt":
+            state = str(self.root.state()).lower()
+            self.root.state("normal" if state == "zoomed" else "zoomed")
+        else:
+            try:
+                full = bool(self.root.attributes("-fullscreen"))
+            except tk.TclError:
+                full = False
+            self.root.attributes("-fullscreen", not full)
+        return "break"
+
     def _status_text(self, proc: ManagedProcess) -> str:
         if proc.state == "running":
             return "RUNNING"
@@ -957,6 +1025,21 @@ class BotikGui:
         self.ml_label.config(text=f"ml: {self._status_text(self.ml)}")
         self._set_led(self.trading_led, self._status_color(self.trading))
         self._set_led(self.ml_led, self._status_color(self.ml))
+        if self.ml.running and not self.ml_training_paused:
+            self.ml_training_state_var.set("training")
+            if not self._ml_progress_running:
+                self.ml_progress.start(9)
+                self._ml_progress_running = True
+        else:
+            if self._ml_progress_running:
+                self.ml_progress.stop()
+                self._ml_progress_running = False
+            if self.ml.running and self.ml_training_paused:
+                self.ml_training_state_var.set("paused")
+            elif self.ml.state == "error":
+                self.ml_training_state_var.set("error")
+            else:
+                self.ml_training_state_var.set("stopped")
         self.root.after(500, self._update_status)
 
     def _cmd(self, *parts: str) -> list[str]:
@@ -1008,6 +1091,141 @@ class BotikGui:
             path = ROOT_DIR / path
         return path
 
+    def _resolve_training_pause_flag(self, raw_cfg: dict[str, Any]) -> Path:
+        rel = str((raw_cfg.get("ml") or {}).get("training_pause_flag_path") or "data/ml/training.paused")
+        path = Path(rel)
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+        return path
+
+    @staticmethod
+    def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            (name,),
+        ).fetchone()
+        return bool(row)
+
+    def _read_ml_metrics(self, db_path: Path) -> dict[str, Any]:
+        base = {
+            "model_id": "bootstrap",
+            "net_edge_mean": 0.0,
+            "win_rate": 0.0,
+            "fill_rate": 0.0,
+            "chart": [],
+            "closed_count": 0,
+        }
+        if not db_path.exists():
+            return base
+        conn = sqlite3.connect(str(db_path))
+        try:
+            if self._table_exists(conn, "model_registry"):
+                row = conn.execute(
+                    """
+                    SELECT model_id
+                    FROM model_registry
+                    WHERE is_active = 1
+                    ORDER BY created_at_utc DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if row and row[0]:
+                    base["model_id"] = str(row[0])
+
+            if self._table_exists(conn, "signals"):
+                sid_row = conn.execute(
+                    """
+                    SELECT COALESCE(model_id, active_model_id, '')
+                    FROM signals
+                    WHERE COALESCE(model_id, active_model_id, '') <> ''
+                    ORDER BY ts_signal_ms DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if sid_row and sid_row[0]:
+                    base["model_id"] = str(sid_row[0])
+
+            if self._table_exists(conn, "outcomes"):
+                out_rows = conn.execute(
+                    """
+                    SELECT COALESCE(net_edge_bps, 0.0), COALESCE(was_profitable, 0)
+                    FROM outcomes
+                    ORDER BY closed_at_utc DESC
+                    LIMIT 20
+                    """
+                ).fetchall()
+                base["closed_count"] = int(conn.execute("SELECT COUNT(*) FROM outcomes").fetchone()[0])
+                if out_rows:
+                    base["net_edge_mean"] = float(sum(float(r[0] or 0.0) for r in out_rows) / len(out_rows))
+                    base["win_rate"] = float(sum(int(r[1] or 0) for r in out_rows) / len(out_rows))
+
+            if self._table_exists(conn, "signals"):
+                fill_row = conn.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total_signals,
+                        SUM(
+                            CASE
+                                WHEN EXISTS (
+                                    SELECT 1 FROM executions_raw e
+                                    WHERE e.signal_id = s.signal_id
+                                ) THEN 1
+                                ELSE 0
+                            END
+                        ) AS filled_signals
+                    FROM (
+                        SELECT signal_id
+                        FROM signals
+                        ORDER BY ts_signal_ms DESC
+                        LIMIT 20
+                    ) s
+                    """
+                ).fetchone()
+                total = int(fill_row[0] or 0) if fill_row else 0
+                filled = int(fill_row[1] or 0) if fill_row else 0
+                base["fill_rate"] = float(filled / total) if total > 0 else 0.0
+
+            if self._table_exists(conn, "model_stats"):
+                stat_row = conn.execute(
+                    """
+                    SELECT COALESCE(model_id, ''), COALESCE(net_edge_mean, 0.0), COALESCE(win_rate, 0.0), COALESCE(fill_rate, 0.0)
+                    FROM model_stats
+                    ORDER BY ts_ms DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if stat_row:
+                    if stat_row[0]:
+                        base["model_id"] = str(stat_row[0])
+                    base["net_edge_mean"] = float(stat_row[1] or 0.0)
+                    base["win_rate"] = float(stat_row[2] or 0.0)
+                    base["fill_rate"] = float(stat_row[3] or 0.0)
+
+                chart_rows = conn.execute(
+                    """
+                    SELECT COALESCE(net_edge_mean, 0.0)
+                    FROM model_stats
+                    ORDER BY ts_ms DESC
+                    LIMIT 60
+                    """
+                ).fetchall()
+                if chart_rows:
+                    base["chart"] = [float(r[0] or 0.0) for r in reversed(chart_rows)]
+
+            if not base["chart"] and self._table_exists(conn, "outcomes"):
+                fallback_rows = conn.execute(
+                    """
+                    SELECT COALESCE(net_edge_bps, 0.0)
+                    FROM outcomes
+                    ORDER BY closed_at_utc DESC
+                    LIMIT 60
+                    """
+                ).fetchall()
+                base["chart"] = [float(r[0] or 0.0) for r in reversed(fallback_rows)]
+            return base
+        finally:
+            conn.close()
+
     def _schedule_runtime_refresh(self, initial_delay_ms: int = 7000) -> None:
         self.root.after(initial_delay_ms, self._runtime_refresh_tick)
 
@@ -1037,6 +1255,11 @@ class BotikGui:
         env_data = _read_env_map(ENV_PATH)
         mode = str(((raw_cfg.get("execution") or {}).get("mode") or "paper")).strip().lower()
         db_path = self._resolve_db_path(raw_cfg)
+        pause_flag_path = self._resolve_training_pause_flag(raw_cfg)
+        batch_size = max(int((raw_cfg.get("ml") or {}).get("train_batch_size") or 50), 1)
+        ml_metrics = self._read_ml_metrics(db_path)
+        closed_count = int(ml_metrics.get("closed_count", 0))
+        progress_pct = float((closed_count % batch_size) / batch_size * 100.0)
 
         snapshot: dict[str, Any] = {
             "balance_total": "n/a",
@@ -1047,6 +1270,15 @@ class BotikGui:
             "history_rows": self._read_local_order_history(db_path),
             "api_status": f"mode={mode}",
             "updated_at": datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
+            "ml_model_id": str(ml_metrics.get("model_id") or "bootstrap"),
+            "ml_net_edge_mean": float(ml_metrics.get("net_edge_mean") or 0.0),
+            "ml_win_rate": float(ml_metrics.get("win_rate") or 0.0),
+            "ml_fill_rate": float(ml_metrics.get("fill_rate") or 0.0),
+            "ml_chart": list(ml_metrics.get("chart") or []),
+            "ml_training_paused": pause_flag_path.exists(),
+            "ml_training_progress": progress_pct,
+            "ml_closed_count": closed_count,
+            "ml_batch_size": batch_size,
         }
 
         if mode != "live":
@@ -1066,13 +1298,13 @@ class BotikGui:
         host = str((raw_cfg.get("bybit") or {}).get("host") or "api-demo.bybit.com").strip()
 
         if not api_key:
-            snapshot["api_status"] = "нет BYBIT_API_KEY"
+            snapshot["api_status"] = "Ð½ÐµÑ‚ BYBIT_API_KEY"
             local_open = self._read_local_open_orders(db_path)
             snapshot["open_orders_rows"] = local_open
             snapshot["open_orders_count"] = len(local_open)
             return snapshot
         if not api_secret and not rsa_key_path:
-            snapshot["api_status"] = "нет секрета API (HMAC/RSA)"
+            snapshot["api_status"] = "Ð½ÐµÑ‚ ÑÐµÐºÑ€ÐµÑ‚Ð° API (HMAC/RSA)"
             local_open = self._read_local_open_orders(db_path)
             snapshot["open_orders_rows"] = local_open
             snapshot["open_orders_count"] = len(local_open)
@@ -1240,6 +1472,57 @@ class BotikGui:
         self.snapshot_time_var.set(str(snapshot.get("updated_at", "-")))
         self._set_tree_rows(self.open_orders_tree, list(snapshot.get("open_orders_rows") or []))
         self._set_tree_rows(self.order_history_tree, list(snapshot.get("history_rows") or []))
+        self.ml_training_paused = bool(snapshot.get("ml_training_paused", False))
+        self.ml_model_id_var.set(str(snapshot.get("ml_model_id") or "bootstrap"))
+        self.ml_net_edge_var.set(f"{float(snapshot.get('ml_net_edge_mean', 0.0)):.4f} bps")
+        self.ml_win_rate_var.set(f"{float(snapshot.get('ml_win_rate', 0.0)) * 100.0:.1f}%")
+        self.ml_fill_rate_var.set(f"{float(snapshot.get('ml_fill_rate', 0.0)) * 100.0:.1f}%")
+        progress = float(snapshot.get("ml_training_progress", 0.0))
+        closed = int(snapshot.get("ml_closed_count", 0))
+        batch = int(snapshot.get("ml_batch_size", 50))
+        self.ml_progress_text_var.set(f"{progress:.0f}% (closed={closed}, batch={batch})")
+        self._ml_chart_points.clear()
+        self._ml_chart_points.extend(float(v) for v in list(snapshot.get("ml_chart") or []))
+        self._draw_ml_chart()
+
+    def _draw_ml_chart(self) -> None:
+        canvas = self.ml_chart_canvas
+        canvas.delete("all")
+        points = list(self._ml_chart_points)
+        if len(points) < 2:
+            return
+
+        width = max(int(canvas.winfo_width()), 40)
+        height = max(int(canvas.winfo_height()), 20)
+        min_v = min(points)
+        max_v = max(points)
+        if abs(max_v - min_v) < 1e-9:
+            max_v = min_v + 1.0
+
+        coords: list[float] = []
+        total = len(points) - 1
+        for idx, value in enumerate(points):
+            x = (idx / total) * (width - 8) + 4
+            norm = (value - min_v) / (max_v - min_v)
+            y = (height - 6) - norm * (height - 12)
+            coords.extend([x, y])
+
+        canvas.create_line(4, height - 5, width - 4, height - 5, fill="#D3E4DE")
+        canvas.create_line(*coords, fill="#0E7C66", width=2, smooth=True)
+
+    def copy_ml_chart(self) -> None:
+        if not self._ml_chart_points:
+            return
+        payload = (
+            f"model={self.ml_model_id_var.get()}\n"
+            f"net_edge_mean={self.ml_net_edge_var.get()}\n"
+            f"win_rate={self.ml_win_rate_var.get()}\n"
+            f"fill_rate={self.ml_fill_rate_var.get()}\n"
+            f"series={','.join(f'{v:.4f}' for v in self._ml_chart_points)}"
+        )
+        self.root.clipboard_clear()
+        self.root.clipboard_append(payload)
+        self._enqueue_log("[ui] copied ML chart data")
 
     def load_settings(self) -> None:
         self._suspend_autosave = True
@@ -1322,7 +1605,13 @@ class BotikGui:
             return
         self._enqueue_log("[settings] save all completed")
 
-    def _start_trading_impl(self, interactive: bool) -> str:
+    def _training_pause_flag_path(self) -> Path:
+        raw = self._load_yaml()
+        path = self._resolve_training_pause_flag(raw)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _start_trading_impl(self, interactive: bool, start_ml: bool = True) -> str:
         self._flush_autosave()
         mode = self._load_execution_mode()
         if interactive and mode == "live":
@@ -1330,31 +1619,88 @@ class BotikGui:
                 "Live Mode Warning",
                 "execution.mode=live. This can place real orders.\nContinue?",
             ):
-                return "Запуск отменен пользователем."
+                return "Start canceled by user."
         cmd = self._cmd("-m", "src.botik.main", "--config", self.config_var.get())
         child_env = os.environ.copy()
         # GUI supervisor owns Telegram control to keep it online even when trading is stopped.
         child_env["BOTIK_DISABLE_INTERNAL_TELEGRAM"] = "1"
-        started = self.trading.start(cmd, ROOT_DIR, env=child_env)
-        return "Trading process started." if started else "Trading already running."
+        started_trading = self.trading.start(cmd, ROOT_DIR, env=child_env)
+
+        ml_msg = ""
+        if start_ml:
+            pause_flag = self._training_pause_flag_path()
+            if pause_flag.exists():
+                try:
+                    pause_flag.unlink()
+                except OSError:
+                    pass
+            ml_msg = self._start_ml_impl()
+        if started_trading and start_ml:
+            return f"Trade+ML started. {ml_msg}"
+        if started_trading:
+            return "Trading process started."
+        if start_ml:
+            return f"Trading already running. {ml_msg}"
+        return "Trading already running."
 
     def start_trading(self) -> None:
-        self._enqueue_log(f"[ui] {self._start_trading_impl(interactive=True)}")
+        self._enqueue_log(f"[ui] {self._start_trading_impl(interactive=True, start_ml=True)}")
 
-    def _stop_trading_impl(self) -> str:
-        stopped = self.trading.stop()
-        return "Trading process stopped." if stopped else "Trading already stopped."
+    def _stop_trading_impl(self, stop_ml: bool = True) -> str:
+        stopped_trading = self.trading.stop()
+        ml_msg = ""
+        if stop_ml:
+            ml_msg = self._stop_ml_impl()
+        if stopped_trading and stop_ml:
+            return f"Trade+ML stopped. {ml_msg}"
+        if stopped_trading:
+            return "Trading process stopped."
+        if stop_ml:
+            return f"Trading already stopped. {ml_msg}"
+        return "Trading already stopped."
 
     def stop_trading(self) -> None:
-        self._enqueue_log(f"[ui] {self._stop_trading_impl()}")
+        self._enqueue_log(f"[ui] {self._stop_trading_impl(stop_ml=True)}")
+
+    def _start_ml_impl(self) -> str:
+        self._flush_autosave()
+        cmd = self._cmd("-m", "ml_service.run_loop", "--config", self.config_var.get(), "--mode", "bootstrap")
+        started = self.ml.start(cmd, ROOT_DIR)
+        return "ML process started." if started else "ML already running."
+
+    def _stop_ml_impl(self) -> str:
+        stopped = self.ml.stop()
+        return "ML process stopped." if stopped else "ML already stopped."
 
     def start_ml(self) -> None:
-        self._flush_autosave()
-        cmd = self._cmd("-m", "ml_service.run_loop", "--config", self.config_var.get())
-        self.ml.start(cmd, ROOT_DIR)
+        self._enqueue_log(f"[ui] {self._start_ml_impl()}")
 
     def stop_ml(self) -> None:
-        self.ml.stop()
+        self._enqueue_log(f"[ui] {self._stop_ml_impl()}")
+
+    def start_training(self) -> None:
+        self.start_ml()
+
+    def stop_training(self) -> None:
+        self.stop_ml()
+
+    def pause_training(self) -> None:
+        flag = self._training_pause_flag_path()
+        if flag.exists():
+            try:
+                flag.unlink()
+            except OSError as exc:
+                self._enqueue_log(f"[ui] failed to resume training: {exc}")
+                return
+            self._enqueue_log("[ui] training resumed")
+        else:
+            try:
+                flag.write_text("paused\n", encoding="utf-8")
+            except OSError as exc:
+                self._enqueue_log(f"[ui] failed to pause training: {exc}")
+                return
+            self._enqueue_log("[ui] training paused")
+        self.refresh_runtime_snapshot()
 
     def run_preflight(self) -> None:
         self._flush_autosave()
@@ -1408,8 +1754,7 @@ class BotikGui:
 
     def _on_close(self) -> None:
         self._flush_autosave()
-        self._stop_trading_impl()
-        self.ml.stop()
+        self._stop_trading_impl(stop_ml=True)
         self.sleep_blocker.disable()
         self.root.destroy()
 
@@ -1424,3 +1769,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

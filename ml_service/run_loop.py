@@ -26,7 +26,7 @@ from ml_service.dataset import load_lifecycle_dataset
 from ml_service.evaluate import is_better_than_current
 from ml_service.train import load_model_bundle, predict_batch, train_lifecycle_models
 from src.botik.config import load_config
-from src.botik.storage.lifecycle_store import ensure_lifecycle_schema
+from src.botik.storage.lifecycle_store import ensure_lifecycle_schema, insert_model_stats
 from src.botik.storage.sqlite_store import get_active_model, get_connection, upsert_model_registry
 from src.botik.utils.logging import setup_logging
 from src.botik.utils.retention import run_retention
@@ -50,6 +50,88 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _is_training_paused(flag_path: Path) -> bool:
+    return flag_path.exists()
+
+
+def _count_closed_signals(conn) -> int:
+    return int(conn.execute("SELECT COUNT(*) FROM outcomes").fetchone()[0])
+
+
+def _latest_policy_context(conn) -> tuple[str, str]:
+    row = conn.execute(
+        """
+        SELECT COALESCE(policy_used, ''), COALESCE(profile_id, '')
+        FROM signals
+        ORDER BY ts_signal_ms DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return "", ""
+    return str(row[0] or ""), str(row[1] or "")
+
+
+def _compute_training_metrics(conn, window: int = 20) -> dict[str, float]:
+    rows = conn.execute(
+        """
+        SELECT COALESCE(net_edge_bps, 0.0), COALESCE(was_profitable, 0)
+        FROM outcomes
+        ORDER BY closed_at_utc DESC
+        LIMIT ?
+        """,
+        (max(int(window), 1),),
+    ).fetchall()
+    if rows:
+        net_edge_mean = float(sum(float(r[0] or 0.0) for r in rows) / len(rows))
+        win_rate = float(sum(int(r[1] or 0) for r in rows) / len(rows))
+    else:
+        net_edge_mean = 0.0
+        win_rate = 0.0
+
+    fill_row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS total_signals,
+            SUM(
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM executions_raw e
+                        WHERE e.signal_id = s.signal_id
+                    ) THEN 1
+                    ELSE 0
+                END
+            ) AS filled_signals
+        FROM (
+            SELECT signal_id
+            FROM signals
+            ORDER BY ts_signal_ms DESC
+            LIMIT ?
+        ) s
+        """,
+        (max(int(window), 1),),
+    ).fetchone()
+    total_signals = int(fill_row[0] or 0) if fill_row else 0
+    filled_signals = int(fill_row[1] or 0) if fill_row else 0
+    fill_rate = float(filled_signals / total_signals) if total_signals > 0 else 0.0
+    return {
+        "net_edge_mean": net_edge_mean,
+        "win_rate": win_rate,
+        "fill_rate": fill_rate,
+    }
+
+
+def _append_model_stats(conn, model_id: str, metrics: dict[str, float]) -> None:
+    insert_model_stats(
+        conn,
+        model_id=model_id or "bootstrap",
+        ts_ms=int(datetime.now(timezone.utc).timestamp() * 1000),
+        net_edge_mean=float(metrics.get("net_edge_mean", 0.0)),
+        win_rate=float(metrics.get("win_rate", 0.0)),
+        fill_rate=float(metrics.get("fill_rate", 0.0)),
+    )
 
 
 def run_bootstrap_stats(conn) -> dict[str, Any]:
@@ -179,6 +261,10 @@ def run_train_once(
     if not model_id:
         logger.warning("Training returned empty model_id.")
         return None
+    metrics = dict(metrics)
+    if "training_loss" not in metrics:
+        open_acc = _safe_float(metrics.get("open_accuracy"), default=0.0)
+        metrics["training_loss"] = max(0.0, 1.0 - open_acc)
 
     active = get_active_model(conn)
     current_metrics_json = active["metrics_json"] if active else None
@@ -269,6 +355,7 @@ def main() -> None:
     parser.add_argument("--target-edge-bps", type=float, default=None, help="Override target edge threshold in bps")
     parser.add_argument("--min-fills-for-autocalibration", type=int, default=None)
     parser.add_argument("--autocalibration-out", type=str, default=None)
+    parser.add_argument("--training-pause-flag", type=str, default=None, help="Path to pause-training flag file")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -297,6 +384,7 @@ def main() -> None:
     target_edge_bps = float(args.target_edge_bps if args.target_edge_bps is not None else config.strategy.target_edge_bps)
     min_fills_for_autocalib = int(args.min_fills_for_autocalibration or config.ml.min_fills_for_autocalibration)
     autocalib_out = Path(args.autocalibration_out or config.ml.autocalibration_path)
+    training_pause_flag = Path(args.training_pause_flag or config.ml.training_pause_flag_path)
     model_dir = str(config.ml.model_dir)
     predict_top_k = int(config.ml.predict_top_k)
 
@@ -304,15 +392,36 @@ def main() -> None:
     ensure_lifecycle_schema(conn)
 
     async def run_loop() -> None:
-        last_train_day: int | None = None
+        last_train_closed_count = 0
         while True:
             run_bootstrap_stats(conn)
+            active = get_active_model(conn)
+            active_model_id = str(active["model_id"]) if active else "bootstrap"
+            paused = _is_training_paused(training_pause_flag)
+            policy_used, profile_id = _latest_policy_context(conn)
+            logger.info("Model %s, policy=%s, model=%s", active_model_id, policy_used or "n/a", profile_id or "n/a")
 
-            if mode == "train":
-                today = datetime.now(timezone.utc).date().toordinal()
-                if args.train_once or last_train_day != today:
-                    last_train_day = today
-                    run_train_once(
+            latest_metrics = _compute_training_metrics(conn, window=20)
+            _append_model_stats(conn, active_model_id, latest_metrics)
+            logger.info(
+                "training_metrics model=%s net_edge_mean=%.4f win_rate=%.2f%% fill_rate=%.2f%%",
+                active_model_id,
+                float(latest_metrics["net_edge_mean"]),
+                float(latest_metrics["win_rate"]) * 100.0,
+                float(latest_metrics["fill_rate"]) * 100.0,
+            )
+
+            if mode in {"bootstrap", "train"}:
+                closed_now = _count_closed_signals(conn)
+                can_train = (
+                    not paused
+                    and closed_now >= min_closed
+                    and (closed_now - last_train_closed_count >= max(batch_size, 1))
+                )
+                if args.train_once:
+                    can_train = not paused
+                if can_train:
+                    trained = run_train_once(
                         conn,
                         target_edge_bps=target_edge_bps,
                         limit_rows=limit_rows,
@@ -320,6 +429,13 @@ def main() -> None:
                         batch_size=batch_size,
                         model_dir=model_dir,
                     )
+                    if trained is not None:
+                        last_train_closed_count = closed_now
+                        logger.info(
+                            "training_progress closed=%s next_batch_at=%s",
+                            closed_now,
+                            closed_now + max(batch_size, 1),
+                        )
                     run_retention(
                         conn,
                         config.storage.path,
@@ -327,6 +443,8 @@ def main() -> None:
                         max_size_gb=config.retention_max_db_size_gb,
                         run_vacuum=True,
                     )
+                elif paused:
+                    logger.info("training paused by flag: %s", training_pause_flag)
             elif mode == "predict":
                 run_predict_once(
                     conn,

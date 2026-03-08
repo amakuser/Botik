@@ -31,6 +31,7 @@ def test_lifecycle_schema_contains_action_and_reward_columns(tmp_path: Path) -> 
         assert "pred_open_prob" in signal_cols
         assert "pred_exp_edge_bps" in signal_cols
         assert "active_model_id" in signal_cols
+        assert "model_id" in signal_cols
         assert "reward_net_edge_bps" in signal_cols
         assert "reward_updated_at_utc" in signal_cols
 
@@ -39,6 +40,7 @@ def test_lifecycle_schema_contains_action_and_reward_columns(tmp_path: Path) -> 
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "bandit_state" in table_names
+        assert "model_stats" in table_names
     finally:
         conn.close()
 
@@ -66,6 +68,7 @@ def test_lifecycle_schema_migrates_existing_signals_table(tmp_path: Path) -> Non
         assert "action_order_qty_base" in signal_cols
         assert "policy_used" in signal_cols
         assert "pred_open_prob" in signal_cols
+        assert "model_id" in signal_cols
         assert "reward_net_edge_bps" in signal_cols
     finally:
         conn.close()

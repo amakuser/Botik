@@ -157,10 +157,11 @@ class MlConfig(BaseModel):
     run_interval_sec: int = 300
     model_dir: str = "data/models"
     train_limit_rows: int = 200000
-    train_batch_size: int = 64
+    train_batch_size: int = 50
     min_closed_trades_to_train: int = 120
     min_fills_for_autocalibration: int = 20
     autocalibration_path: str = "data/ml/autocalibration.json"
+    training_pause_flag_path: str = "data/ml/training.paused"
     predict_top_k: int = 10
 
 

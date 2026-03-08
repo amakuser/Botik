@@ -158,9 +158,6 @@ def export_dataset(
                     min_required_spread_bps,
                     policy_used,
                     profile_id,
-                    pred_open_prob,
-                    pred_exp_edge_bps,
-                    active_model_id,
                     order_size_quote,
                     entry_price
                 FROM signals
@@ -187,8 +184,6 @@ def export_dataset(
             "min_required_spread_bps",
             "policy_used",
             "profile_id",
-            "pred_open_prob",
-            "pred_exp_edge_bps",
             "order_notional_quote",
             "entry_vwap",
             "exit_vwap",
@@ -237,8 +232,6 @@ def export_dataset(
                     "min_required_spread_bps": row["min_required_spread_bps"],
                     "policy_used": row["policy_used"],
                     "profile_id": row["profile_id"],
-                    "pred_open_prob": row["pred_open_prob"],
-                    "pred_exp_edge_bps": row["pred_exp_edge_bps"],
                     "order_notional_quote": row["order_size_quote"],
                     "entry_vwap": entry_vwap,
                     "exit_vwap": out.get("exit_vwap"),

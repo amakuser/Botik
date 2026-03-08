@@ -63,6 +63,7 @@ def ensure_lifecycle_schema(conn: sqlite3.Connection) -> None:
             pred_open_prob REAL,
             pred_exp_edge_bps REAL,
             active_model_id TEXT,
+            model_id TEXT,
             reward_net_edge_bps REAL,
             reward_updated_at_utc TEXT,
             order_size_quote REAL,
@@ -141,6 +142,16 @@ def ensure_lifecycle_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_outcomes_symbol_close ON outcomes(symbol, closed_at_utc);
 
+        CREATE TABLE IF NOT EXISTS model_stats (
+            model_id TEXT,
+            ts_ms BIGINT,
+            net_edge_mean REAL,
+            win_rate REAL,
+            fill_rate REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_model_stats_ts ON model_stats(ts_ms);
+        CREATE INDEX IF NOT EXISTS idx_model_stats_model_ts ON model_stats(model_id, ts_ms);
+
         CREATE TABLE IF NOT EXISTS bandit_state (
             symbol TEXT NOT NULL,
             profile_id TEXT NOT NULL,
@@ -167,6 +178,7 @@ def ensure_lifecycle_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "signals", "pred_open_prob", "REAL")
     _ensure_column(conn, "signals", "pred_exp_edge_bps", "REAL")
     _ensure_column(conn, "signals", "active_model_id", "TEXT")
+    _ensure_column(conn, "signals", "model_id", "TEXT")
     _ensure_column(conn, "signals", "reward_net_edge_bps", "REAL")
     _ensure_column(conn, "signals", "reward_updated_at_utc", "TEXT")
     conn.commit()
@@ -228,6 +240,7 @@ def insert_signal_snapshot(
     pred_open_prob: float | None = None,
     pred_exp_edge_bps: float | None = None,
     active_model_id: str | None = None,
+    model_id: str | None = None,
     order_size_quote: float = 0.0,
     order_size_base: float = 0.0,
     entry_price: float = 0.0,
@@ -241,9 +254,9 @@ def insert_signal_snapshot(
             scanner_status, model_version, profile_id, action_entry_tick_offset, action_order_qty_base,
             action_target_profit, action_safety_buffer, action_min_top_book_qty, action_stop_loss_pct,
             action_take_profit_pct, action_hold_timeout_sec, action_maker_only, policy_used, pred_open_prob,
-            pred_exp_edge_bps, active_model_id, reward_net_edge_bps, reward_updated_at_utc, order_size_quote,
+            pred_exp_edge_bps, active_model_id, model_id, reward_net_edge_bps, reward_updated_at_utc, order_size_quote,
             order_size_base, entry_price, created_at_utc
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(signal_id) DO NOTHING
         """,
         (
@@ -279,6 +292,7 @@ def insert_signal_snapshot(
             pred_open_prob,
             pred_exp_edge_bps,
             active_model_id,
+            model_id,
             None,
             None,
             order_size_quote,
@@ -460,6 +474,25 @@ def upsert_signal_reward(
         WHERE signal_id = ?
         """,
         (reward_net_edge_bps, _utc_now_iso(), signal_id),
+    )
+    conn.commit()
+
+
+def insert_model_stats(
+    conn: sqlite3.Connection,
+    *,
+    model_id: str,
+    ts_ms: int,
+    net_edge_mean: float,
+    win_rate: float,
+    fill_rate: float,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO model_stats (model_id, ts_ms, net_edge_mean, win_rate, fill_rate)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (model_id, ts_ms, net_edge_mean, win_rate, fill_rate),
     )
     conn.commit()
 
