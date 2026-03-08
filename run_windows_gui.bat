@@ -31,15 +31,9 @@ if exist "dist\botik.exe" (
 
 rem Prefer GUI interpreter (pythonw) to avoid console-only launch.
 if exist ".venv\Scripts\pythonw.exe" (
-  if exist "src\botik\gui\app.pyw" (
-    echo [INFO] Launching via pythonw app.pyw>>"%LOG_FILE%"
-    start "" ".venv\Scripts\pythonw.exe" "src\botik\gui\app.pyw"
-    echo [INFO] start pythonw app.pyw exit=%ERRORLEVEL%>>"%LOG_FILE%"
-  ) else (
-    echo [INFO] Launching via pythonw -m src.botik.gui.app>>"%LOG_FILE%"
-    start "" ".venv\Scripts\pythonw.exe" -m src.botik.gui.app
-    echo [INFO] start pythonw module exit=%ERRORLEVEL%>>"%LOG_FILE%"
-  )
+  echo [INFO] Launching via pythonw -m src.botik.windows_entry>>"%LOG_FILE%"
+  start "" ".venv\Scripts\pythonw.exe" -m src.botik.windows_entry
+  echo [INFO] start pythonw module exit=%ERRORLEVEL%>>"%LOG_FILE%"
   exit /b 0
 )
 
@@ -50,8 +44,8 @@ if exist ".venv\Scripts\python.exe" (
   set "PY=python"
 )
 
-echo [INFO] Fallback launch command: %PY% -m src.botik.gui.app>>"%LOG_FILE%"
-"%PY%" -m src.botik.gui.app >>"%LOG_FILE%" 2>&1
+echo [INFO] Fallback launch command: %PY% -m src.botik.windows_entry>>"%LOG_FILE%"
+"%PY%" -m src.botik.windows_entry >>"%LOG_FILE%" 2>&1
 set "RC=%ERRORLEVEL%"
 echo [INFO] Fallback exit code: %RC%>>"%LOG_FILE%"
 if not "%RC%"=="0" (

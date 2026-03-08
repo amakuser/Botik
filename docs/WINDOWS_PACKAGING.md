@@ -32,6 +32,7 @@ Script logs are written to `logs\script_logs\`:
 - `run_windows_gui_*.log`
 - `build_portable_exe_*.log`
 - `build_windows_installer_*.log`
+- `windows_entry.log` (startup/runtime errors before GUI is fully initialized)
 
 Manual equivalent:
 
