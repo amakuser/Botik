@@ -18,6 +18,7 @@ ws_depth: 50
 
 strategy:
   min_spread_ticks: 1
+  min_spread_bps: 8
   replace_interval_ms: 5000
   order_ttl_sec: 60
   default_tick_size: 0.01
@@ -30,15 +31,21 @@ strategy:
   min_top_book_qty: 0.0
 
   # Execution behavior
-  maker_only: true
+  maker_only: true  # deprecated runtime switch (entries are always maker-only)
   position_hold_timeout_sec: 180
   min_position_qty_base: 0.000001
   force_exit_enabled: true
   force_exit_time_in_force: "IOC"
   force_exit_cooldown_sec: 10
+  allow_taker_exit: true
   stop_loss_pct: 0.003
   take_profit_pct: 0.005
   pnl_exit_enabled: true
+  fallback_stoploss_bps: 0
+  fallback_breakeven_bps: 0
+  fallback_trailing_bps: 0
+  fallback_trailing_activation_bps: 0
+  allow_partial_outcome: false
   scanner_enabled: true
   scanner_interval_sec: 3
   scanner_top_k: 6

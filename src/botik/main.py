@@ -26,6 +26,7 @@ from src.botik.learning.bandit import GaussianThompsonBandit
 from src.botik.learning.policy import PolicySelector
 from src.botik.learning.policy_manager import ModelBundle, load_active_model
 from src.botik.risk.manager import RiskManager
+from src.botik.risk.exit_rules import decide_exit_reason
 from src.botik.risk.position import apply_fill, unrealized_pnl_pct
 from src.botik.state.state import TradingState
 from src.botik.version import get_app_version_label
@@ -138,6 +139,7 @@ def _hot_reload_runtime_modules() -> None:
         "src.botik.learning.policy",
         "src.botik.learning.policy_manager",
         "src.botik.risk.manager",
+        "src.botik.risk.exit_rules",
         "src.botik.risk.position",
         "src.botik.storage.sqlite_store",
         "src.botik.storage.lifecycle_store",
@@ -161,6 +163,7 @@ def _hot_reload_runtime_modules() -> None:
     from src.botik.marketdata.universe_discovery import discover_top_spot_symbols as _discover_top_spot_symbols
     from src.botik.marketdata.ws_public import BybitSpotOrderbookWS as _BybitSpotOrderbookWS
     from src.botik.risk.manager import RiskManager as _RiskManager
+    from src.botik.risk.exit_rules import decide_exit_reason as _decide_exit_reason
     from src.botik.risk.position import apply_fill as _apply_fill, unrealized_pnl_pct as _unrealized_pnl_pct
     from src.botik.storage.lifecycle_store import (
         ensure_lifecycle_schema as _ensure_lifecycle_schema,
@@ -196,6 +199,7 @@ def _hot_reload_runtime_modules() -> None:
     globals()["ModelBundle"] = _ModelBundle
     globals()["load_active_model"] = _load_active_model
     globals()["RiskManager"] = _RiskManager
+    globals()["decide_exit_reason"] = _decide_exit_reason
     globals()["apply_fill"] = _apply_fill
     globals()["unrealized_pnl_pct"] = _unrealized_pnl_pct
     globals()["get_connection"] = _get_connection
@@ -388,10 +392,15 @@ def main() -> None:
         hold_timeout_sec = config.strategy.position_hold_timeout_sec
         force_exit_enabled = config.strategy.force_exit_enabled
         force_exit_tif = config.strategy.force_exit_time_in_force
+        allow_taker_exit = bool(config.strategy.allow_taker_exit)
         force_exit_cooldown_sec = config.strategy.force_exit_cooldown_sec
         stop_loss_pct = max(config.strategy.stop_loss_pct, 0.0)
         take_profit_pct = max(config.strategy.take_profit_pct, 0.0)
         pnl_exit_enabled = config.strategy.pnl_exit_enabled
+        fallback_stoploss_bps = max(float(config.strategy.fallback_stoploss_bps), 0.0)
+        fallback_breakeven_bps = max(float(config.strategy.fallback_breakeven_bps), 0.0)
+        fallback_trailing_bps = max(float(config.strategy.fallback_trailing_bps), 0.0)
+        fallback_trailing_activation_bps = max(float(config.strategy.fallback_trailing_activation_bps), 0.0)
 
         net_position_base: dict[str, float] = {s: 0.0 for s in config.symbols}
         avg_entry_price: dict[str, float] = {s: 0.0 for s in config.symbols}
@@ -402,6 +411,7 @@ def main() -> None:
         symbol_hold_timeout_sec: dict[str, float] = {s: float(hold_timeout_sec) for s in config.symbols}
         symbol_stop_loss_pct: dict[str, float] = {s: float(stop_loss_pct) for s in config.symbols}
         symbol_take_profit_pct: dict[str, float] = {s: float(take_profit_pct) for s in config.symbols}
+        symbol_peak_pnl_bps: dict[str, float] = {s: 0.0 for s in config.symbols}
         symbol_position_floor: dict[str, float] = {s: float(min_position_qty) for s in config.symbols}
         seen_exec_ids: set[str] = set()
 
@@ -576,6 +586,7 @@ def main() -> None:
                         position_opened_at[symbol] = time.monotonic()
                         position_opened_wall_ms[symbol] = exec_time_ms
                         position_signal_id[symbol] = signal_id
+                        symbol_peak_pnl_bps[symbol] = 0.0
                     elif abs(new_qty) < symbol_floor:
                         opened_at = position_opened_at.get(symbol)
                         hold_time_ms = int((time.monotonic() - opened_at) * 1000) if opened_at else 0
@@ -639,6 +650,7 @@ def main() -> None:
                         symbol_hold_timeout_sec[symbol] = float(hold_timeout_sec)
                         symbol_stop_loss_pct[symbol] = float(stop_loss_pct)
                         symbol_take_profit_pct[symbol] = float(take_profit_pct)
+                        symbol_peak_pnl_bps[symbol] = 0.0
 
                     insert_order_event(
                         conn,
@@ -699,16 +711,20 @@ def main() -> None:
             local_stop_loss = max(float(symbol_stop_loss_pct.get(symbol, stop_loss_pct)), 0.0)
             local_take_profit = max(float(symbol_take_profit_pct.get(symbol, take_profit_pct)), 0.0)
             local_hold_timeout = max(float(symbol_hold_timeout_sec.get(symbol, hold_timeout_sec)), 1.0)
-
-            reason: str | None = None
-            if pnl_exit_enabled and pnl_pct is not None:
-                if local_stop_loss > 0 and pnl_pct <= -local_stop_loss:
-                    reason = "stop_loss"
-                elif local_take_profit > 0 and pnl_pct >= local_take_profit:
-                    reason = "take_profit"
-
-            if reason is None and age >= local_hold_timeout:
-                reason = "hold_timeout"
+            reason, updated_peak = decide_exit_reason(
+                pnl_pct=pnl_pct,
+                age_sec=age,
+                hold_timeout_sec=local_hold_timeout,
+                pnl_exit_enabled=bool(pnl_exit_enabled),
+                stop_loss_pct=local_stop_loss,
+                take_profit_pct=local_take_profit,
+                fallback_stoploss_bps=fallback_stoploss_bps,
+                fallback_breakeven_bps=fallback_breakeven_bps,
+                fallback_trailing_bps=fallback_trailing_bps,
+                fallback_trailing_activation_bps=fallback_trailing_activation_bps,
+                peak_pnl_bps=float(symbol_peak_pnl_bps.get(symbol, 0.0)),
+            )
+            symbol_peak_pnl_bps[symbol] = updated_peak
 
             # Symbol has an open position: block opening additional inventory.
             if reason is None:
@@ -733,6 +749,7 @@ def main() -> None:
             qty_str = _fmt_float(abs(pos_qty))
             price_str = _fmt_float(exit_price)
             order_link_id = f"force-exit-{symbol}-{uuid.uuid4().hex[:10]}"
+            exit_tif = force_exit_tif if allow_taker_exit else "PostOnly"
 
             ret = await executor.place_order(
                 symbol=symbol,
@@ -740,7 +757,7 @@ def main() -> None:
                 qty=qty_str,
                 price=price_str,
                 order_link_id=order_link_id,
-                time_in_force=force_exit_tif,
+                time_in_force=exit_tif,
             )
             last_force_exit_ts[symbol] = time.monotonic()
 
@@ -787,7 +804,7 @@ def main() -> None:
                 side,
                 qty_str,
                 price_str,
-                force_exit_tif,
+                exit_tif,
                 reason,
                 f"{pnl_pct:.6f}" if pnl_pct is not None else "n/a",
                 age,
@@ -1156,12 +1173,8 @@ def main() -> None:
                             log.debug("Risk reject: %s", risk.reason)
                             continue
 
-                        maker_only_flag = (
-                            config.strategy.maker_only
-                            if intent.action_maker_only is None
-                            else bool(intent.action_maker_only)
-                        )
-                        time_in_force = "PostOnly" if maker_only_flag else "GTC"
+                        # Runtime mode is maker-only for entry/quote orders.
+                        time_in_force = "PostOnly"
                         ret = await guarded_place_order(intent, time_in_force)
 
                         if ret.get("retCode") == 10004:

@@ -691,8 +691,8 @@ class BotikGui:
 
         ttk.Label(cfg_card, text="symbols (comma)", style="Body.TLabel").grid(row=3, column=0, sticky=tk.W, pady=5)
         ttk.Entry(cfg_card, textvariable=self.cfg_symbols, width=28).grid(row=3, column=1, sticky=tk.W)
-        ttk.Label(cfg_card, text="maker_only", style="Body.TLabel").grid(row=3, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Checkbutton(cfg_card, variable=self.cfg_maker_only).grid(row=3, column=3, sticky=tk.W)
+        ttk.Label(cfg_card, text="entry_mode", style="Body.TLabel").grid(row=3, column=2, sticky=tk.W, padx=(18, 0))
+        ttk.Label(cfg_card, text="maker-only", style="Body.TLabel").grid(row=3, column=3, sticky=tk.W)
 
         ttk.Label(cfg_card, text="target_profit", style="Body.TLabel").grid(row=4, column=0, sticky=tk.W, pady=5)
         ttk.Entry(cfg_card, textvariable=self.cfg_target_profit, width=16).grid(row=4, column=1, sticky=tk.W)
@@ -1593,7 +1593,7 @@ class BotikGui:
             self.cfg_stop_loss.set(str(strategy.get("stop_loss_pct", 0.003)))
             self.cfg_take_profit.set(str(strategy.get("take_profit_pct", 0.005)))
             self.cfg_hold_timeout.set(str(strategy.get("position_hold_timeout_sec", 180)))
-            self.cfg_maker_only.set(bool(strategy.get("maker_only", True)))
+            self.cfg_maker_only.set(True)
         finally:
             self._suspend_autosave = False
         self._enqueue_log("[settings] loaded from files")
@@ -1632,7 +1632,7 @@ class BotikGui:
             raw["strategy"]["stop_loss_pct"] = float(self.cfg_stop_loss.get().strip())
             raw["strategy"]["take_profit_pct"] = float(self.cfg_take_profit.get().strip())
             raw["strategy"]["position_hold_timeout_sec"] = int(self.cfg_hold_timeout.get().strip())
-            raw["strategy"]["maker_only"] = bool(self.cfg_maker_only.get())
+            raw["strategy"]["maker_only"] = True
             cfg_path.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), encoding="utf-8")
         except Exception as exc:
             if show_popup:

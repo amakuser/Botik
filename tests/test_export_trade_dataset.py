@@ -30,6 +30,8 @@ EXPECTED_EXPORT_COLUMNS = [
     "policy_used",
     "profile_id",
     "order_notional_quote",
+    "entry_price",
+    "exit_price",
     "entry_vwap",
     "exit_vwap",
     "total_exec_qty",
@@ -170,8 +172,11 @@ def test_export_dataset_labels_from_net_edge_and_fills(tmp_path: Path) -> None:
     assert by_signal["sig-1"]["profile_id"] == "aggr"
     assert by_signal["sig-1"]["total_exec_qty"] == "1.0"
     assert by_signal["sig-1"]["order_notional_quote"] == "50.0"
+    assert by_signal["sig-1"]["entry_price"] == "100.0"
+    assert by_signal["sig-1"]["exit_price"] == "100.3"
     assert by_signal["sig-1"]["net_edge_bps"] == "6.5"
 
     assert by_signal["sig-2"]["label_fill"] == "0"
     assert by_signal["sig-2"]["label_open"] == "0"
     assert by_signal["sig-2"]["profile_id"] == "safe"
+    assert by_signal["sig-2"]["entry_price"] == "200.0"

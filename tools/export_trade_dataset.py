@@ -96,6 +96,33 @@ def _fetch_outcomes(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _fetch_order_prices(conn: sqlite3.Connection) -> dict[str, dict[str, float | None]]:
+    if not _table_exists(conn, "orders") or not _table_exists(conn, "order_signal_map"):
+        return {}
+    order_cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(orders)").fetchall()}
+    if "entry_price" not in order_cols and "exit_price" not in order_cols:
+        return {}
+    rows = conn.execute(
+        """
+        SELECT
+            osm.signal_id,
+            MAX(o.entry_price) AS entry_price,
+            MAX(o.exit_price) AS exit_price
+        FROM order_signal_map osm
+        JOIN orders o ON o.order_link_id = osm.order_link_id
+        WHERE osm.signal_id IS NOT NULL AND osm.signal_id <> ''
+        GROUP BY osm.signal_id
+        """
+    ).fetchall()
+    out: dict[str, dict[str, float | None]] = {}
+    for row in rows:
+        out[str(row[0])] = {
+            "entry_price": float(row[1]) if row[1] is not None else None,
+            "exit_price": float(row[2]) if row[2] is not None else None,
+        }
+    return out
+
+
 def _load_target_edge_bps(config_path: Path) -> float:
     if not config_path.exists():
         return 0.0
@@ -138,6 +165,7 @@ def export_dataset(
         ensure_lifecycle_schema(conn)
         exec_agg = _fetch_exec_agg(conn)
         outcomes = _fetch_outcomes(conn)
+        order_prices = _fetch_order_prices(conn)
 
         if _table_exists(conn, "signals"):
             signal_rows = conn.execute(
@@ -185,6 +213,8 @@ def export_dataset(
             "policy_used",
             "profile_id",
             "order_notional_quote",
+            "entry_price",
+            "exit_price",
             "entry_vwap",
             "exit_vwap",
             "total_exec_qty",
@@ -215,6 +245,9 @@ def export_dataset(
                 net_edge_bps = out.get("net_edge_bps")
                 label_open = 1 if out else 0
                 label_fill = 1 if total_exec_qty > 0 else 0
+                order_price_row = order_prices.get(signal_id, {})
+                entry_price = order_price_row.get("entry_price")
+                exit_price = order_price_row.get("exit_price")
 
                 export_row = {
                     "signal_id": signal_id,
@@ -233,6 +266,8 @@ def export_dataset(
                     "policy_used": row["policy_used"],
                     "profile_id": row["profile_id"],
                     "order_notional_quote": row["order_size_quote"],
+                    "entry_price": entry_price if entry_price is not None else row["entry_price"],
+                    "exit_price": exit_price if exit_price is not None else out.get("exit_vwap"),
                     "entry_vwap": entry_vwap,
                     "exit_vwap": out.get("exit_vwap"),
                     "total_exec_qty": total_exec_qty,

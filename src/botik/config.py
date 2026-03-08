@@ -43,6 +43,7 @@ class ActionProfileConfig(BaseModel):
 
 class StrategyConfig(BaseModel):
     min_spread_ticks: int = 1
+    min_spread_bps: float = 8.0
     replace_interval_ms: int = 5000
     order_ttl_sec: int = 60
     default_tick_size: float = 0.01
@@ -55,15 +56,22 @@ class StrategyConfig(BaseModel):
     min_top_book_qty: float = 0.0
 
     # Execution behavior.
+    # Deprecated runtime switch: entries are always maker-only now.
     maker_only: bool = True
     position_hold_timeout_sec: int = 180
     min_position_qty_base: float = 0.000001
     force_exit_enabled: bool = True
     force_exit_time_in_force: str = "IOC"
     force_exit_cooldown_sec: int = 10
+    allow_taker_exit: bool = True
     stop_loss_pct: float = 0.003
     take_profit_pct: float = 0.005
     pnl_exit_enabled: bool = True
+    fallback_stoploss_bps: float = 0.0
+    fallback_breakeven_bps: float = 0.0
+    fallback_trailing_bps: float = 0.0
+    fallback_trailing_activation_bps: float = 0.0
+    allow_partial_outcome: bool = False
     scanner_enabled: bool = True
     scanner_interval_sec: int = 3
     scanner_top_k: int = 30

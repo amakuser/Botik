@@ -196,6 +196,7 @@ def evaluate_pair_admission(
     best_bid = ob.best_bid if ob is not None else 0.0
     best_ask = ob.best_ask if ob is not None else 0.0
     mid = ob.mid if ob is not None else 0.0
+    live_spread_bps = ((best_ask - best_bid) / mid) * 10000.0 if mid > 0 and best_ask >= best_bid else 0.0
     if bids and asks and mid > 0:
         depth_bid_quote, depth_ask_quote = _depth_near_mid_quote(
             bids=bids,
@@ -268,6 +269,7 @@ def evaluate_pair_admission(
     cond_gap_max = max_trade_gap_ms_window <= float(s_cfg.max_max_gap_ms)
     cond_depth = min(depth_bid_quote, depth_ask_quote) >= depth_floor
     cond_slippage = total_slippage_bps <= local_max_total_slippage_bps
+    cond_min_spread = live_spread_bps >= max(float(s_cfg.min_spread_bps), 0.0)
     cond_spread = median_spread_bps >= min_required_spread_bps
     cond_vol = vol_1s_bps <= (median_spread_bps * s_cfg.max_vol_to_spread_ratio if median_spread_bps > 0 else 0.0)
 
@@ -282,6 +284,8 @@ def evaluate_pair_admission(
         failed.append("depth")
     if not cond_slippage:
         failed.append("slippage")
+    if not cond_min_spread:
+        failed.append("min_spread")
     if not cond_spread:
         failed.append("spread")
     if not cond_vol:
@@ -299,7 +303,17 @@ def evaluate_pair_admission(
     pass_since_ms = int(gate.get("pass_since_ms", 0))
     hold_ms_required = max(int(s_cfg.min_hold_seconds), 0) * 1000
 
-    all_ok = (not stale_data) and cond_trades and cond_gap_p95 and cond_gap_max and cond_depth and cond_slippage and cond_spread and cond_vol
+    all_ok = (
+        (not stale_data)
+        and cond_trades
+        and cond_gap_p95
+        and cond_gap_max
+        and cond_depth
+        and cond_slippage
+        and cond_min_spread
+        and cond_spread
+        and cond_vol
+    )
     if all_ok:
         if pass_since_ms <= 0:
             pass_since_ms = now
@@ -332,6 +346,8 @@ def evaluate_pair_admission(
         "best_bid": best_bid,
         "best_ask": best_ask,
         "mid": mid,
+        "live_spread_bps": live_spread_bps,
+        "min_spread_bps": float(s_cfg.min_spread_bps),
         "median_spread_bps": median_spread_bps,
         "p25_spread_bps": p25_spread_bps,
         "p75_spread_bps": p75_spread_bps,

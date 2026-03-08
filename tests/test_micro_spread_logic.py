@@ -16,6 +16,7 @@ def config() -> AppConfig:
     cfg.strategy.min_top_book_qty = 0.5
     cfg.strategy.order_qty_base = 0.001
     cfg.strategy.entry_tick_offset = 1
+    cfg.strategy.min_spread_bps = 0.0
     cfg.strategy.strict_pair_filter = False
     cfg.fees.maker_rate = 0.0
     cfg.fees.taker_rate = 0.0

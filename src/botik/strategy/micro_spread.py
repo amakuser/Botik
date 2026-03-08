@@ -90,13 +90,10 @@ class MicroSpreadStrategy(BaseStrategy):
                 if active_profile is not None
                 else self.config.strategy.min_top_book_qty
             )
-            maker_only = (
-                active_profile.maker_only
-                if active_profile is not None and active_profile.maker_only is not None
-                else self.config.strategy.maker_only
-            )
+            # Entries are always maker-only.
+            maker_only = True
 
-            fee_rate = self.config.fees.maker_rate if maker_only else self.config.fees.taker_rate
+            fee_rate = self.config.fees.maker_rate
             # Keep scanner fee assumptions aligned with pair admission profile.
             if self.config.strategy.strict_pair_filter:
                 bootstrap_buy_fee = max(self.config.strategy.bootstrap_fee_entry_bps, 0.0) / 10000.0
@@ -110,6 +107,10 @@ class MicroSpreadStrategy(BaseStrategy):
 
             tick_size = state.get_tick_size(symbol) or default_tick_size
             if ob.spread_ticks < min_spread_ticks:
+                summary["spread_reject"] += 1
+                continue
+            spread_bps_now = ((ob.best_ask - ob.best_bid) / ob.mid) * 10000.0 if ob.mid > 0 and ob.best_ask >= ob.best_bid else 0.0
+            if spread_bps_now < max(float(self.config.strategy.min_spread_bps), 0.0):
                 summary["spread_reject"] += 1
                 continue
 
