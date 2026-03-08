@@ -53,6 +53,10 @@ class TradingState:
     active_profiles: dict[str, str] = field(default_factory=dict)
     active_policy_meta: dict[str, dict[str, Any]] = field(default_factory=dict)
     scanner_snapshot: dict[str, Any] = field(default_factory=dict)
+    update_in_progress: bool = False
+    restart_requested: bool = False
+    current_version: str = ""
+    update_message: str = ""
 
     def _now_ms(self) -> int:
         return int(time.time() * 1000)
@@ -197,6 +201,23 @@ class TradingState:
 
     def get_scanner_snapshot(self) -> dict[str, Any]:
         return dict(self.scanner_snapshot)
+
+    def set_update_in_progress(self, value: bool, message: str | None = None) -> None:
+        self.update_in_progress = bool(value)
+        if message is not None:
+            self.update_message = str(message)
+
+    def set_restart_requested(self, value: bool) -> None:
+        self.restart_requested = bool(value)
+
+    def set_current_version(self, version: str) -> None:
+        self.current_version = str(version or "").strip()
+
+    def get_current_version(self) -> str:
+        return str(self.current_version or "")
+
+    def get_update_message(self) -> str:
+        return str(self.update_message or "")
 
 
 def compute_imbalance(bids: list[tuple[float, float]], asks: list[tuple[float, float]], top_n: int = 10) -> float:

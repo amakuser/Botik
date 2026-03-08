@@ -10,12 +10,15 @@ Commands:
 - /pause
 - /resume
 - /panic
+- /update
 """
 from __future__ import annotations
 
 import logging
+import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from telebot import TeleBot
@@ -27,6 +30,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+ROOT_DIR = Path(__file__).resolve().parents[3]
+VERSION_FILE = ROOT_DIR / "version.txt"
+
 BTN_STATUS = "Статус"
 BTN_SCANNER = "Сканер"
 BTN_PAIRS = "Пары"
@@ -34,13 +40,14 @@ BTN_PAUSE = "Пауза"
 BTN_RESUME = "Продолжить"
 BTN_PANIC = "Паника"
 BTN_HELP = "Помощь"
+BTN_UPDATE = "Update"
 
 
 def _main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row(types.KeyboardButton(BTN_STATUS), types.KeyboardButton(BTN_SCANNER), types.KeyboardButton(BTN_PAIRS))
     kb.row(types.KeyboardButton(BTN_PAUSE), types.KeyboardButton(BTN_RESUME), types.KeyboardButton(BTN_PANIC))
-    kb.row(types.KeyboardButton(BTN_HELP))
+    kb.row(types.KeyboardButton(BTN_HELP), types.KeyboardButton(BTN_UPDATE))
     return kb
 
 
@@ -56,16 +63,103 @@ def _controls_inline_keyboard() -> types.InlineKeyboardMarkup:
         types.InlineKeyboardButton("Продолжить", callback_data="ctl:resume"),
         types.InlineKeyboardButton("Паника", callback_data="ctl:panic"),
     )
+    kb.row(types.InlineKeyboardButton("Update", callback_data="ctl:update"))
     return kb
+
+
+def _run_git(args: list[str], repo_root: Path) -> tuple[int, str]:
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+    )
+    output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+    return proc.returncode, output
+
+
+def _read_version_file(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _write_version_file(path: Path, version: str) -> None:
+    path.write_text((version or "").strip() + "\n", encoding="utf-8")
+
+
+def _git_head(repo_root: Path) -> str:
+    code, out = _run_git(["rev-parse", "HEAD"], repo_root)
+    if code != 0:
+        return ""
+    return out.splitlines()[0].strip()
+
+
+def _git_remote_head(repo_root: Path) -> str:
+    for branch in ("master", "main"):
+        code, out = _run_git(["ls-remote", "--heads", "origin", branch], repo_root)
+        if code != 0:
+            continue
+        line = out.splitlines()[0].strip() if out.splitlines() else ""
+        if not line:
+            continue
+        parts = line.split()
+        if parts:
+            return parts[0].strip()
+    return ""
+
+
+def _resolve_local_version(repo_root: Path, version_file: Path) -> str:
+    git_version = _git_head(repo_root)
+    if git_version:
+        if _read_version_file(version_file) != git_version:
+            _write_version_file(version_file, git_version)
+        return git_version
+    return _read_version_file(version_file)
+
+
+def perform_update(repo_root: Path, version_file: Path) -> tuple[str, str]:
+    """
+    Returns:
+    - ("up_to_date", version)
+    - ("updated", new_version)
+    - ("remote_unavailable", "")
+    - ("pull_failed", stderr_or_output)
+    """
+    current_version = _resolve_local_version(repo_root, version_file)
+    remote_version = _git_remote_head(repo_root)
+    if not remote_version:
+        return "remote_unavailable", ""
+    if remote_version == current_version:
+        if current_version:
+            _write_version_file(version_file, current_version)
+        return "up_to_date", current_version
+
+    logger.info("Pulling latest code...")
+    code, out = _run_git(["pull", "--ff-only"], repo_root)
+    if code != 0:
+        return "pull_failed", out
+    new_version = _git_head(repo_root) or _resolve_local_version(repo_root, version_file)
+    if new_version:
+        _write_version_file(version_file, new_version)
+    return "updated", new_version
 
 
 def _runtime_status_text(state: "TradingState") -> str:
     run_state = "ПАУЗА" if state.paused else "РАБОТАЕТ"
     active_symbols = state.get_active_symbols()
     scanner = state.get_scanner_snapshot()
+    version = state.get_current_version() or _read_version_file(VERSION_FILE) or "unknown"
+    upd_state = "IN_PROGRESS" if state.update_in_progress else "IDLE"
+    upd_msg = state.get_update_message() or "-"
     return (
         f"Торговля: {run_state}\n"
         f"Флаг PANIC: {state.panic_requested}\n"
+        f"Версия: {version[:12]}\n"
+        f"Update: {upd_state} ({upd_msg})\n"
         f"Активные символы: {len(active_symbols)} ({', '.join(active_symbols[:8]) if active_symbols else 'нет'})\n"
         f"Сканер: pass={scanner.get('pass', 0)} watch={scanner.get('watch', 0)} "
         f"reject={scanner.get('reject', 0)} stale={scanner.get('stale', 0)} selected={scanner.get('selected', 0)}"
@@ -117,6 +211,7 @@ def _help_text() -> str:
         "/pause - поставить торговлю на паузу\n"
         "/resume - продолжить торговлю\n"
         "/panic - аварийная остановка (cancel-all)\n"
+        "/update - подтянуть обновления из GitHub и мягко перезапустить торговый цикл\n"
         "/help - подсказка"
     )
 
@@ -134,6 +229,8 @@ def run_telegram_bot(
     bot = TeleBot(token)
     reply_kb = _main_keyboard()
     inline_kb = _controls_inline_keyboard()
+    update_lock = threading.Lock()
+    state.set_current_version(_resolve_local_version(ROOT_DIR, VERSION_FILE))
 
     def is_allowed_chat(chat_id: int | str) -> bool:
         if allowed_chat_id is None:
@@ -165,6 +262,54 @@ def run_telegram_bot(
         else:
             send_text(chat_id, "PANIC установлен: запрошен cancel-all. Market close отключен в config.")
 
+    def _update_worker(chat_id: int) -> None:
+        logger.info("Update command received")
+        with update_lock:
+            if state.update_in_progress:
+                logger.warning("Update already in progress")
+                send_text(chat_id, "Обновление уже выполняется")
+                return
+            state.set_update_in_progress(True, "checking")
+        try:
+            current_version = _resolve_local_version(ROOT_DIR, VERSION_FILE)
+            state.set_current_version(current_version)
+            status, payload = perform_update(ROOT_DIR, VERSION_FILE)
+            if status == "remote_unavailable":
+                state.set_update_in_progress(False, "remote_unavailable")
+                send_text(chat_id, "Не удалось получить версию из GitHub.")
+                return
+
+            if status == "up_to_date":
+                state.set_update_in_progress(False, "up_to_date")
+                send_text(chat_id, f"Обновление не требуется. Текущая версия: {current_version[:12]}")
+                return
+
+            if status == "pull_failed":
+                state.set_update_in_progress(False, "pull_failed")
+                send_text(chat_id, f"Ошибка git pull:\n{payload[-3500:]}")
+                return
+
+            new_version = payload
+            if new_version:
+                state.set_current_version(new_version)
+            logger.info("Update applied, new version: %s", new_version)
+
+            # Keep Telegram bot online; request soft restart of trading runtime in main loop.
+            state.set_restart_requested(True)
+            state.set_update_in_progress(True, f"restart_pending:{new_version[:12] if new_version else 'unknown'}")
+            send_text(chat_id, f"Обновление выполнено. Текущая версия: {new_version[:12]}.")
+        except Exception as exc:
+            state.set_update_in_progress(False, "error")
+            send_text(chat_id, f"Ошибка обновления: {exc}")
+
+    def do_update(chat_id: int) -> None:
+        if state.update_in_progress:
+            logger.warning("Update already in progress")
+            send_text(chat_id, "Обновление уже выполняется")
+            return
+        send_text(chat_id, "Проверяю обновления...")
+        threading.Thread(target=_update_worker, args=(chat_id,), daemon=True).start()
+
     @bot.message_handler(commands=["start"])
     def cmd_start(message: types.Message) -> None:
         if not is_allowed_message(message):
@@ -189,6 +334,9 @@ def run_telegram_bot(
         if not is_allowed_message(message):
             return
         logger.info("Telegram command: /status from chat_id=%s", message.chat.id)
+        current_version = _resolve_local_version(ROOT_DIR, VERSION_FILE)
+        if current_version:
+            state.set_current_version(current_version)
         bot.reply_to(message, _runtime_status_text(state), reply_markup=reply_kb)
 
     @bot.message_handler(commands=["scanner"])
@@ -226,6 +374,12 @@ def run_telegram_bot(
         logger.warning("Telegram command: /panic from chat_id=%s", message.chat.id)
         do_panic(message.chat.id)
 
+    @bot.message_handler(commands=["update"])
+    def cmd_update(message: types.Message) -> None:
+        if not is_allowed_message(message):
+            return
+        do_update(message.chat.id)
+
     @bot.message_handler(func=lambda m: bool(m.text))
     def button_router(message: types.Message) -> None:
         if not is_allowed_message(message):
@@ -243,6 +397,8 @@ def run_telegram_bot(
             do_resume(message.chat.id)
         elif text == BTN_PANIC:
             do_panic(message.chat.id)
+        elif text == BTN_UPDATE:
+            do_update(message.chat.id)
         elif text == BTN_HELP:
             bot.reply_to(message, _help_text(), reply_markup=reply_kb)
 
@@ -267,6 +423,8 @@ def run_telegram_bot(
             do_resume(chat_id)
         elif action == "panic":
             do_panic(chat_id)
+        elif action == "update":
+            do_update(chat_id)
         bot.answer_callback_query(call.id)
 
     try:
@@ -280,6 +438,7 @@ def run_telegram_bot(
                 types.BotCommand("pause", "пауза торговли"),
                 types.BotCommand("resume", "продолжить торговлю"),
                 types.BotCommand("panic", "аварийная остановка"),
+                types.BotCommand("update", "обновить код и мягко перезапустить цикл"),
             ]
         )
     except Exception as exc:

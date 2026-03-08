@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import logging
 import os
 import sqlite3
+import subprocess
+import sys
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from src.botik.config import ActionProfileConfig, load_config
@@ -41,6 +45,13 @@ from src.botik.strategy.pair_admission import evaluate_pair_admission
 from src.botik.strategy.symbol_scanner import pick_active_symbols
 from src.botik.utils.logging import setup_logging
 from src.botik.utils.time import utc_now_iso
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+VERSION_FILE = ROOT_DIR / "version.txt"
+
+
+class RestartRequested(Exception):
+    """Raised to rebuild runtime loops without canceling existing exchange orders."""
 
 
 def _fmt_float(value: float) -> str:
@@ -82,6 +93,128 @@ def _fee_to_quote(symbol: str, fee: float, fee_currency: str, exec_price: float)
     return fee_abs
 
 
+def _git_head(repo_root: Path) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            return ""
+        return (proc.stdout or "").strip()
+    except Exception:
+        return ""
+
+
+def _resolve_runtime_version() -> str:
+    v = _git_head(ROOT_DIR)
+    if v:
+        try:
+            current = VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else ""
+            if current != v:
+                VERSION_FILE.write_text(v + "\n", encoding="utf-8")
+        except OSError:
+            pass
+        return v
+    if VERSION_FILE.exists():
+        try:
+            return VERSION_FILE.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+    return ""
+
+
+def _hot_reload_runtime_modules() -> None:
+    module_names = [
+        "src.botik.config",
+        "src.botik.execution.bybit_rest",
+        "src.botik.execution.paper",
+        "src.botik.marketdata.universe_discovery",
+        "src.botik.marketdata.ws_public",
+        "src.botik.learning.bandit",
+        "src.botik.learning.policy",
+        "src.botik.learning.policy_manager",
+        "src.botik.risk.manager",
+        "src.botik.risk.position",
+        "src.botik.storage.sqlite_store",
+        "src.botik.storage.lifecycle_store",
+        "src.botik.strategy.micro_spread",
+        "src.botik.strategy.pair_admission",
+        "src.botik.strategy.symbol_scanner",
+        "src.botik.utils.logging",
+        "src.botik.utils.time",
+    ]
+    for name in module_names:
+        if name in sys.modules:
+            importlib.reload(sys.modules[name])
+
+    # Rebind imported symbols used by runtime loop.
+    from src.botik.config import ActionProfileConfig as _ActionProfileConfig, load_config as _load_config
+    from src.botik.execution.bybit_rest import BybitRestClient as _BybitRestClient
+    from src.botik.execution.paper import PaperTradingClient as _PaperTradingClient
+    from src.botik.learning.bandit import GaussianThompsonBandit as _GaussianThompsonBandit
+    from src.botik.learning.policy import PolicySelector as _PolicySelector
+    from src.botik.learning.policy_manager import ModelBundle as _ModelBundle, load_active_model as _load_active_model
+    from src.botik.marketdata.universe_discovery import discover_top_spot_symbols as _discover_top_spot_symbols
+    from src.botik.marketdata.ws_public import BybitSpotOrderbookWS as _BybitSpotOrderbookWS
+    from src.botik.risk.manager import RiskManager as _RiskManager
+    from src.botik.risk.position import apply_fill as _apply_fill, unrealized_pnl_pct as _unrealized_pnl_pct
+    from src.botik.storage.lifecycle_store import (
+        ensure_lifecycle_schema as _ensure_lifecycle_schema,
+        get_signal_id_for_order_link as _get_signal_id_for_order_link,
+        insert_execution_event as _insert_execution_event,
+        insert_order_event as _insert_order_event,
+        insert_signal_snapshot as _insert_signal_snapshot,
+        set_order_signal_map as _set_order_signal_map,
+        upsert_outcome as _upsert_outcome,
+        upsert_signal_reward as _upsert_signal_reward,
+    )
+    from src.botik.storage.sqlite_store import (
+        get_connection as _get_connection,
+        insert_fill as _insert_fill,
+        insert_metrics as _insert_metrics,
+        insert_order as _insert_order,
+    )
+    from src.botik.strategy.micro_spread import MicroSpreadStrategy as _MicroSpreadStrategy
+    from src.botik.strategy.pair_admission import evaluate_pair_admission as _evaluate_pair_admission
+    from src.botik.strategy.symbol_scanner import pick_active_symbols as _pick_active_symbols
+    from src.botik.utils.logging import setup_logging as _setup_logging
+    from src.botik.utils.time import utc_now_iso as _utc_now_iso
+
+    globals()["ActionProfileConfig"] = _ActionProfileConfig
+    globals()["load_config"] = _load_config
+    globals()["BybitRestClient"] = _BybitRestClient
+    globals()["PaperTradingClient"] = _PaperTradingClient
+    globals()["discover_top_spot_symbols"] = _discover_top_spot_symbols
+    globals()["BybitSpotOrderbookWS"] = _BybitSpotOrderbookWS
+    globals()["GaussianThompsonBandit"] = _GaussianThompsonBandit
+    globals()["PolicySelector"] = _PolicySelector
+    globals()["ModelBundle"] = _ModelBundle
+    globals()["load_active_model"] = _load_active_model
+    globals()["RiskManager"] = _RiskManager
+    globals()["apply_fill"] = _apply_fill
+    globals()["unrealized_pnl_pct"] = _unrealized_pnl_pct
+    globals()["get_connection"] = _get_connection
+    globals()["insert_fill"] = _insert_fill
+    globals()["insert_metrics"] = _insert_metrics
+    globals()["insert_order"] = _insert_order
+    globals()["ensure_lifecycle_schema"] = _ensure_lifecycle_schema
+    globals()["get_signal_id_for_order_link"] = _get_signal_id_for_order_link
+    globals()["insert_execution_event"] = _insert_execution_event
+    globals()["insert_order_event"] = _insert_order_event
+    globals()["insert_signal_snapshot"] = _insert_signal_snapshot
+    globals()["set_order_signal_map"] = _set_order_signal_map
+    globals()["upsert_signal_reward"] = _upsert_signal_reward
+    globals()["upsert_outcome"] = _upsert_outcome
+    globals()["MicroSpreadStrategy"] = _MicroSpreadStrategy
+    globals()["evaluate_pair_admission"] = _evaluate_pair_admission
+    globals()["pick_active_symbols"] = _pick_active_symbols
+    globals()["setup_logging"] = _setup_logging
+    globals()["utc_now_iso"] = _utc_now_iso
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bybit Spot Bot")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
@@ -107,6 +240,7 @@ def main() -> None:
 
     state = TradingState()
     state.paused = config.start_paused
+    state.set_current_version(_resolve_runtime_version())
 
     disable_internal_telegram = str(os.environ.get("BOTIK_DISABLE_INTERNAL_TELEGRAM", "")).strip().lower() in {
         "1",
@@ -701,6 +835,8 @@ def main() -> None:
 
             last_pair_status_log_at = 0.0
             while True:
+                if state.restart_requested:
+                    raise RestartRequested("restart_requested")
                 await asyncio.sleep(scanner_interval_sec)
                 try:
                     selected, summary = pick_active_symbols(state, config)
@@ -817,6 +953,9 @@ def main() -> None:
             last_paused_log_at = 0.0
             loop_no = 0
             while True:
+                if state.restart_requested:
+                    log.info("Restart requested: rebuilding trading runtime without cancel-all.")
+                    raise RestartRequested("restart_requested")
                 await asyncio.sleep(replace_interval_sec)
                 loop_no += 1
                 active_symbols = state.get_active_symbols() or list(config.symbols)
@@ -1073,6 +1212,8 @@ def main() -> None:
 
         async def metrics_loop() -> None:
             while True:
+                if state.restart_requested:
+                    raise RestartRequested("restart_requested")
                 await asyncio.sleep(interval)
                 ts = utc_now_iso()
                 for symbol in config.symbols:
@@ -1095,6 +1236,8 @@ def main() -> None:
                 return
 
             while True:
+                if state.restart_requested:
+                    raise RestartRequested("restart_requested")
                 await asyncio.sleep(auto_universe_refresh_sec)
                 try:
                     discovered = await discover_top_spot_symbols(
@@ -1174,7 +1317,24 @@ def main() -> None:
         finally:
             conn.close()
 
-    asyncio.run(run_ws_metrics_trading())
+    while True:
+        config = load_config(args.config)
+        try:
+            asyncio.run(run_ws_metrics_trading())
+            break
+        except RestartRequested:
+            # /update requested soft restart: keep exchange orders alive and reconnect runtime loops.
+            try:
+                _hot_reload_runtime_modules()
+            except Exception as exc:
+                log.warning("Runtime hot-reload failed, continue with current module objects: %s", exc)
+            state.set_restart_requested(False)
+            state.set_update_in_progress(False, "restart_applied")
+            refreshed_version = _resolve_runtime_version()
+            if refreshed_version:
+                state.set_current_version(refreshed_version)
+            log.info("Runtime soft restart applied. version=%s", state.get_current_version()[:12])
+            continue
 
 
 if __name__ == "__main__":
