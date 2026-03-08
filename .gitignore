@@ -13,6 +13,7 @@ __pycache__/
 .Python
 build/
 dist/
+botik.exe
 .eggs/
 *.egg-info/
 

@@ -18,6 +18,21 @@ Main launcher for packaged build: `src/botik/windows_entry.py`.
 build_windows_installer.bat
 ```
 
+Portable build without installer (run from project folder):
+
+```bat
+build_portable_exe.bat
+run_windows_gui.bat
+```
+
+`build_portable_exe.bat` copies `dist\botik.exe` to project root as `botik.exe`.
+
+Script logs are written to `logs\script_logs\`:
+
+- `run_windows_gui_*.log`
+- `build_portable_exe_*.log`
+- `build_windows_installer_*.log`
+
 Manual equivalent:
 
 ```bat
@@ -50,4 +65,3 @@ iscc installer.iss
 
 - Keep `version.txt` in repo and update it in CI/build step before packaging.
 - If code-signing certificate is available, sign `dist\botik.exe` and installer artifact post-build.
-
