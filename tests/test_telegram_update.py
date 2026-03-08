@@ -74,6 +74,25 @@ def test_perform_update_blocks_dirty_tree(monkeypatch, tmp_path: Path) -> None:
     assert ["pull", "--ff-only"] not in calls
 
 
+def test_perform_update_ignores_local_version_file_change(monkeypatch, tmp_path: Path) -> None:
+    vf = tmp_path / "version.txt"
+    vf.write_text("samehash\n", encoding="utf-8")
+
+    def fake_run_git(args: list[str], _repo_root: Path) -> tuple[int, str]:
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, "samehash\n"
+        if args[:2] == ["status", "--porcelain"]:
+            return 0, " M version.txt"
+        if args[:4] == ["ls-remote", "--heads", "origin", "master"]:
+            return 0, "samehash\trefs/heads/master"
+        return 0, ""
+
+    monkeypatch.setattr(telegram_bot, "_run_git", fake_run_git)
+    status, payload = telegram_bot.perform_update(tmp_path, vf)
+    assert status == "up_to_date"
+    assert payload == "samehash"
+
+
 def test_status_text_contains_version_and_update_flags(monkeypatch, tmp_path: Path) -> None:
     vf = tmp_path / "version.txt"
     vf.write_text("ver1234567890\n", encoding="utf-8")

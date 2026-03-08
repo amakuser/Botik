@@ -132,8 +132,18 @@ def perform_update(repo_root: Path, version_file: Path) -> tuple[str, str]:
     code, worktree = _run_git(["status", "--porcelain"], repo_root)
     if code != 0:
         return "pull_failed", worktree
-    if (worktree or "").strip():
-        return "dirty_tree", worktree
+    dirty_lines = [line for line in (worktree or "").splitlines() if line.strip()]
+    non_ignored_dirty: list[str] = []
+    for line in dirty_lines:
+        # porcelain line format: XY <path>
+        raw_path = line[3:].strip() if len(line) >= 4 else line.strip()
+        if "->" in raw_path:
+            raw_path = raw_path.split("->", 1)[1].strip()
+        if Path(raw_path).as_posix() == "version.txt":
+            continue
+        non_ignored_dirty.append(line)
+    if non_ignored_dirty:
+        return "dirty_tree", "\n".join(non_ignored_dirty)
     remote_version = _git_remote_head(repo_root)
     if not remote_version:
         return "remote_unavailable", ""

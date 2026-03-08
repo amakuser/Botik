@@ -31,7 +31,6 @@ htmlcov/
 # Logs and runtime data
 logs/
 *.log
-version.txt
 data/
 *.db
 *.sqlite
