@@ -111,12 +111,6 @@ def _git_head(repo_root: Path) -> str:
 def _resolve_runtime_version() -> str:
     v = _git_head(ROOT_DIR)
     if v:
-        try:
-            current = VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else ""
-            if current != v:
-                VERSION_FILE.write_text(v + "\n", encoding="utf-8")
-        except OSError:
-            pass
         return v
     if VERSION_FILE.exists():
         try:

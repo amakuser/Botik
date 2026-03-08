@@ -115,8 +115,6 @@ def _git_remote_head(repo_root: Path) -> str:
 def _resolve_local_version(repo_root: Path, version_file: Path) -> str:
     git_version = _git_head(repo_root)
     if git_version:
-        if _read_version_file(version_file) != git_version:
-            _write_version_file(version_file, git_version)
         return git_version
     return _read_version_file(version_file)
 
@@ -126,10 +124,16 @@ def perform_update(repo_root: Path, version_file: Path) -> tuple[str, str]:
     Returns:
     - ("up_to_date", version)
     - ("updated", new_version)
+    - ("dirty_tree", status_output)
     - ("remote_unavailable", "")
     - ("pull_failed", stderr_or_output)
     """
     current_version = _resolve_local_version(repo_root, version_file)
+    code, worktree = _run_git(["status", "--porcelain"], repo_root)
+    if code != 0:
+        return "pull_failed", worktree
+    if (worktree or "").strip():
+        return "dirty_tree", worktree
     remote_version = _git_remote_head(repo_root)
     if not remote_version:
         return "remote_unavailable", ""
@@ -277,6 +281,15 @@ def run_telegram_bot(
             if status == "remote_unavailable":
                 state.set_update_in_progress(False, "remote_unavailable")
                 send_text(chat_id, "Не удалось получить версию из GitHub.")
+                return
+
+            if status == "dirty_tree":
+                state.set_update_in_progress(False, "dirty_tree")
+                send_text(
+                    chat_id,
+                    "Обновление остановлено: в рабочем дереве есть локальные изменения.\n"
+                    "Сначала закоммитьте или спрячьте их (stash), затем повторите /update.",
+                )
                 return
 
             if status == "up_to_date":
