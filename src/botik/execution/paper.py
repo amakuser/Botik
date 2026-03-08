@@ -121,3 +121,7 @@ class PaperTradingClient:
         if order_link_id:
             items = [e for e in items if e.get("orderLinkId") == order_link_id]
         return {"retCode": 0, "retMsg": "OK", "result": {"list": items[-limit:]}}
+
+    async def get_symbol_min_qty(self, symbol: str) -> float | None:
+        # Paper mode has no exchange filters; caller falls back to config floor.
+        return None

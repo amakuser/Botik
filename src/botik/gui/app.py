@@ -248,6 +248,7 @@ class BotikGui:
         self.ml_net_edge_var = tk.StringVar(value="n/a")
         self.ml_win_rate_var = tk.StringVar(value="n/a")
         self.ml_fill_rate_var = tk.StringVar(value="n/a")
+        self.ml_fill_details_var = tk.StringVar(value="0/0 signals")
         self.ml_training_paused = False
         self._ml_progress_running = False
         self._ml_chart_points: deque[float] = deque(maxlen=60)
@@ -608,8 +609,9 @@ class BotikGui:
         ttk.Label(ml_card, text="win_rate", style="Body.TLabel").grid(row=3, column=2, sticky=tk.W, pady=3, padx=(12, 0))
         ttk.Label(ml_card, textvariable=self.ml_win_rate_var, style="Body.TLabel").grid(row=3, column=3, sticky=tk.W, pady=3)
 
-        ttk.Label(ml_card, text="fill_rate", style="Body.TLabel").grid(row=4, column=0, sticky=tk.W, pady=3)
+        ttk.Label(ml_card, text="fill_rate (filled/20)", style="Body.TLabel").grid(row=4, column=0, sticky=tk.W, pady=3)
         ttk.Label(ml_card, textvariable=self.ml_fill_rate_var, style="Body.TLabel").grid(row=4, column=1, sticky=tk.W, pady=3)
+        ttk.Label(ml_card, textvariable=self.ml_fill_details_var, style="Body.TLabel").grid(row=4, column=2, sticky=tk.W, pady=3, padx=(12, 0))
         ttk.Button(ml_card, text="Copy Chart", command=self.copy_ml_chart).grid(row=4, column=3, sticky=tk.E, pady=3)
 
         self.ml_chart_canvas = tk.Canvas(
@@ -1124,8 +1126,11 @@ class BotikGui:
             "net_edge_mean": 0.0,
             "win_rate": 0.0,
             "fill_rate": 0.0,
+            "fill_filled_signals": 0,
+            "fill_total_signals": 0,
             "chart": [],
             "closed_count": 0,
+            "executions_total": 0,
         }
         if not db_path.exists():
             return base
@@ -1196,6 +1201,11 @@ class BotikGui:
                 total = int(fill_row[0] or 0) if fill_row else 0
                 filled = int(fill_row[1] or 0) if fill_row else 0
                 base["fill_rate"] = float(filled / total) if total > 0 else 0.0
+                base["fill_total_signals"] = total
+                base["fill_filled_signals"] = filled
+
+            if self._table_exists(conn, "executions_raw"):
+                base["executions_total"] = int(conn.execute("SELECT COUNT(*) FROM executions_raw").fetchone()[0])
 
             if self._table_exists(conn, "model_stats"):
                 stat_row = conn.execute(
@@ -1286,6 +1296,9 @@ class BotikGui:
             "ml_net_edge_mean": float(ml_metrics.get("net_edge_mean") or 0.0),
             "ml_win_rate": float(ml_metrics.get("win_rate") or 0.0),
             "ml_fill_rate": float(ml_metrics.get("fill_rate") or 0.0),
+            "ml_fill_filled": int(ml_metrics.get("fill_filled_signals") or 0),
+            "ml_fill_total": int(ml_metrics.get("fill_total_signals") or 0),
+            "ml_executions_total": int(ml_metrics.get("executions_total") or 0),
             "ml_chart": list(ml_metrics.get("chart") or []),
             "ml_training_paused": pause_flag_path.exists(),
             "ml_training_progress": progress_pct,
@@ -1489,10 +1502,14 @@ class BotikGui:
         self.ml_net_edge_var.set(f"{float(snapshot.get('ml_net_edge_mean', 0.0)):.4f} bps")
         self.ml_win_rate_var.set(f"{float(snapshot.get('ml_win_rate', 0.0)) * 100.0:.1f}%")
         self.ml_fill_rate_var.set(f"{float(snapshot.get('ml_fill_rate', 0.0)) * 100.0:.1f}%")
+        fill_filled = int(snapshot.get("ml_fill_filled", 0))
+        fill_total = int(snapshot.get("ml_fill_total", 0))
+        self.ml_fill_details_var.set(f"{fill_filled}/{fill_total} signals")
         progress = float(snapshot.get("ml_training_progress", 0.0))
         closed = int(snapshot.get("ml_closed_count", 0))
+        exec_total = int(snapshot.get("ml_executions_total", 0))
         batch = int(snapshot.get("ml_batch_size", 50))
-        self.ml_progress_text_var.set(f"{progress:.0f}% (closed={closed}, batch={batch})")
+        self.ml_progress_text_var.set(f"{progress:.0f}% (closed={closed}, exec={exec_total}, batch={batch})")
         self._ml_chart_points.clear()
         self._ml_chart_points.extend(float(v) for v in list(snapshot.get("ml_chart") or []))
         self._draw_ml_chart()
@@ -1529,7 +1546,7 @@ class BotikGui:
             f"model={self.ml_model_id_var.get()}\n"
             f"net_edge_mean={self.ml_net_edge_var.get()}\n"
             f"win_rate={self.ml_win_rate_var.get()}\n"
-            f"fill_rate={self.ml_fill_rate_var.get()}\n"
+            f"fill_rate={self.ml_fill_rate_var.get()} ({self.ml_fill_details_var.get()})\n"
             f"series={','.join(f'{v:.4f}' for v in self._ml_chart_points)}"
         )
         self.root.clipboard_clear()

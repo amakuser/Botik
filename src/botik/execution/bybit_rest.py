@@ -193,6 +193,16 @@ class BybitRestClient:
         self._spot_lot_filters[symbol_u] = parsed
         return parsed
 
+    async def get_symbol_min_qty(self, symbol: str) -> float | None:
+        """Return exchange min tradable base quantity for the symbol."""
+        filters = await self._get_spot_lot_filters(symbol)
+        if not filters:
+            return None
+        try:
+            return float(filters["min_qty"])
+        except (TypeError, ValueError, InvalidOperation):
+            return None
+
     async def _normalize_spot_qty(self, symbol: str, side: str, qty: str, price: str) -> str | None:
         try:
             qty_dec = Decimal(str(qty))

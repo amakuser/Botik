@@ -66,12 +66,12 @@ class StrategyConfig(BaseModel):
     pnl_exit_enabled: bool = True
     scanner_enabled: bool = True
     scanner_interval_sec: int = 3
-    scanner_top_k: int = 6
+    scanner_top_k: int = 30
     auto_universe_enabled: bool = False
     auto_universe_host: str = "api.bybit.com"
     auto_universe_quote: str = "USDT"
     auto_universe_exclude_st_tag_1: bool = True
-    auto_universe_size: int = 40
+    auto_universe_size: int = 200
     auto_universe_refresh_sec: int = 180
     auto_universe_min_turnover_24h: float = 3_000_000.0
     auto_universe_min_raw_spread_bps: float = 0.0

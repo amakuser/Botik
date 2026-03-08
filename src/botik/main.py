@@ -394,7 +394,32 @@ def main() -> None:
         symbol_hold_timeout_sec: dict[str, float] = {s: float(hold_timeout_sec) for s in config.symbols}
         symbol_stop_loss_pct: dict[str, float] = {s: float(stop_loss_pct) for s in config.symbols}
         symbol_take_profit_pct: dict[str, float] = {s: float(take_profit_pct) for s in config.symbols}
+        symbol_position_floor: dict[str, float] = {s: float(min_position_qty) for s in config.symbols}
         seen_exec_ids: set[str] = set()
+
+        async def _resolve_position_floor(symbol: str) -> float:
+            symbol_u = str(symbol or "").upper().strip()
+            if not symbol_u:
+                return float(min_position_qty)
+            cached = symbol_position_floor.get(symbol_u)
+            if cached is not None:
+                return float(cached)
+
+            floor = float(min_position_qty)
+            getter = getattr(executor, "get_symbol_min_qty", None)
+            if callable(getter):
+                try:
+                    exchange_min = await getter(symbol_u)
+                    if exchange_min and float(exchange_min) > 0:
+                        floor = max(floor, float(exchange_min))
+                except Exception as exc:
+                    log.debug("get_symbol_min_qty failed for %s: %s", symbol_u, exc)
+            symbol_position_floor[symbol_u] = float(floor)
+            return float(floor)
+
+        def _position_floor(symbol: str) -> float:
+            symbol_u = str(symbol or "").upper().strip()
+            return float(symbol_position_floor.get(symbol_u, float(min_position_qty)))
 
         def _sum_signal_fees_quote(conn_db: sqlite3.Connection, signal_id: str, symbol: str) -> float:
             rows = conn_db.execute(
@@ -455,8 +480,9 @@ def main() -> None:
             if executor is None:
                 return
             symbols_to_check: set[str] = set(state.get_active_symbols() or config.symbols)
-            symbols_to_check.update(s for s, q in net_position_base.items() if abs(q) >= min_position_qty)
+            symbols_to_check.update(s for s, q in net_position_base.items() if abs(q) >= _position_floor(s))
             for symbol in symbols_to_check:
+                symbol_floor = await _resolve_position_floor(symbol)
                 try:
                     resp = await executor.get_execution_list(symbol=symbol, limit=100)
                 except Exception as exc:
@@ -538,11 +564,11 @@ def main() -> None:
                     net_position_base[symbol] = new_qty
                     avg_entry_price[symbol] = new_avg
 
-                    if abs(old_qty) < min_position_qty and abs(new_qty) >= min_position_qty:
+                    if abs(old_qty) < symbol_floor and abs(new_qty) >= symbol_floor:
                         position_opened_at[symbol] = time.monotonic()
                         position_opened_wall_ms[symbol] = exec_time_ms
                         position_signal_id[symbol] = signal_id
-                    elif abs(new_qty) < min_position_qty:
+                    elif abs(new_qty) < symbol_floor:
                         opened_at = position_opened_at.get(symbol)
                         hold_time_ms = int((time.monotonic() - opened_at) * 1000) if opened_at else 0
                         qty_closed = abs(old_qty)
@@ -593,6 +619,8 @@ def main() -> None:
                         position_opened_at[symbol] = None
                         position_opened_wall_ms[symbol] = None
                         position_signal_id[symbol] = None
+                        net_position_base[symbol] = 0.0
+                        avg_entry_price[symbol] = 0.0
                         symbol_hold_timeout_sec[symbol] = float(hold_timeout_sec)
                         symbol_stop_loss_pct[symbol] = float(stop_loss_pct)
                         symbol_take_profit_pct[symbol] = float(take_profit_pct)
@@ -633,7 +661,8 @@ def main() -> None:
             if executor is None:
                 return False
             pos_qty = net_position_base.get(symbol, 0.0)
-            if abs(pos_qty) < min_position_qty:
+            pos_floor = await _resolve_position_floor(symbol)
+            if abs(pos_qty) < pos_floor:
                 return False
 
             opened_at = position_opened_at.get(symbol)
@@ -1023,7 +1052,7 @@ def main() -> None:
 
                     blocked_symbols: set[str] = set()
                     managed_symbols: set[str] = set(config.symbols)
-                    managed_symbols.update(s for s, q in net_position_base.items() if abs(q) >= min_position_qty)
+                    managed_symbols.update(s for s, q in net_position_base.items() if abs(q) >= _position_floor(s))
                     for symbol in managed_symbols:
                         if await maybe_force_exit(symbol):
                             blocked_symbols.add(symbol)
@@ -1248,7 +1277,7 @@ def main() -> None:
                         continue
 
                     # Keep symbols with open position in the universe to preserve exit control.
-                    protected = [s for s, q in net_position_base.items() if abs(q) >= min_position_qty]
+                    protected = [s for s, q in net_position_base.items() if abs(q) >= _position_floor(s)]
                     merged: list[str] = []
                     seen: set[str] = set()
                     for symbol in protected + discovered:
