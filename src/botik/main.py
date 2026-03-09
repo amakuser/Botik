@@ -1,4 +1,4 @@
-"""
+﻿"""
 CLI entrypoint: config, logging, WS market data, strategy, risk checks and execution.
 """
 from __future__ import annotations
@@ -21,11 +21,14 @@ from src.botik.config import ActionProfileConfig, load_config
 from src.botik.control.telegram_bot import start_telegram_bot_in_thread
 from src.botik.execution.bybit_rest import BybitRestClient
 from src.botik.execution.paper import PaperTradingClient
+from src.botik.execution.reconciliation_service import ExchangeReconciliationService
 from src.botik.marketdata.universe_discovery import discover_top_symbols_by_category
 from src.botik.marketdata.ws_public import BybitPublicOrderbookWS
 from src.botik.learning.bandit import GaussianThompsonBandit
 from src.botik.learning.policy import PolicySelector
 from src.botik.learning.policy_manager import ModelBundle, load_active_model
+from src.botik.risk.futures_protection import build_futures_protection_plan, futures_entry_allowed
+from src.botik.risk.spot_rules import can_auto_sell_hold
 from src.botik.risk.manager import RiskManager
 from src.botik.risk.exit_rules import decide_exit_reason
 from src.botik.risk.position import apply_fill, unrealized_pnl_pct
@@ -49,6 +52,13 @@ from src.botik.storage.lifecycle_store import (
     set_order_signal_map,
     upsert_signal_reward,
     upsert_outcome,
+)
+from src.botik.storage.spot_store import upsert_spot_holding
+from src.botik.storage.core_store import insert_event_audit, upsert_strategy_run
+from src.botik.storage.futures_store import (
+    insert_futures_position_decision,
+    upsert_futures_position,
+    upsert_futures_protection,
 )
 from src.botik.strategy.micro_spread import MicroSpreadStrategy
 from src.botik.strategy.spike_reversal import SpikeReversalStrategy
@@ -137,6 +147,7 @@ def _hot_reload_runtime_modules() -> None:
         "src.botik.config",
         "src.botik.execution.bybit_rest",
         "src.botik.execution.paper",
+        "src.botik.execution.reconciliation_service",
         "src.botik.marketdata.universe_discovery",
         "src.botik.marketdata.ws_public",
         "src.botik.learning.bandit",
@@ -144,9 +155,14 @@ def _hot_reload_runtime_modules() -> None:
         "src.botik.learning.policy_manager",
         "src.botik.risk.manager",
         "src.botik.risk.exit_rules",
+        "src.botik.risk.futures_protection",
+        "src.botik.risk.spot_rules",
         "src.botik.risk.position",
         "src.botik.storage.sqlite_store",
         "src.botik.storage.lifecycle_store",
+        "src.botik.storage.core_store",
+        "src.botik.storage.spot_store",
+        "src.botik.storage.futures_store",
         "src.botik.strategy.micro_spread",
         "src.botik.strategy.spike_reversal",
         "src.botik.strategy.pair_admission",
@@ -162,6 +178,7 @@ def _hot_reload_runtime_modules() -> None:
     from src.botik.config import ActionProfileConfig as _ActionProfileConfig, load_config as _load_config
     from src.botik.execution.bybit_rest import BybitRestClient as _BybitRestClient
     from src.botik.execution.paper import PaperTradingClient as _PaperTradingClient
+    from src.botik.execution.reconciliation_service import ExchangeReconciliationService as _ExchangeReconciliationService
     from src.botik.learning.bandit import GaussianThompsonBandit as _GaussianThompsonBandit
     from src.botik.learning.policy import PolicySelector as _PolicySelector
     from src.botik.learning.policy_manager import ModelBundle as _ModelBundle, load_active_model as _load_active_model
@@ -169,6 +186,11 @@ def _hot_reload_runtime_modules() -> None:
     from src.botik.marketdata.ws_public import BybitPublicOrderbookWS as _BybitPublicOrderbookWS
     from src.botik.risk.manager import RiskManager as _RiskManager
     from src.botik.risk.exit_rules import decide_exit_reason as _decide_exit_reason
+    from src.botik.risk.futures_protection import (
+        build_futures_protection_plan as _build_futures_protection_plan,
+        futures_entry_allowed as _futures_entry_allowed,
+    )
+    from src.botik.risk.spot_rules import can_auto_sell_hold as _can_auto_sell_hold
     from src.botik.risk.position import apply_fill as _apply_fill, unrealized_pnl_pct as _unrealized_pnl_pct
     from src.botik.storage.lifecycle_store import (
         ensure_lifecycle_schema as _ensure_lifecycle_schema,
@@ -188,6 +210,16 @@ def _hot_reload_runtime_modules() -> None:
         insert_order as _insert_order,
         update_orders_entry_exit_for_signal as _update_orders_entry_exit_for_signal,
     )
+    from src.botik.storage.spot_store import upsert_spot_holding as _upsert_spot_holding
+    from src.botik.storage.core_store import (
+        insert_event_audit as _insert_event_audit,
+        upsert_strategy_run as _upsert_strategy_run,
+    )
+    from src.botik.storage.futures_store import (
+        insert_futures_position_decision as _insert_futures_position_decision,
+        upsert_futures_position as _upsert_futures_position,
+        upsert_futures_protection as _upsert_futures_protection,
+    )
     from src.botik.strategy.micro_spread import MicroSpreadStrategy as _MicroSpreadStrategy
     from src.botik.strategy.spike_reversal import SpikeReversalStrategy as _SpikeReversalStrategy
     from src.botik.strategy.pair_admission import evaluate_pair_admission as _evaluate_pair_admission
@@ -199,6 +231,7 @@ def _hot_reload_runtime_modules() -> None:
     globals()["load_config"] = _load_config
     globals()["BybitRestClient"] = _BybitRestClient
     globals()["PaperTradingClient"] = _PaperTradingClient
+    globals()["ExchangeReconciliationService"] = _ExchangeReconciliationService
     globals()["discover_top_symbols_by_category"] = _discover_top_symbols_by_category
     globals()["BybitPublicOrderbookWS"] = _BybitPublicOrderbookWS
     globals()["GaussianThompsonBandit"] = _GaussianThompsonBandit
@@ -207,6 +240,9 @@ def _hot_reload_runtime_modules() -> None:
     globals()["load_active_model"] = _load_active_model
     globals()["RiskManager"] = _RiskManager
     globals()["decide_exit_reason"] = _decide_exit_reason
+    globals()["build_futures_protection_plan"] = _build_futures_protection_plan
+    globals()["futures_entry_allowed"] = _futures_entry_allowed
+    globals()["can_auto_sell_hold"] = _can_auto_sell_hold
     globals()["apply_fill"] = _apply_fill
     globals()["unrealized_pnl_pct"] = _unrealized_pnl_pct
     globals()["get_connection"] = _get_connection
@@ -215,6 +251,12 @@ def _hot_reload_runtime_modules() -> None:
     globals()["insert_metrics_batch"] = _insert_metrics_batch
     globals()["insert_order"] = _insert_order
     globals()["update_orders_entry_exit_for_signal"] = _update_orders_entry_exit_for_signal
+    globals()["upsert_spot_holding"] = _upsert_spot_holding
+    globals()["insert_event_audit"] = _insert_event_audit
+    globals()["upsert_strategy_run"] = _upsert_strategy_run
+    globals()["insert_futures_position_decision"] = _insert_futures_position_decision
+    globals()["upsert_futures_position"] = _upsert_futures_position
+    globals()["upsert_futures_protection"] = _upsert_futures_protection
     globals()["ensure_lifecycle_schema"] = _ensure_lifecycle_schema
     globals()["get_signal_id_for_order_link"] = _get_signal_id_for_order_link
     globals()["insert_execution_event"] = _insert_execution_event
@@ -371,6 +413,21 @@ def main() -> None:
             strategy.__class__.__name__,
             runtime_market_category,
         )
+        strategy_run_id = f"run-{uuid.uuid4().hex[:16]}"
+        strategy_run_started_at = utc_now_iso()
+        upsert_strategy_run(
+            conn,
+            strategy_run_id=strategy_run_id,
+            strategy_name=strategy.__class__.__name__,
+            market_category=runtime_market_category,
+            status="running",
+            started_at_utc=strategy_run_started_at,
+            config_payload={
+                "runtime_strategy_mode": runtime_strategy_mode,
+                "symbols": list(config.symbols),
+                "execution_mode": mode,
+            },
+        )
         profile_ids = [p.profile_id.strip() for p in config.strategy.action_profiles if p.profile_id.strip()]
         if not profile_ids:
             profile_ids = ["default"]
@@ -444,6 +501,9 @@ def main() -> None:
         execution_refresh_interval_sec = max(float(config.strategy.execution_refresh_interval_sec), 1.0)
         execution_refresh_max_symbols = max(int(config.strategy.execution_refresh_max_symbols), 1)
         execution_refresh_concurrency = max(int(config.strategy.execution_refresh_concurrency), 1)
+        reconciliation_enabled = bool(getattr(config.strategy, "reconciliation_enabled", True))
+        reconciliation_interval_sec = max(float(getattr(config.strategy, "reconciliation_interval_sec", 120) or 120), 15.0)
+        reconciliation_symbols_limit = max(int(getattr(config.strategy, "reconciliation_symbols_limit", 120) or 120), 1)
         fast_reprice_on_send = bool(config.strategy.fast_reprice_on_send)
         quote_max_book_age_ms = max(int(config.strategy.quote_max_book_age_ms), 100)
         stop_loss_pct = max(config.strategy.stop_loss_pct, 0.0)
@@ -483,12 +543,41 @@ def main() -> None:
         seen_exec_ids: set[str] = set()
         last_executions_sync_ts = 0.0
         last_position_status_log_at = 0.0
+        last_reconciliation_run_ts = 0.0
+        last_protection_apply_ts: dict[str, float] = {s: 0.0 for s in config.symbols}
         # Spot wallet holdings: base coins (e.g. "BTC", "ETH") with non-dust balance.
         # Refreshed periodically from the exchange wallet-balance API.
         # This is the ground-truth for spot: a filled buy has NO open order,
         # it simply lives in the wallet until we sell it.
         wallet_held_base_symbols: set[str] = set()
         last_wallet_balance_check_at: float = 0.0
+
+        reconciliation_service: ExchangeReconciliationService | None = None
+        if executor is not None and reconciliation_enabled:
+            def _reconciliation_symbols() -> list[str]:
+                merged: set[str] = set(state.get_active_symbols() or [])
+                merged.update(config.symbols)
+                merged.update(
+                    symbol
+                    for symbol, qty in net_position_base.items()
+                    if abs(float(qty)) >= _position_floor(symbol)
+                )
+                return sorted(s for s in merged if str(s).strip())
+
+            reconciliation_service = ExchangeReconciliationService(
+                conn=conn,
+                executor=executor,
+                market_category=runtime_market_category,
+                account_type="UNIFIED",
+                managed_symbols=_reconciliation_symbols,
+                symbols_limit=reconciliation_symbols_limit,
+                service_name=str(strategy.__class__.__name__),
+            )
+            log.info(
+                "Reconciliation enabled: interval=%ss symbols_limit=%s",
+                int(reconciliation_interval_sec),
+                reconciliation_symbols_limit,
+            )
 
         async def _resolve_position_floor(symbol: str) -> float:
             symbol_u = str(symbol or "").upper().strip()
@@ -538,6 +627,201 @@ def main() -> None:
         def _position_notional_floor(symbol: str) -> float:
             symbol_u = str(symbol or "").upper().strip()
             return float(symbol_position_notional_floor.get(symbol_u, float(min_active_position_usdt)))
+
+        def _has_unprotected_futures_symbol(symbol: str) -> bool:
+            if runtime_market_category != "linear":
+                return False
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM futures_positions
+                WHERE account_type=?
+                  AND symbol=?
+                  AND ABS(COALESCE(qty, 0)) > 0
+                  AND LOWER(COALESCE(protection_status, ''))='unprotected'
+                LIMIT 1
+                """,
+                ("UNIFIED", str(symbol or "").upper()),
+            ).fetchone()
+            return bool(row)
+
+        def _spot_sell_blocked_by_hold_policy(symbol: str, side: str) -> tuple[bool, str]:
+            if runtime_market_category != "spot":
+                return False, ""
+            if str(side or "").strip().lower() != "sell":
+                return False, ""
+            row = conn.execute(
+                """
+                SELECT hold_reason, auto_sell_allowed, COALESCE(free_qty, 0), COALESCE(locked_qty, 0)
+                FROM spot_holdings
+                WHERE account_type=? AND symbol=?
+                LIMIT 1
+                """,
+                ("UNIFIED", str(symbol or "").upper()),
+            ).fetchone()
+            if not row:
+                return False, ""
+            hold_reason = str(row[0] or "")
+            auto_sell_allowed = bool(int(row[1] or 0))
+            qty = float(row[2] or 0.0) + float(row[3] or 0.0)
+            if qty <= 0:
+                return False, ""
+            if can_auto_sell_hold(hold_reason=hold_reason, auto_sell_allowed=auto_sell_allowed):
+                return False, ""
+            return True, hold_reason
+
+        def _record_futures_decision(
+            *,
+            symbol: str,
+            side: str,
+            decision_type: str,
+            reason: str,
+            payload: dict[str, Any] | None = None,
+            applied: bool = False,
+        ) -> None:
+            if runtime_market_category != "linear":
+                return
+            try:
+                insert_futures_position_decision(
+                    conn,
+                    account_type="UNIFIED",
+                    symbol=str(symbol or "").upper(),
+                    side=side,
+                    position_idx=0,
+                    decision_type=decision_type,
+                    reason=reason,
+                    policy_name="runtime",
+                    payload=payload or {},
+                    applied=applied,
+                )
+            except Exception as exc:
+                log.debug("record_futures_decision failed for %s: %s", symbol, exc)
+
+        async def _ensure_futures_protection(
+            *,
+            symbol: str,
+            position_qty: float,
+            entry_price: float,
+        ) -> None:
+            if runtime_market_category != "linear" or executor is None:
+                return
+            if abs(position_qty) < max(_position_floor(symbol), 1e-12):
+                return
+            if entry_price <= 0:
+                return
+            now_mono = time.monotonic()
+            if (now_mono - float(last_protection_apply_ts.get(symbol, 0.0))) < 8.0:
+                return
+            last_protection_apply_ts[symbol] = now_mono
+
+            side = "Buy" if position_qty > 0 else "Sell"
+            sl_pct = float(symbol_stop_loss_pct.get(symbol, stop_loss_pct))
+            tp_pct = float(symbol_take_profit_pct.get(symbol, take_profit_pct))
+            plan = build_futures_protection_plan(
+                entry_price=float(entry_price),
+                position_qty=float(position_qty),
+                stop_loss_pct=sl_pct,
+                take_profit_pct=tp_pct,
+            )
+            if plan is None:
+                upsert_futures_position(
+                    conn,
+                    account_type="UNIFIED",
+                    symbol=str(symbol).upper(),
+                    side=side,
+                    position_idx=0,
+                    margin_mode="",
+                    leverage=None,
+                    qty=float(abs(position_qty)),
+                    entry_price=float(entry_price),
+                    mark_price=None,
+                    liq_price=None,
+                    unrealized_pnl=None,
+                    realized_pnl=None,
+                    take_profit=None,
+                    stop_loss=None,
+                    trailing_stop=None,
+                    protection_status="unprotected",
+                    strategy_owner=strategy.__class__.__name__,
+                    source_of_truth="runtime",
+                    recovered_from_exchange=False,
+                )
+                _record_futures_decision(
+                    symbol=symbol,
+                    side=side,
+                    decision_type="protection_plan_failed",
+                    reason="invalid_protection_params",
+                    payload={"stop_loss_pct": sl_pct, "take_profit_pct": tp_pct},
+                    applied=False,
+                )
+                return
+
+            set_stop = getattr(executor, "set_trading_stop", None)
+            status = "unprotected"
+            if callable(set_stop):
+                try:
+                    resp = await set_stop(
+                        symbol=str(symbol).upper(),
+                        position_idx=0,
+                        stop_loss=plan.stop_loss,
+                        take_profit=plan.take_profit,
+                        trailing_stop=plan.trailing_stop,
+                    )
+                    if resp.get("retCode") == 0:
+                        status = "protected"
+                    else:
+                        log.warning(
+                            "set_trading_stop failed: symbol=%s retCode=%s retMsg=%s",
+                            symbol,
+                            resp.get("retCode"),
+                            resp.get("retMsg"),
+                        )
+                except Exception as exc:
+                    log.warning("set_trading_stop error for %s: %s", symbol, exc)
+
+            upsert_futures_position(
+                conn,
+                account_type="UNIFIED",
+                symbol=str(symbol).upper(),
+                side=side,
+                position_idx=0,
+                margin_mode="",
+                leverage=None,
+                qty=float(abs(position_qty)),
+                entry_price=float(entry_price),
+                mark_price=None,
+                liq_price=None,
+                unrealized_pnl=None,
+                realized_pnl=None,
+                take_profit=plan.take_profit,
+                stop_loss=plan.stop_loss,
+                trailing_stop=plan.trailing_stop,
+                protection_status=status,
+                strategy_owner=strategy.__class__.__name__,
+                source_of_truth="runtime",
+                recovered_from_exchange=False,
+            )
+            upsert_futures_protection(
+                conn,
+                account_type="UNIFIED",
+                symbol=str(symbol).upper(),
+                side=side,
+                position_idx=0,
+                status=status,
+                source_of_truth="runtime",
+                stop_loss=plan.stop_loss,
+                take_profit=plan.take_profit,
+                trailing_stop=plan.trailing_stop,
+                details={"stop_loss_pct": sl_pct, "take_profit_pct": tp_pct},
+            )
+            _record_futures_decision(
+                symbol=symbol,
+                side=side,
+                decision_type="protection_plan_created",
+                reason=("trading_stop_applied" if status == "protected" else "trading_stop_failed"),
+                payload={"stop_loss": plan.stop_loss, "take_profit": plan.take_profit, "status": status},
+                applied=(status == "protected"),
+            )
 
         def _reset_symbol_runtime_state(symbol: str) -> None:
             net_position_base[symbol] = 0.0
@@ -752,7 +1036,7 @@ def main() -> None:
         async def refresh_wallet_balance() -> None:
             """
             Query Bybit wallet balance and update wallet_held_base_symbols.
-            On spot, a filled buy has NO open order — the coin just sits in the wallet.
+            On spot, a filled buy has NO open order â€” the coin just sits in the wallet.
             This is the only reliable way to know how many symbols we're holding.
             Runs at most once every 15 seconds to avoid rate-limit pressure.
             """
@@ -901,6 +1185,45 @@ def main() -> None:
                     new_is_effective = abs_new_qty >= symbol_floor and (
                         not spot_notional_floor_enabled or symbol_notional_floor <= 0 or new_notional_quote >= symbol_notional_floor
                     )
+                    if runtime_market_category == "linear" and new_is_effective:
+                        await _ensure_futures_protection(
+                            symbol=symbol,
+                            position_qty=new_qty,
+                            entry_price=(new_avg if new_avg > 0 else price),
+                        )
+                    if runtime_market_category == "spot":
+                        base_asset, _ = _split_symbol_base_quote(symbol.upper())
+                        if base_asset:
+                            if new_is_effective and new_qty > 0:
+                                upsert_spot_holding(
+                                    conn,
+                                    account_type="UNIFIED",
+                                    symbol=symbol,
+                                    base_asset=base_asset,
+                                    free_qty=abs_new_qty,
+                                    locked_qty=0.0,
+                                    avg_entry_price=(new_avg if new_avg > 0 else price),
+                                    hold_reason="strategy_entry",
+                                    source_of_truth="runtime_fills",
+                                    recovered_from_exchange=False,
+                                    strategy_owner=strategy.__class__.__name__,
+                                    auto_sell_allowed=True,
+                                )
+                            elif not new_is_effective:
+                                upsert_spot_holding(
+                                    conn,
+                                    account_type="UNIFIED",
+                                    symbol=symbol,
+                                    base_asset=base_asset,
+                                    free_qty=0.0,
+                                    locked_qty=0.0,
+                                    avg_entry_price=None,
+                                    hold_reason="strategy_entry",
+                                    source_of_truth="runtime_fills",
+                                    recovered_from_exchange=False,
+                                    strategy_owner=strategy.__class__.__name__,
+                                    auto_sell_allowed=True,
+                                )
 
                     if abs(old_qty) < symbol_floor and new_is_effective:
                         position_opened_at[symbol] = time.monotonic()
@@ -1040,18 +1363,18 @@ def main() -> None:
             if opened_at is None:
                 # First time seeing this position in this session.
                 # If entry price is unknown (wallet-recovered without a DB fill record),
-                # treat it as already timed-out → triggers immediate force-exit below.
+                # treat it as already timed-out â†’ triggers immediate force-exit below.
                 # Otherwise start the clock now and fall through to SL/TP/timeout checks.
                 if avg_entry_price.get(symbol, 0.0) <= 0:
                     position_opened_at[symbol] = time.monotonic() - float(hold_timeout_sec) - 1.0
                     log.warning(
-                        "Position with unknown entry — forcing immediate timeout exit: "
+                        "Position with unknown entry â€” forcing immediate timeout exit: "
                         "symbol=%s qty=%.8f", symbol, pos_qty,
                     )
                 else:
                     position_opened_at[symbol] = time.monotonic()
                 opened_at = position_opened_at[symbol]
-                # Do NOT return — fall through to SL/TP/timeout logic.
+                # Do NOT return â€” fall through to SL/TP/timeout logic.
 
             ob = state.get_orderbook(symbol)
             if ob is None:
@@ -1099,6 +1422,20 @@ def main() -> None:
             if reason is None:
                 return True
 
+            insert_event_audit(
+                conn,
+                event_type="forced_exit_decision",
+                domain=("futures" if runtime_market_category == "linear" else "spot"),
+                symbol=symbol,
+                ref_id=position_signal_id.get(symbol),
+                payload={
+                    "reason": reason,
+                    "pnl_pct": pnl_pct,
+                    "age_sec": age,
+                    "qty": pos_qty,
+                },
+            )
+
             if not force_exit_enabled:
                 log.warning(
                     "Exit rule triggered but force_exit_enabled=false: symbol=%s reason=%s qty=%s pnl_pct=%s age=%.1fs",
@@ -1120,7 +1457,7 @@ def main() -> None:
             order_link_id = f"force-exit-{symbol}-{uuid.uuid4().hex[:10]}"
             exit_tif = force_exit_tif if allow_taker_exit else "PostOnly"
 
-            # Use Market order for emergency exits (stop-loss/timeout) — guaranteed fill on spot
+            # Use Market order for emergency exits (stop-loss/timeout) â€” guaranteed fill on spot
             # Limit+IOC at stale book price may silently cancel if market moved
             use_market = force_exit_use_market and reason in ("stop_loss", "fallback_stoploss", "hold_timeout")
             exit_order_type = "Market" if use_market else "Limit"
@@ -1156,6 +1493,18 @@ def main() -> None:
                     exit_order_type,
                     ret.get("retCode"),
                     ret.get("retMsg"),
+                )
+                insert_event_audit(
+                    conn,
+                    event_type="forced_exit_submission_failed",
+                    domain=("futures" if runtime_market_category == "linear" else "spot"),
+                    symbol=symbol,
+                    ref_id=order_link_id,
+                    payload={
+                        "reason": reason,
+                        "retCode": ret.get("retCode"),
+                        "retMsg": ret.get("retMsg"),
+                    },
                 )
                 return True
 
@@ -1196,6 +1545,14 @@ def main() -> None:
                 reason,
                 f"{pnl_pct:.6f}" if pnl_pct is not None else "n/a",
                 age,
+            )
+            insert_event_audit(
+                conn,
+                event_type="forced_exit_submitted",
+                domain=("futures" if runtime_market_category == "linear" else "spot"),
+                symbol=symbol,
+                ref_id=order_link_id,
+                payload={"reason": reason, "side": side, "qty": qty_str, "price": price_str},
             )
             return True
 
@@ -1600,8 +1957,8 @@ def main() -> None:
         async def recover_positions_on_startup() -> None:
             """
             On bot startup or soft-restart: reconstruct open positions from:
-              1. Local DB (executions_raw, last 24h) — fast, no API call.
-              2. Exchange get_execution_list() — catches fills not yet in DB.
+              1. Local DB (executions_raw, last 24h) â€” fast, no API call.
+              2. Exchange get_execution_list() â€” catches fills not yet in DB.
             Seeds seen_exec_ids so the regular refresh loop won't double-count.
             After recovery, any position past its SL/TP/timeout will be closed
             by maybe_force_exit() on the very first trading loop iteration.
@@ -1665,7 +2022,7 @@ def main() -> None:
 
             log.info("Startup recovery: replayed %d fills from DB.", db_replayed)
 
-            # --- Step 2: Exchange API — catch fills not yet written to DB ---
+            # --- Step 2: Exchange API â€” catch fills not yet written to DB ---
             if executor is not None:
                 all_symbols: set[str] = set(config.symbols)
                 all_symbols.update(s for s, q in net_position_base.items() if abs(q) > 0)
@@ -1717,7 +2074,7 @@ def main() -> None:
                         avg_entry_price[symbol] = new_avg
 
             # --- Step 3: Wallet balance cross-check (spot ground truth) ---
-            # On spot, a filled buy has NO open order — coin just sits in wallet.
+            # On spot, a filled buy has NO open order â€” coin just sits in wallet.
             # If DB/API replay missed any fills, wallet balance is the last safety net.
             if executor is not None:
                 try:
@@ -1737,16 +2094,24 @@ def main() -> None:
                                     # We hold this coin but DB/API replay missed it.
                                     # Mark it so the timeout exit fires quickly.
                                     log.warning(
-                                        "Startup recovery: wallet holds %s=%.8f but net_position_base=%.8f — "
-                                        "injecting as timed-out position for immediate cleanup.",
+                                        "Startup recovery: wallet holds %s=%.8f but net_position_base=%.8f â€” "
+                                        "importing as recovered holding (auto-sell disabled).",
                                         sym, wb_qty, tracked,
                                     )
-                                    net_position_base[sym] = wb_qty
-                                    # avg_entry unknown — use 0 so SL won't block, timeout fires
-                                    avg_entry_price.setdefault(sym, 0.0)
-                                    # Mark as opened hold_timeout ago → triggers timeout exit immediately
-                                    position_opened_at[sym] = time.monotonic() - float(hold_timeout_sec) - 10.0
-                                    symbol_peak_pnl_bps.setdefault(sym, 0.0)
+                                    upsert_spot_holding(
+                                        conn,
+                                        account_type="UNIFIED",
+                                        symbol=sym,
+                                        base_asset=coin,
+                                        free_qty=wb_qty,
+                                        locked_qty=0.0,
+                                        avg_entry_price=None,
+                                        hold_reason="unknown_recovered_from_exchange",
+                                        source_of_truth="startup_wallet_recovery",
+                                        recovered_from_exchange=True,
+                                        strategy_owner=None,
+                                        auto_sell_allowed=False,
+                                    )
                 except Exception as exc:
                     log.warning("Startup recovery: wallet balance check failed: %s", exc)
 
@@ -1756,7 +2121,7 @@ def main() -> None:
             }
             if open_positions:
                 log.warning(
-                    "Startup recovery: found %d open position(s) — will apply exit checks immediately: %s",
+                    "Startup recovery: found %d open position(s) â€” will apply exit checks immediately: %s",
                     len(open_positions),
                     ", ".join(
                         f"{s}=qty:{q:.8f} avg_entry:{avg_entry_price.get(s, 0.0):.6f}"
@@ -1766,17 +2131,22 @@ def main() -> None:
                 # Mark positions as opened so maybe_force_exit() processes them
                 for s, q in open_positions.items():
                     if position_opened_at.get(s) is None:
-                        # Use current time — age=0, so only SL/TP triggers (not timeout yet)
+                        # Use current time â€” age=0, so only SL/TP triggers (not timeout yet)
                         # This is safe: timeout will trigger after hold_timeout_sec from now
                         position_opened_at[s] = time.monotonic()
                         symbol_peak_pnl_bps[s] = 0.0
             else:
-                log.info("Startup recovery: no open positions found — starting clean.")
+                log.info("Startup recovery: no open positions found â€” starting clean.")
 
         async def trading_loop() -> None:
-            nonlocal last_position_status_log_at
+            nonlocal last_position_status_log_at, last_reconciliation_run_ts
             if executor is None:
                 return
+
+            if reconciliation_service is not None:
+                rec_summary = await reconciliation_service.run(trigger_source="startup")
+                last_reconciliation_run_ts = time.monotonic()
+                log.info("Reconciliation startup summary: %s", rec_summary)
 
             # Cancel ALL open orders before recovery so we start from a clean slate.
             # This prevents stale SPREAD/spike quotes from accumulating across restarts.
@@ -1812,6 +2182,13 @@ def main() -> None:
                         except asyncio.QueueEmpty:
                             break
                     state.set_active_symbols(active_symbols)
+
+                if reconciliation_service is not None:
+                    now_recon = time.monotonic()
+                    if (now_recon - last_reconciliation_run_ts) >= reconciliation_interval_sec:
+                        rec_summary = await reconciliation_service.run(trigger_source="scheduled")
+                        last_reconciliation_run_ts = now_recon
+                        log.info("Reconciliation scheduled summary: %s", rec_summary)
 
                 if state.panic_requested:
                     try:
@@ -2003,13 +2380,66 @@ def main() -> None:
                             entry_price=float(intent_to_send.price),
                         )
 
-                        # Count unique symbols we're "in" — three independent sources:
+                        spot_blocked, blocked_reason = _spot_sell_blocked_by_hold_policy(
+                            intent_to_send.symbol,
+                            intent_to_send.side,
+                        )
+                        if spot_blocked:
+                            risk_reject_count += 1
+                            log.warning(
+                                "Spot sell rejected by hold policy: symbol=%s hold_reason=%s order_link_id=%s",
+                                intent_to_send.symbol,
+                                blocked_reason,
+                                intent_to_send.order_link_id,
+                            )
+                            continue
+
+                        if runtime_market_category == "linear":
+                            entry_sl_pct = (
+                                float(intent_to_send.action_stop_loss_pct)
+                                if intent_to_send.action_stop_loss_pct is not None
+                                else float(symbol_stop_loss_pct.get(intent_to_send.symbol, stop_loss_pct))
+                            )
+                            entry_tp_pct = (
+                                float(intent_to_send.action_take_profit_pct)
+                                if intent_to_send.action_take_profit_pct is not None
+                                else float(symbol_take_profit_pct.get(intent_to_send.symbol, take_profit_pct))
+                            )
+                            entry_allowed, entry_reason = futures_entry_allowed(
+                                stop_loss_pct=entry_sl_pct,
+                                take_profit_pct=entry_tp_pct,
+                                has_unprotected_position=_has_unprotected_futures_symbol(intent_to_send.symbol),
+                            )
+                            if not entry_allowed:
+                                risk_reject_count += 1
+                                _record_futures_decision(
+                                    symbol=intent_to_send.symbol,
+                                    side=intent_to_send.side,
+                                    decision_type="entry_rejected",
+                                    reason=entry_reason,
+                                    payload={
+                                        "stop_loss_pct": entry_sl_pct,
+                                        "take_profit_pct": entry_tp_pct,
+                                        "order_link_id": intent_to_send.order_link_id,
+                                    },
+                                    applied=False,
+                                )
+                                log.warning(
+                                    "Futures entry rejected: symbol=%s reason=%s stop_loss_pct=%.6f take_profit_pct=%.6f",
+                                    intent_to_send.symbol,
+                                    entry_reason,
+                                    entry_sl_pct,
+                                    entry_tp_pct,
+                                )
+                                continue
+
+                        # Count unique symbols we're "in" â€” three independent sources:
                         # 1. net_position_base: fills tracked via WS execution stream
                         # 2. open_order_symbols: pending orders fetched from exchange this loop
-                        # 3. wallet_held_base_symbols → {coin}USDT: actual wallet holdings
-                        #    (ground truth for spot — a filled buy has NO open order, coin is just held)
+                        # 3. wallet_held_base_symbols â†’ {coin}USDT: actual wallet holdings
+                        #    (ground truth for spot â€” a filled buy has NO open order, coin is just held)
                         # 4. newly_placed_symbols: orders placed earlier in THIS loop iteration
-                        #    (open_order_symbols is stale — fetched at start of loop, before new placements)
+                        #    (open_order_symbols is stale â€” fetched at start of loop, before new placements)
                         _filled_pos_symbols = {
                             s for s, q in net_position_base.items() if abs(q) >= _position_floor(s)
                         }
@@ -2090,6 +2520,54 @@ def main() -> None:
                             qty=float(intent_to_send.qty),
                             order_status="New",
                         )
+                        if runtime_market_category == "linear":
+                            side = "Buy" if str(intent_to_send.side).lower() == "buy" else "Sell"
+                            sl_pct = (
+                                float(intent_to_send.action_stop_loss_pct)
+                                if intent_to_send.action_stop_loss_pct is not None
+                                else float(symbol_stop_loss_pct.get(intent_to_send.symbol, stop_loss_pct))
+                            )
+                            tp_pct = (
+                                float(intent_to_send.action_take_profit_pct)
+                                if intent_to_send.action_take_profit_pct is not None
+                                else float(symbol_take_profit_pct.get(intent_to_send.symbol, take_profit_pct))
+                            )
+                            planned = build_futures_protection_plan(
+                                entry_price=float(intent_to_send.price),
+                                position_qty=(float(intent_to_send.qty) if side == "Buy" else -float(intent_to_send.qty)),
+                                stop_loss_pct=sl_pct,
+                                take_profit_pct=tp_pct,
+                            )
+                            if planned is not None:
+                                upsert_futures_protection(
+                                    conn,
+                                    account_type="UNIFIED",
+                                    symbol=str(intent_to_send.symbol).upper(),
+                                    side=side,
+                                    position_idx=0,
+                                    status="pending",
+                                    source_of_truth="strategy_entry_plan",
+                                    stop_loss=planned.stop_loss,
+                                    take_profit=planned.take_profit,
+                                    trailing_stop=planned.trailing_stop,
+                                    details={
+                                        "order_link_id": intent_to_send.order_link_id,
+                                        "stop_loss_pct": sl_pct,
+                                        "take_profit_pct": tp_pct,
+                                    },
+                                )
+                                _record_futures_decision(
+                                    symbol=intent_to_send.symbol,
+                                    side=side,
+                                    decision_type="protection_plan_created",
+                                    reason="entry_order_placed",
+                                    payload={
+                                        "order_link_id": intent_to_send.order_link_id,
+                                        "stop_loss": planned.stop_loss,
+                                        "take_profit": planned.take_profit,
+                                    },
+                                    applied=False,
+                                )
 
                     ws_books_ready = sum(1 for s in config.symbols if state.get_orderbook(s) is not None)
                     active_ws_books_ready = sum(1 for s in active_symbols if state.get_orderbook(s) is not None)
@@ -2249,6 +2727,20 @@ def main() -> None:
         try:
             await asyncio.gather(ws.run(), metrics_loop(), scanner_loop(), universe_loop(), trading_loop())
         finally:
+            upsert_strategy_run(
+                conn,
+                strategy_run_id=strategy_run_id,
+                strategy_name=strategy.__class__.__name__,
+                market_category=runtime_market_category,
+                status="stopped",
+                started_at_utc=strategy_run_started_at,
+                finished_at_utc=utc_now_iso(),
+                config_payload={
+                    "runtime_strategy_mode": runtime_strategy_mode,
+                    "symbols": list(config.symbols),
+                    "execution_mode": mode,
+                },
+            )
             conn.close()
 
     while True:

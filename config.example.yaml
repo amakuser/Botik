@@ -57,6 +57,9 @@ strategy:
   execution_refresh_interval_sec: 8
   execution_refresh_max_symbols: 12
   execution_refresh_concurrency: 4
+  reconciliation_enabled: true
+  reconciliation_interval_sec: 120
+  reconciliation_symbols_limit: 120
   auto_universe_enabled: true
   auto_universe_host: "api.bybit.com"
   auto_universe_quote: "USDT"

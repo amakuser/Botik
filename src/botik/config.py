@@ -86,6 +86,9 @@ class StrategyConfig(BaseModel):
     execution_refresh_interval_sec: float = 8.0
     execution_refresh_max_symbols: int = 12
     execution_refresh_concurrency: int = 4
+    reconciliation_enabled: bool = True
+    reconciliation_interval_sec: int = 120
+    reconciliation_symbols_limit: int = 120
     auto_universe_enabled: bool = False
     auto_universe_host: str = "api.bybit.com"
     auto_universe_quote: str = "USDT"

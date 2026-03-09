@@ -461,3 +461,42 @@ class BybitRestClient:
         if order_link_id:
             params["orderLinkId"] = order_link_id
         return await self._request("GET", "/v5/execution/list", params=params)
+
+    async def get_positions(self, symbol: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {"category": self.category}
+        if symbol:
+            params["symbol"] = symbol
+        elif self.category == "linear":
+            params["settleCoin"] = self._default_settle_coin()
+        return await self._request("GET", "/v5/position/list", params=params)
+
+    async def set_trading_stop(
+        self,
+        *,
+        symbol: str,
+        position_idx: int = 0,
+        take_profit: float | None = None,
+        stop_loss: float | None = None,
+        trailing_stop: float | None = None,
+    ) -> dict[str, Any]:
+        if self.category != "linear":
+            return {"retCode": -2, "retMsg": "set_trading_stop_supported_for_linear_only", "result": {}}
+
+        body: dict[str, Any] = {
+            "category": self.category,
+            "symbol": symbol,
+            "positionIdx": int(position_idx),
+        }
+        has_any = False
+        if take_profit is not None:
+            body["takeProfit"] = str(float(take_profit))
+            has_any = True
+        if stop_loss is not None:
+            body["stopLoss"] = str(float(stop_loss))
+            has_any = True
+        if trailing_stop is not None:
+            body["trailingStop"] = str(float(trailing_stop))
+            has_any = True
+        if not has_any:
+            return {"retCode": -2, "retMsg": "empty_protection_payload", "result": {}}
+        return await self._request("POST", "/v5/position/trading-stop", json_body=body)
