@@ -312,6 +312,10 @@ class BotikGui:
         self.stats_pnl_canvas: tk.Canvas | None = None
         self.stats_history_tree: ttk.Treeview | None = None
         self.stats_balance_tree: ttk.Treeview | None = None
+        self.stats_spot_holdings_tree: ttk.Treeview | None = None
+        self.stats_futures_positions_tree: ttk.Treeview | None = None
+        self.stats_futures_orders_tree: ttk.Treeview | None = None
+        self.stats_reconciliation_issues_tree: ttk.Treeview | None = None
         self.models_tree: ttk.Treeview | None = None
         self.log_text_full: tk.Text | None = None
         self.log_level_filter_combo: ttk.Combobox | None = None
@@ -358,6 +362,10 @@ class BotikGui:
             "stats_cum_pnl_chart": [],
             "balance_rows": [],
             "balance_delta_total": 0.0,
+            "spot_holdings_rows": [],
+            "futures_positions_rows": [],
+            "futures_orders_rows": [],
+            "reconciliation_issue_rows": [],
             "model_rows": [],
         }
 
@@ -1076,6 +1084,127 @@ class BotikGui:
         self.stats_balance_tree.configure(yscrollcommand=bal_scroll.set)
         self.stats_balance_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         bal_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        domain_card = ttk.Frame(stats_root, style="Card.TFrame", padding=10)
+        domain_card.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        ttk.Label(domain_card, text="Spot/Futures/Reconciliation", style="Section.TLabel").pack(anchor=tk.W)
+
+        domain_notebook = ttk.Notebook(domain_card)
+        domain_notebook.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+
+        spot_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
+        futures_pos_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
+        futures_ord_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
+        issues_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
+        domain_notebook.add(spot_frame, text="Spot Holdings")
+        domain_notebook.add(futures_pos_frame, text="Futures Positions")
+        domain_notebook.add(futures_ord_frame, text="Futures Orders")
+        domain_notebook.add(issues_frame, text="Reconciliation Issues")
+
+        spot_wrap = ttk.Frame(spot_frame, style="Card.TFrame")
+        spot_wrap.pack(fill=tk.BOTH, expand=True)
+        self.stats_spot_holdings_tree = ttk.Treeview(
+            spot_wrap,
+            columns=("n", "symbol", "base", "free", "locked", "entry", "reason", "source", "recovered", "auto_sell"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("symbol", "Symbol", 96),
+            ("base", "Base", 64),
+            ("free", "Free", 90),
+            ("locked", "Locked", 90),
+            ("entry", "AvgEntry", 90),
+            ("reason", "HoldReason", 150),
+            ("source", "Source", 150),
+            ("recovered", "Recovered", 86),
+            ("auto_sell", "AutoSell", 82),
+        ]:
+            self.stats_spot_holdings_tree.heading(col, text=title)
+            self.stats_spot_holdings_tree.column(col, width=width, anchor=tk.W)
+        spot_scroll = ttk.Scrollbar(spot_wrap, orient=tk.VERTICAL, command=self.stats_spot_holdings_tree.yview)
+        self.stats_spot_holdings_tree.configure(yscrollcommand=spot_scroll.set)
+        self.stats_spot_holdings_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        spot_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        fut_pos_wrap = ttk.Frame(futures_pos_frame, style="Card.TFrame")
+        fut_pos_wrap.pack(fill=tk.BOTH, expand=True)
+        self.stats_futures_positions_tree = ttk.Treeview(
+            fut_pos_wrap,
+            columns=("n", "symbol", "side", "qty", "entry", "mark", "liq", "upnl", "tp", "sl", "protection"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("symbol", "Symbol", 96),
+            ("side", "Side", 62),
+            ("qty", "Qty", 90),
+            ("entry", "Entry", 90),
+            ("mark", "Mark", 90),
+            ("liq", "Liq", 90),
+            ("upnl", "UPnL", 90),
+            ("tp", "TakeProfit", 92),
+            ("sl", "StopLoss", 92),
+            ("protection", "Protection", 110),
+        ]:
+            self.stats_futures_positions_tree.heading(col, text=title)
+            self.stats_futures_positions_tree.column(col, width=width, anchor=tk.W)
+        fut_pos_scroll = ttk.Scrollbar(fut_pos_wrap, orient=tk.VERTICAL, command=self.stats_futures_positions_tree.yview)
+        self.stats_futures_positions_tree.configure(yscrollcommand=fut_pos_scroll.set)
+        self.stats_futures_positions_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        fut_pos_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        fut_ord_wrap = ttk.Frame(futures_ord_frame, style="Card.TFrame")
+        fut_ord_wrap.pack(fill=tk.BOTH, expand=True)
+        self.stats_futures_orders_tree = ttk.Treeview(
+            fut_ord_wrap,
+            columns=("n", "symbol", "side", "order_id", "link_id", "type", "price", "qty", "status"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("symbol", "Symbol", 96),
+            ("side", "Side", 62),
+            ("order_id", "OrderID", 130),
+            ("link_id", "LinkID", 130),
+            ("type", "Type", 70),
+            ("price", "Price", 90),
+            ("qty", "Qty", 90),
+            ("status", "Status", 120),
+        ]:
+            self.stats_futures_orders_tree.heading(col, text=title)
+            self.stats_futures_orders_tree.column(col, width=width, anchor=tk.W)
+        fut_ord_scroll = ttk.Scrollbar(fut_ord_wrap, orient=tk.VERTICAL, command=self.stats_futures_orders_tree.yview)
+        self.stats_futures_orders_tree.configure(yscrollcommand=fut_ord_scroll.set)
+        self.stats_futures_orders_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        fut_ord_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        issues_wrap = ttk.Frame(issues_frame, style="Card.TFrame")
+        issues_wrap.pack(fill=tk.BOTH, expand=True)
+        self.stats_reconciliation_issues_tree = ttk.Treeview(
+            issues_wrap,
+            columns=("n", "ts", "domain", "type", "symbol", "severity", "status"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("ts", "Created", 150),
+            ("domain", "Domain", 90),
+            ("type", "IssueType", 210),
+            ("symbol", "Symbol", 96),
+            ("severity", "Severity", 80),
+            ("status", "Status", 80),
+        ]:
+            self.stats_reconciliation_issues_tree.heading(col, text=title)
+            self.stats_reconciliation_issues_tree.column(col, width=width, anchor=tk.W)
+        issues_scroll = ttk.Scrollbar(issues_wrap, orient=tk.VERTICAL, command=self.stats_reconciliation_issues_tree.yview)
+        self.stats_reconciliation_issues_tree.configure(yscrollcommand=issues_scroll.set)
+        self.stats_reconciliation_issues_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        issues_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _build_models_tab(self) -> None:
         models_root = ttk.Frame(self.models_tab, style="Root.TFrame")
@@ -2661,6 +2790,10 @@ class BotikGui:
             outcomes_summary = self._read_outcomes_summary(db_path)
             stats_cum_pnl_chart = self._read_cumulative_pnl_chart(db_path, max_points=240)
             balance_rows, balance_delta_total = self._read_balance_flow_events(db_path, max_rows=500)
+            spot_holdings_rows = self._read_spot_holdings_rows(db_path, limit=400)
+            futures_positions_rows = self._read_futures_positions_rows(db_path, limit=400)
+            futures_orders_rows = self._read_futures_open_orders_rows(db_path, limit=400)
+            reconciliation_issue_rows = self._read_reconciliation_issue_rows(db_path, limit=400)
             model_rows = self._read_model_registry_rows(db_path, limit=400)
             self._cached_heavy_snapshot = {
                 "history_rows_full": history_rows_full,
@@ -2669,6 +2802,10 @@ class BotikGui:
                 "stats_cum_pnl_chart": list(stats_cum_pnl_chart),
                 "balance_rows": list(balance_rows),
                 "balance_delta_total": float(balance_delta_total),
+                "spot_holdings_rows": list(spot_holdings_rows),
+                "futures_positions_rows": list(futures_positions_rows),
+                "futures_orders_rows": list(futures_orders_rows),
+                "reconciliation_issue_rows": list(reconciliation_issue_rows),
                 "model_rows": list(model_rows),
             }
             self._last_heavy_refresh_ts = now_mono
@@ -2680,6 +2817,10 @@ class BotikGui:
             stats_cum_pnl_chart = list(cached.get("stats_cum_pnl_chart") or [])
             balance_rows = list(cached.get("balance_rows") or [])
             balance_delta_total = float(cached.get("balance_delta_total") or 0.0)
+            spot_holdings_rows = list(cached.get("spot_holdings_rows") or [])
+            futures_positions_rows = list(cached.get("futures_positions_rows") or [])
+            futures_orders_rows = list(cached.get("futures_orders_rows") or [])
+            reconciliation_issue_rows = list(cached.get("reconciliation_issue_rows") or [])
             model_rows = list(cached.get("model_rows") or [])
 
         snapshot: dict[str, Any] = {
@@ -2701,6 +2842,10 @@ class BotikGui:
             "stats_balance_rows": balance_rows,
             "stats_balance_events": len(balance_rows),
             "stats_balance_delta_total": float(balance_delta_total),
+            "stats_spot_holdings_rows": spot_holdings_rows,
+            "stats_futures_positions_rows": futures_positions_rows,
+            "stats_futures_orders_rows": futures_orders_rows,
+            "stats_reconciliation_issue_rows": reconciliation_issue_rows,
             "model_rows": model_rows,
             "models_total": len(model_rows),
             "api_status": f"mode={mode}; modes={','.join(enabled_modes)}",
@@ -3556,6 +3701,205 @@ class BotikGui:
         finally:
             conn.close()
 
+    def _read_spot_holdings_rows(
+        self,
+        db_path: Path,
+        limit: int = 400,
+    ) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
+        if not db_path.exists():
+            return []
+        conn = sqlite3.connect(str(db_path))
+        try:
+            if not self._table_exists(conn, "spot_holdings"):
+                return []
+            rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(symbol, ''),
+                    COALESCE(base_asset, ''),
+                    COALESCE(free_qty, 0.0),
+                    COALESCE(locked_qty, 0.0),
+                    avg_entry_price,
+                    COALESCE(hold_reason, ''),
+                    COALESCE(source_of_truth, ''),
+                    COALESCE(recovered_from_exchange, 0),
+                    COALESCE(auto_sell_allowed, 0)
+                FROM spot_holdings
+                ORDER BY updated_at_utc DESC
+                LIMIT ?
+                """,
+                (max(int(limit), 1),),
+            ).fetchall()
+            out: list[tuple[str, str, str, str, str, str, str, str, str, str]] = []
+            for symbol, base, free_qty, locked_qty, entry, reason, source, recovered, auto_sell in rows:
+                out.append(
+                    (
+                        "0",
+                        str(symbol or ""),
+                        str(base or ""),
+                        self._fmt_num(free_qty, precision=8),
+                        self._fmt_num(locked_qty, precision=8),
+                        self._fmt_price_or_blank(entry, precision=8),
+                        str(reason or ""),
+                        str(source or ""),
+                        "yes" if int(recovered or 0) == 1 else "no",
+                        "yes" if int(auto_sell or 0) == 1 else "no",
+                    )
+                )
+            return self._reindex_rows(out, width=10)
+        except sqlite3.Error:
+            return []
+        finally:
+            conn.close()
+
+    def _read_futures_positions_rows(
+        self,
+        db_path: Path,
+        limit: int = 400,
+    ) -> list[tuple[str, str, str, str, str, str, str, str, str, str, str]]:
+        if not db_path.exists():
+            return []
+        conn = sqlite3.connect(str(db_path))
+        try:
+            if not self._table_exists(conn, "futures_positions"):
+                return []
+            rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(symbol, ''),
+                    COALESCE(side, ''),
+                    COALESCE(qty, 0.0),
+                    entry_price,
+                    mark_price,
+                    liq_price,
+                    unrealized_pnl,
+                    take_profit,
+                    stop_loss,
+                    COALESCE(protection_status, '')
+                FROM futures_positions
+                WHERE ABS(COALESCE(qty, 0.0)) > 0
+                ORDER BY updated_at_utc DESC
+                LIMIT ?
+                """,
+                (max(int(limit), 1),),
+            ).fetchall()
+            out: list[tuple[str, str, str, str, str, str, str, str, str, str, str]] = []
+            for symbol, side, qty, entry, mark, liq, upnl, tp, sl, protection in rows:
+                out.append(
+                    (
+                        "0",
+                        str(symbol or ""),
+                        str(side or ""),
+                        self._fmt_num(qty, precision=8),
+                        self._fmt_price_or_blank(entry, precision=8),
+                        self._fmt_price_or_blank(mark, precision=8),
+                        self._fmt_price_or_blank(liq, precision=8),
+                        self._fmt_num(upnl, precision=6),
+                        self._fmt_price_or_blank(tp, precision=8),
+                        self._fmt_price_or_blank(sl, precision=8),
+                        str(protection or ""),
+                    )
+                )
+            return self._reindex_rows(out, width=10)
+        except sqlite3.Error:
+            return []
+        finally:
+            conn.close()
+
+    def _read_futures_open_orders_rows(
+        self,
+        db_path: Path,
+        limit: int = 400,
+    ) -> list[tuple[str, str, str, str, str, str, str, str, str]]:
+        if not db_path.exists():
+            return []
+        conn = sqlite3.connect(str(db_path))
+        try:
+            if not self._table_exists(conn, "futures_open_orders"):
+                return []
+            rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(symbol, ''),
+                    COALESCE(side, ''),
+                    COALESCE(order_id, ''),
+                    COALESCE(order_link_id, ''),
+                    COALESCE(order_type, ''),
+                    price,
+                    qty,
+                    COALESCE(status, '')
+                FROM futures_open_orders
+                ORDER BY updated_at_utc DESC
+                LIMIT ?
+                """,
+                (max(int(limit), 1),),
+            ).fetchall()
+            out: list[tuple[str, str, str, str, str, str, str, str, str]] = []
+            for symbol, side, order_id, link_id, order_type, price, qty, status in rows:
+                out.append(
+                    (
+                        "0",
+                        str(symbol or ""),
+                        str(side or ""),
+                        str(order_id or ""),
+                        str(link_id or ""),
+                        str(order_type or ""),
+                        self._fmt_price_or_blank(price, precision=8),
+                        self._fmt_num(qty, precision=8),
+                        str(status or ""),
+                    )
+                )
+            return self._reindex_rows(out, width=10)
+        except sqlite3.Error:
+            return []
+        finally:
+            conn.close()
+
+    def _read_reconciliation_issue_rows(
+        self,
+        db_path: Path,
+        limit: int = 400,
+    ) -> list[tuple[str, str, str, str, str, str, str]]:
+        if not db_path.exists():
+            return []
+        conn = sqlite3.connect(str(db_path))
+        try:
+            if not self._table_exists(conn, "reconciliation_issues"):
+                return []
+            rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(created_at_utc, ''),
+                    COALESCE(domain, ''),
+                    COALESCE(issue_type, ''),
+                    COALESCE(symbol, ''),
+                    COALESCE(severity, ''),
+                    COALESCE(status, '')
+                FROM reconciliation_issues
+                ORDER BY created_at_utc DESC
+                LIMIT ?
+                """,
+                (max(int(limit), 1),),
+            ).fetchall()
+            out: list[tuple[str, str, str, str, str, str, str]] = []
+            for ts, domain, issue_type, symbol, severity, status in rows:
+                out.append(
+                    (
+                        "0",
+                        str(ts or ""),
+                        str(domain or ""),
+                        str(issue_type or ""),
+                        str(symbol or ""),
+                        str(severity or ""),
+                        str(status or ""),
+                    )
+                )
+            return self._reindex_rows(out, width=10)
+        except sqlite3.Error:
+            return []
+        finally:
+            conn.close()
+
     def _set_tree_rows(self, tree: ttk.Treeview, rows: list[tuple[Any, ...]]) -> None:
         for item in tree.get_children():
             tree.delete(item)
@@ -3661,6 +4005,17 @@ class BotikGui:
             self._set_tree_rows(self.stats_history_tree, list(snapshot.get("history_rows_full") or []))
         if self.stats_balance_tree is not None and active_tab == "stats":
             self._set_tree_rows(self.stats_balance_tree, list(snapshot.get("stats_balance_rows") or []))
+        if self.stats_spot_holdings_tree is not None and active_tab == "stats":
+            self._set_tree_rows(self.stats_spot_holdings_tree, list(snapshot.get("stats_spot_holdings_rows") or []))
+        if self.stats_futures_positions_tree is not None and active_tab == "stats":
+            self._set_tree_rows(self.stats_futures_positions_tree, list(snapshot.get("stats_futures_positions_rows") or []))
+        if self.stats_futures_orders_tree is not None and active_tab == "stats":
+            self._set_tree_rows(self.stats_futures_orders_tree, list(snapshot.get("stats_futures_orders_rows") or []))
+        if self.stats_reconciliation_issues_tree is not None and active_tab == "stats":
+            self._set_tree_rows(
+                self.stats_reconciliation_issues_tree,
+                list(snapshot.get("stats_reconciliation_issue_rows") or []),
+            )
         if self.models_tree is not None and active_tab == "models":
             self._set_tree_rows(self.models_tree, list(snapshot.get("model_rows") or []))
         self.stats_orders_total_var.set(str(int(snapshot.get("stats_orders_total", 0))))
