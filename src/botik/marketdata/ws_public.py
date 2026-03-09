@@ -1,5 +1,5 @@
 """
-Public Spot orderbook websocket client.
+Public Bybit orderbook websocket client (spot/linear).
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def aggregate_from_book(
     )
 
 
-class BybitSpotOrderbookWS:
+class BybitPublicOrderbookWS:
     def __init__(
         self,
         ws_host: str,
@@ -94,12 +94,14 @@ class BybitSpotOrderbookWS:
         depth: int,
         state: TradingState,
         tick_size: float = 0.01,
+        category: str = "spot",
     ):
         self.ws_host = ws_host
         self.symbols = self._normalize_symbols(symbols)
         self.depth = depth
         self.state = state
         self.tick_size = tick_size
+        self.category = self._sanitize_category(category)
         self._bids: dict[str, dict[float, float]] = {s: {} for s in self.symbols}
         self._asks: dict[str, dict[float, float]] = {s: {} for s in self.symbols}
         self._ws: WebSocketClientProtocol | None = None
@@ -119,8 +121,15 @@ class BybitSpotOrderbookWS:
             out.append(s)
         return out
 
+    @staticmethod
+    def _sanitize_category(category: str) -> str:
+        value = str(category or "").strip().lower()
+        if value in {"spot", "linear"}:
+            return value
+        return "spot"
+
     def _url(self) -> str:
-        return f"wss://{self.ws_host}/v5/public/spot"
+        return f"wss://{self.ws_host}/v5/public/{self.category}"
 
     def _topics_for_symbols(self, symbols: list[str]) -> list[str]:
         topics: list[str] = []
@@ -309,3 +318,7 @@ class BybitSpotOrderbookWS:
             len(unsub_args),
         )
         return True
+
+
+# Backward compatibility alias.
+BybitSpotOrderbookWS = BybitPublicOrderbookWS

@@ -46,6 +46,9 @@ def ensure_lifecycle_schema(conn: sqlite3.Connection) -> None:
             trades_per_min REAL,
             p95_trade_gap_ms REAL,
             vol_1s_bps REAL,
+            impulse_bps REAL,
+            spike_direction INTEGER,
+            spike_strength_bps REAL,
             min_required_spread_bps REAL,
             scanner_status TEXT,
             model_version TEXT,
@@ -179,6 +182,9 @@ def ensure_lifecycle_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "signals", "pred_exp_edge_bps", "REAL")
     _ensure_column(conn, "signals", "active_model_id", "TEXT")
     _ensure_column(conn, "signals", "model_id", "TEXT")
+    _ensure_column(conn, "signals", "impulse_bps", "REAL")
+    _ensure_column(conn, "signals", "spike_direction", "INTEGER")
+    _ensure_column(conn, "signals", "spike_strength_bps", "REAL")
     _ensure_column(conn, "signals", "reward_net_edge_bps", "REAL")
     _ensure_column(conn, "signals", "reward_updated_at_utc", "TEXT")
     conn.commit()
@@ -226,6 +232,9 @@ def insert_signal_snapshot(
     min_required_spread_bps: float,
     scanner_status: str,
     model_version: str,
+    impulse_bps: float = 0.0,
+    spike_direction: int = 0,
+    spike_strength_bps: float = 0.0,
     profile_id: str | None = None,
     action_entry_tick_offset: int | None = None,
     action_order_qty_base: float | None = None,
@@ -250,13 +259,13 @@ def insert_signal_snapshot(
         INSERT INTO signals (
             signal_id, ts_signal_ms, symbol, side, best_bid, best_ask, mid, spread_bps,
             depth_bid_quote, depth_ask_quote, slippage_buy_bps_est, slippage_sell_bps_est,
-            trades_per_min, p95_trade_gap_ms, vol_1s_bps, min_required_spread_bps,
+            trades_per_min, p95_trade_gap_ms, vol_1s_bps, impulse_bps, spike_direction, spike_strength_bps, min_required_spread_bps,
             scanner_status, model_version, profile_id, action_entry_tick_offset, action_order_qty_base,
             action_target_profit, action_safety_buffer, action_min_top_book_qty, action_stop_loss_pct,
             action_take_profit_pct, action_hold_timeout_sec, action_maker_only, policy_used, pred_open_prob,
             pred_exp_edge_bps, active_model_id, model_id, reward_net_edge_bps, reward_updated_at_utc, order_size_quote,
             order_size_base, entry_price, created_at_utc
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(signal_id) DO NOTHING
         """,
         (
@@ -275,6 +284,9 @@ def insert_signal_snapshot(
             trades_per_min,
             p95_trade_gap_ms,
             vol_1s_bps,
+            impulse_bps,
+            spike_direction,
+            spike_strength_bps,
             min_required_spread_bps,
             scanner_status,
             model_version,

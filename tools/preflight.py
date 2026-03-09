@@ -15,8 +15,16 @@ from src.botik.config import load_config
 from src.botik.execution.bybit_rest import BybitRestClient
 
 
-async def _check_ws(ws_host: str, symbol: str, depth: int, timeout_sec: float) -> dict[str, Any]:
-    url = f"wss://{ws_host}/v5/public/spot"
+def _sanitize_category(category: str) -> str:
+    value = str(category or "").strip().lower()
+    if value in {"spot", "linear"}:
+        return value
+    return "spot"
+
+
+async def _check_ws(ws_host: str, symbol: str, depth: int, timeout_sec: float, category: str) -> dict[str, Any]:
+    cat = _sanitize_category(category)
+    url = f"wss://{ws_host}/v5/public/{cat}"
     topic = f"orderbook.{depth}.{symbol}"
     async with websockets.connect(url, ping_interval=20, ping_timeout=10, close_timeout=5) as ws:
         await ws.send(json.dumps({"op": "subscribe", "args": [topic]}))
@@ -37,7 +45,7 @@ async def _check_ws(ws_host: str, symbol: str, depth: int, timeout_sec: float) -
         ask = float(asks[0][0])
         if bid <= 0 or ask <= 0 or ask <= bid:
             raise RuntimeError(f"Invalid top-of-book bid={bid} ask={ask}")
-        return {"ok": True, "host": ws_host, "symbol": symbol, "bid": bid, "ask": ask}
+        return {"ok": True, "host": ws_host, "symbol": symbol, "category": cat, "bid": bid, "ask": ask}
 
 
 async def _check_rest_public(rest_host: str) -> dict[str, Any]:
@@ -52,6 +60,7 @@ async def _check_rest_public(rest_host: str) -> dict[str, Any]:
 
 async def _check_rest_auth(config_path: str | None, symbol: str) -> dict[str, Any]:
     cfg = load_config(config_path)
+    category = _sanitize_category(cfg.bybit.market_category)
     api_key = cfg.get_bybit_api_key()
     api_secret = cfg.get_bybit_api_secret()
     rsa_private_key_path = cfg.get_bybit_rsa_private_key_path()
@@ -62,20 +71,23 @@ async def _check_rest_auth(config_path: str | None, symbol: str) -> dict[str, An
         api_key=api_key,
         api_secret=api_secret,
         rsa_private_key_path=rsa_private_key_path,
+        category=category,
     )
     out = await client.get_open_orders(symbol=symbol)
     if out.get("retCode") != 0:
         raise RuntimeError(
             f"REST auth check failed: retCode={out.get('retCode')} retMsg={out.get('retMsg')}"
         )
-    return {"ok": True, "retCode": out.get("retCode"), "auth_mode": client.auth_mode}
+    return {"ok": True, "retCode": out.get("retCode"), "auth_mode": client.auth_mode, "category": category}
 
 
 async def _run(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
+    category = _sanitize_category(cfg.bybit.market_category)
     symbol = args.symbol or (cfg.symbols[0] if cfg.symbols else "BTCUSDT")
     result: dict[str, Any] = {
         "mode": cfg.execution.mode,
+        "category": category,
         "symbol": symbol,
         "checks": {},
     }
@@ -85,6 +97,7 @@ async def _run(args: argparse.Namespace) -> int:
             symbol=symbol,
             depth=cfg.ws_depth,
             timeout_sec=args.timeout_sec,
+            category=category,
         )
         result["checks"]["rest_public"] = await _check_rest_public(cfg.bybit.host)
         if not args.skip_auth and cfg.execution.mode.lower().strip() == "live":

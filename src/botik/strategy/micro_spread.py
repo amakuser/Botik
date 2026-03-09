@@ -19,6 +19,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class MicroSpreadStrategy(BaseStrategy):
     def __init__(self, config: "AppConfig") -> None:
         self.config = config
@@ -33,7 +51,15 @@ class MicroSpreadStrategy(BaseStrategy):
             self.last_summary = {"paused": 1}
             return []
 
-        symbols = state.get_active_symbols() or self.config.symbols
+        active_symbols = state.get_active_symbols()
+        # When scanner is enabled, respect its selection as-is (including empty) only
+        # after scanner produced at least one snapshot. Before that, keep startup
+        # fallback to config symbols.
+        if self.config.strategy.scanner_enabled:
+            scanner_ready = bool(state.get_scanner_snapshot())
+            symbols = active_symbols if scanner_ready else (active_symbols or self.config.symbols)
+        else:
+            symbols = active_symbols or self.config.symbols
         intents: list[OrderIntent] = []
         summary: dict[str, int] = {
             "symbols_total": len(symbols),
@@ -45,6 +71,8 @@ class MicroSpreadStrategy(BaseStrategy):
             "invalid_quote_reject": 0,
             "maker_guard_reject": 0,
             "symbols_quoted": 0,
+            "spike_burst_symbols": 0,
+            "spike_burst_intents": 0,
         }
         now = time.monotonic()
         replace_interval_sec = self.config.strategy.replace_interval_ms / 1000.0
@@ -63,14 +91,34 @@ class MicroSpreadStrategy(BaseStrategy):
                 summary["no_orderbook"] += 1
                 continue
 
+            pair_snapshot = state.get_pair_filter_snapshot(symbol) or {}
+            spike_direction = _safe_int(pair_snapshot.get("spike_direction"), 0)
+            spike_strength_bps = _safe_float(pair_snapshot.get("spike_strength_bps"), 0.0)
+            spike_trigger = (
+                bool(self.config.strategy.spike_burst_enabled)
+                and abs(spike_direction) == 1
+                and spike_strength_bps >= max(float(self.config.strategy.spike_threshold_bps), 0.0)
+            )
+
             active_profile_id = state.get_active_profile_id(symbol) or default_profile_id
             active_profile = profiles_by_id.get(active_profile_id or "")
+            spike_profile_id = str(self.config.strategy.spike_profile_id or "").strip()
+            if spike_trigger and spike_profile_id:
+                # Route burst orders through dedicated profile id so ML sees spike regime
+                # as a separate action context even if explicit profile isn't configured.
+                active_profile_id = spike_profile_id
+                active_profile = profiles_by_id.get(spike_profile_id, active_profile)
             entry_tick_offset = (
                 active_profile.entry_tick_offset
                 if active_profile is not None
                 else self.config.strategy.entry_tick_offset
             )
-            order_qty = (
+            # Notional-based sizing: qty = notional / price, capped at max_order_notional_usdt.
+            # max_order_notional_usdt (default 10) is the hard per-order USDT ceiling.
+            # order_notional_quote is kept for pair-admission filter only.
+            ref_price = ob.mid if ob.mid > 0 else ob.best_bid
+            max_notional = max(float(getattr(self.config.strategy, "max_order_notional_usdt", 10.0)), 1.0)
+            order_qty = max(max_notional / ref_price, 1e-12) if ref_price > 0 else (
                 active_profile.order_qty_base
                 if active_profile is not None
                 else self.config.strategy.order_qty_base
@@ -154,49 +202,69 @@ class MicroSpreadStrategy(BaseStrategy):
                 summary["maker_guard_reject"] += 1
                 continue
 
+            slice_count = 1
+            qty_per_slice = order_qty
+            tick_step = 1
+            if spike_trigger:
+                slice_count = min(max(int(self.config.strategy.spike_burst_slices), 1), 8)
+                qty_scale = max(float(self.config.strategy.spike_burst_qty_scale), 0.01)
+                qty_per_slice = max(order_qty * qty_scale, 1e-12)
+                tick_step = max(int(self.config.strategy.spike_burst_tick_step), 1)
+                summary["spike_burst_symbols"] += 1
+
             self._last_replace_time[symbol] = now
-            bid_link = f"mm-{symbol}-bid-{uuid.uuid4().hex[:12]}"
-            ask_link = f"mm-{symbol}-ask-{uuid.uuid4().hex[:12]}"
-            intents.append(
-                OrderIntent(
-                    symbol=symbol,
-                    side="Buy",
-                    price=bid_price,
-                    qty=order_qty,
-                    order_link_id=bid_link,
-                    profile_id=active_profile_id,
-                    model_version="rules-v1",
-                    action_entry_tick_offset=entry_tick_offset,
-                    action_order_qty_base=order_qty,
-                    action_target_profit=target_profit,
-                    action_safety_buffer=safety_buffer,
-                    action_min_top_book_qty=min_top_book_qty,
-                    action_stop_loss_pct=active_profile.stop_loss_pct if active_profile is not None else None,
-                    action_take_profit_pct=active_profile.take_profit_pct if active_profile is not None else None,
-                    action_hold_timeout_sec=active_profile.hold_timeout_sec if active_profile is not None else None,
-                    action_maker_only=maker_only,
+            for idx in range(slice_count):
+                px_shift = float(idx * tick_step) * tick_size
+                bid_px = bid_price - px_shift
+                ask_px = ask_price + px_shift
+                if bid_px <= 0 or ask_px <= 0 or ask_px <= bid_px:
+                    continue
+
+                order_prefix = "spk" if spike_trigger else "mm"
+                bid_link = f"{order_prefix}-{symbol}-bid-{uuid.uuid4().hex[:12]}"
+                ask_link = f"{order_prefix}-{symbol}-ask-{uuid.uuid4().hex[:12]}"
+                intents.append(
+                    OrderIntent(
+                        symbol=symbol,
+                        side="Buy",
+                        price=bid_px,
+                        qty=qty_per_slice,
+                        order_link_id=bid_link,
+                        profile_id=active_profile_id,
+                        model_version="rules-v1",
+                        action_entry_tick_offset=entry_tick_offset,
+                        action_order_qty_base=qty_per_slice,
+                        action_target_profit=target_profit,
+                        action_safety_buffer=safety_buffer,
+                        action_min_top_book_qty=min_top_book_qty,
+                        action_stop_loss_pct=active_profile.stop_loss_pct if active_profile is not None else None,
+                        action_take_profit_pct=active_profile.take_profit_pct if active_profile is not None else None,
+                        action_hold_timeout_sec=active_profile.hold_timeout_sec if active_profile is not None else None,
+                        action_maker_only=maker_only,
+                    )
                 )
-            )
-            intents.append(
-                OrderIntent(
-                    symbol=symbol,
-                    side="Sell",
-                    price=ask_price,
-                    qty=order_qty,
-                    order_link_id=ask_link,
-                    profile_id=active_profile_id,
-                    model_version="rules-v1",
-                    action_entry_tick_offset=entry_tick_offset,
-                    action_order_qty_base=order_qty,
-                    action_target_profit=target_profit,
-                    action_safety_buffer=safety_buffer,
-                    action_min_top_book_qty=min_top_book_qty,
-                    action_stop_loss_pct=active_profile.stop_loss_pct if active_profile is not None else None,
-                    action_take_profit_pct=active_profile.take_profit_pct if active_profile is not None else None,
-                    action_hold_timeout_sec=active_profile.hold_timeout_sec if active_profile is not None else None,
-                    action_maker_only=maker_only,
+                intents.append(
+                    OrderIntent(
+                        symbol=symbol,
+                        side="Sell",
+                        price=ask_px,
+                        qty=qty_per_slice,
+                        order_link_id=ask_link,
+                        profile_id=active_profile_id,
+                        model_version="rules-v1",
+                        action_entry_tick_offset=entry_tick_offset,
+                        action_order_qty_base=qty_per_slice,
+                        action_target_profit=target_profit,
+                        action_safety_buffer=safety_buffer,
+                        action_min_top_book_qty=min_top_book_qty,
+                        action_stop_loss_pct=active_profile.stop_loss_pct if active_profile is not None else None,
+                        action_take_profit_pct=active_profile.take_profit_pct if active_profile is not None else None,
+                        action_hold_timeout_sec=active_profile.hold_timeout_sec if active_profile is not None else None,
+                        action_maker_only=maker_only,
+                    )
                 )
-            )
+                if spike_trigger:
+                    summary["spike_burst_intents"] += 2
             summary["symbols_quoted"] += 1
 
         summary["intents"] = len(intents)

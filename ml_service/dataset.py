@@ -42,7 +42,13 @@ FEATURE_NAMES: list[str] = [
     "symbol_hash",
     "profile_hash",
     "model_version_hash",
+    "impulse_bps_at_signal",
+    "spike_direction",
+    "spike_strength_bps",
 ]
+
+# Protect incremental training from extreme historical outliers.
+EDGE_CLIP_BPS = 5000.0
 
 
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
@@ -99,6 +105,9 @@ def _row_to_features(row: sqlite3.Row) -> list[float]:
         symbol_hash,
         profile_hash,
         model_hash,
+        _to_float(row["impulse_bps_at_signal"]),
+        _to_float(row["spike_direction"]),
+        _to_float(row["spike_strength_bps"]),
     ]
 
 
@@ -158,6 +167,9 @@ def _select_rows(
             s.trades_per_min AS trades_per_min_at_signal,
             s.p95_trade_gap_ms AS p95_trade_gap_ms_at_signal,
             s.vol_1s_bps AS vol_1s_bps_at_signal,
+            COALESCE(s.impulse_bps, 0.0) AS impulse_bps_at_signal,
+            COALESCE(s.spike_direction, 0) AS spike_direction,
+            COALESCE(s.spike_strength_bps, 0.0) AS spike_strength_bps,
             s.min_required_spread_bps,
             s.order_size_quote,
             s.order_size_base,
@@ -205,10 +217,13 @@ def build_matrices_from_rows(
     for row in rows:
         X.append(_row_to_features(row))
         net_edge = row["net_edge_bps"]
-        y_open.append(1 if net_edge is not None and _to_float(net_edge) > float(target_edge_bps) else 0)
+        edge_value = _to_float(net_edge, float("nan"))
+        if not np.isnan(edge_value):
+            edge_value = float(np.clip(edge_value, -EDGE_CLIP_BPS, EDGE_CLIP_BPS))
+        y_open.append(1 if net_edge is not None and edge_value > float(target_edge_bps) else 0)
         total_exec_qty = _to_float(row["total_exec_qty"])
         y_fill.append(1 if total_exec_qty > 0 else 0)
-        y_edge.append(_to_float(net_edge, float("nan")))
+        y_edge.append(edge_value)
 
     return {
         "rows": rows,

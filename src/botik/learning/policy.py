@@ -66,6 +66,9 @@ class PolicySelector:
             _stable_hash_to_unit(symbol),
             _stable_hash_to_unit(profile.profile_id),
             _stable_hash_to_unit(model_version),
+            _safe_float(snapshot.get("impulse_bps")),
+            _safe_float(snapshot.get("spike_direction")),
+            _safe_float(snapshot.get("spike_strength_bps")),
         ]
 
     def get_last_selection_meta(self) -> dict[str, dict[str, Any]]:

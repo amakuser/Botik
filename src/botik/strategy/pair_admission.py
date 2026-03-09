@@ -140,6 +140,27 @@ def _bps_changes_from_mid_series(mid_series: list[tuple[int, float]]) -> list[fl
     return changes
 
 
+def _impulse_bps_from_mid_series(mid_series: list[tuple[int, float]], lookback_ms: int) -> float:
+    if len(mid_series) < 2:
+        return 0.0
+    latest_ts, latest_mid = mid_series[-1]
+    if latest_mid <= 0:
+        return 0.0
+    target_ts = latest_ts - max(int(lookback_ms), 1)
+
+    past_mid: float | None = None
+    for ts_ms, mid in reversed(mid_series):
+        if ts_ms <= target_ts and mid > 0:
+            past_mid = mid
+            break
+    if past_mid is None:
+        first_mid = mid_series[0][1]
+        if first_mid <= 0:
+            return 0.0
+        past_mid = first_mid
+    return ((latest_mid - past_mid) / past_mid) * 10000.0
+
+
 def evaluate_pair_admission(
     symbol: str,
     state: "TradingState",
@@ -262,6 +283,20 @@ def evaluate_pair_admission(
     move_1s_bps = _bps_changes_from_mid_series(mid_window)
     vol_1s_bps = statistics.pstdev(move_1s_bps) if len(move_1s_bps) >= 2 else 0.0
     p95_abs_move_1s_bps = _percentile([abs(v) for v in move_1s_bps], 95.0) if move_1s_bps else 0.0
+    spike_window_sec = max(int(s_cfg.spike_window_sec), 1)
+    spike_window_ms = spike_window_sec * 1000
+    impulse_bps = _impulse_bps_from_mid_series(mid_window, spike_window_ms)
+    short_trade_count = sum(1 for t in trades if now - t.ts_ms <= spike_window_ms)
+    short_trades_per_min = short_trade_count * 60.0 / float(spike_window_sec)
+    spike_threshold_bps = max(float(s_cfg.spike_threshold_bps), 0.0)
+    spike_min_trades = max(float(s_cfg.spike_min_trades_per_min), 0.0)
+    spike_direction = 0
+    if short_trades_per_min >= spike_min_trades:
+        if impulse_bps >= spike_threshold_bps:
+            spike_direction = 1
+        elif impulse_bps <= -spike_threshold_bps:
+            spike_direction = -1
+    spike_strength_bps = abs(impulse_bps)
 
     depth_floor = s_cfg.order_notional_quote * s_cfg.min_depth_multiplier
     cond_trades = trades_per_min >= s_cfg.min_trades_per_min
@@ -361,6 +396,12 @@ def evaluate_pair_admission(
         "slippage_sell_bps": slippage_sell_bps,
         "vol_1s_bps": vol_1s_bps,
         "p95_abs_move_1s_bps": p95_abs_move_1s_bps,
+        "impulse_bps": impulse_bps,
+        "short_trades_per_min": short_trades_per_min,
+        "spike_direction": spike_direction,
+        "spike_strength_bps": spike_strength_bps,
+        "spike_window_sec": spike_window_sec,
+        "spike_threshold_bps": spike_threshold_bps,
         "fee_entry_bps": fee_entry_bps,
         "fee_exit_bps": fee_exit_bps,
         "max_total_slippage_bps": local_max_total_slippage_bps,

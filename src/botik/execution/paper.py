@@ -11,9 +11,10 @@ from src.botik.state.state import TradingState
 
 
 class PaperTradingClient:
-    def __init__(self, state: TradingState, fill_on_cross: bool = True) -> None:
+    def __init__(self, state: TradingState, fill_on_cross: bool = True, category: str = "spot") -> None:
         self.state = state
         self.fill_on_cross = fill_on_cross
+        self.category = str(category or "spot").strip().lower() or "spot"
         self.auth_mode = "paper"
         self.recv_window = "paper"
         self._open_orders: dict[str, dict[str, Any]] = {}
@@ -56,7 +57,7 @@ class PaperTradingClient:
     ) -> dict[str, Any]:
         order_id = self._new_order_id()
         order = {
-            "category": "spot",
+            "category": self.category,
             "symbol": symbol,
             "side": side,
             "qty": qty,

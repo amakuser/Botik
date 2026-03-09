@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace
 import importlib
 import logging
 import os
@@ -20,8 +21,8 @@ from src.botik.config import ActionProfileConfig, load_config
 from src.botik.control.telegram_bot import start_telegram_bot_in_thread
 from src.botik.execution.bybit_rest import BybitRestClient
 from src.botik.execution.paper import PaperTradingClient
-from src.botik.marketdata.universe_discovery import discover_top_spot_symbols
-from src.botik.marketdata.ws_public import BybitSpotOrderbookWS
+from src.botik.marketdata.universe_discovery import discover_top_symbols_by_category
+from src.botik.marketdata.ws_public import BybitPublicOrderbookWS
 from src.botik.learning.bandit import GaussianThompsonBandit
 from src.botik.learning.policy import PolicySelector
 from src.botik.learning.policy_manager import ModelBundle, load_active_model
@@ -34,7 +35,9 @@ from src.botik.storage.sqlite_store import (
     get_connection,
     insert_fill,
     insert_metrics,
+    insert_metrics_batch,
     insert_order,
+    update_order_status,
     update_orders_entry_exit_for_signal,
 )
 from src.botik.storage.lifecycle_store import (
@@ -48,6 +51,7 @@ from src.botik.storage.lifecycle_store import (
     upsert_outcome,
 )
 from src.botik.strategy.micro_spread import MicroSpreadStrategy
+from src.botik.strategy.spike_reversal import SpikeReversalStrategy
 from src.botik.strategy.pair_admission import evaluate_pair_admission
 from src.botik.strategy.symbol_scanner import pick_active_symbols
 from src.botik.utils.logging import setup_logging
@@ -144,6 +148,7 @@ def _hot_reload_runtime_modules() -> None:
         "src.botik.storage.sqlite_store",
         "src.botik.storage.lifecycle_store",
         "src.botik.strategy.micro_spread",
+        "src.botik.strategy.spike_reversal",
         "src.botik.strategy.pair_admission",
         "src.botik.strategy.symbol_scanner",
         "src.botik.utils.logging",
@@ -160,8 +165,8 @@ def _hot_reload_runtime_modules() -> None:
     from src.botik.learning.bandit import GaussianThompsonBandit as _GaussianThompsonBandit
     from src.botik.learning.policy import PolicySelector as _PolicySelector
     from src.botik.learning.policy_manager import ModelBundle as _ModelBundle, load_active_model as _load_active_model
-    from src.botik.marketdata.universe_discovery import discover_top_spot_symbols as _discover_top_spot_symbols
-    from src.botik.marketdata.ws_public import BybitSpotOrderbookWS as _BybitSpotOrderbookWS
+    from src.botik.marketdata.universe_discovery import discover_top_symbols_by_category as _discover_top_symbols_by_category
+    from src.botik.marketdata.ws_public import BybitPublicOrderbookWS as _BybitPublicOrderbookWS
     from src.botik.risk.manager import RiskManager as _RiskManager
     from src.botik.risk.exit_rules import decide_exit_reason as _decide_exit_reason
     from src.botik.risk.position import apply_fill as _apply_fill, unrealized_pnl_pct as _unrealized_pnl_pct
@@ -179,10 +184,12 @@ def _hot_reload_runtime_modules() -> None:
         get_connection as _get_connection,
         insert_fill as _insert_fill,
         insert_metrics as _insert_metrics,
+        insert_metrics_batch as _insert_metrics_batch,
         insert_order as _insert_order,
         update_orders_entry_exit_for_signal as _update_orders_entry_exit_for_signal,
     )
     from src.botik.strategy.micro_spread import MicroSpreadStrategy as _MicroSpreadStrategy
+    from src.botik.strategy.spike_reversal import SpikeReversalStrategy as _SpikeReversalStrategy
     from src.botik.strategy.pair_admission import evaluate_pair_admission as _evaluate_pair_admission
     from src.botik.strategy.symbol_scanner import pick_active_symbols as _pick_active_symbols
     from src.botik.utils.logging import setup_logging as _setup_logging
@@ -192,8 +199,8 @@ def _hot_reload_runtime_modules() -> None:
     globals()["load_config"] = _load_config
     globals()["BybitRestClient"] = _BybitRestClient
     globals()["PaperTradingClient"] = _PaperTradingClient
-    globals()["discover_top_spot_symbols"] = _discover_top_spot_symbols
-    globals()["BybitSpotOrderbookWS"] = _BybitSpotOrderbookWS
+    globals()["discover_top_symbols_by_category"] = _discover_top_symbols_by_category
+    globals()["BybitPublicOrderbookWS"] = _BybitPublicOrderbookWS
     globals()["GaussianThompsonBandit"] = _GaussianThompsonBandit
     globals()["PolicySelector"] = _PolicySelector
     globals()["ModelBundle"] = _ModelBundle
@@ -205,6 +212,7 @@ def _hot_reload_runtime_modules() -> None:
     globals()["get_connection"] = _get_connection
     globals()["insert_fill"] = _insert_fill
     globals()["insert_metrics"] = _insert_metrics
+    globals()["insert_metrics_batch"] = _insert_metrics_batch
     globals()["insert_order"] = _insert_order
     globals()["update_orders_entry_exit_for_signal"] = _update_orders_entry_exit_for_signal
     globals()["ensure_lifecycle_schema"] = _ensure_lifecycle_schema
@@ -216,6 +224,7 @@ def _hot_reload_runtime_modules() -> None:
     globals()["upsert_signal_reward"] = _upsert_signal_reward
     globals()["upsert_outcome"] = _upsert_outcome
     globals()["MicroSpreadStrategy"] = _MicroSpreadStrategy
+    globals()["SpikeReversalStrategy"] = _SpikeReversalStrategy
     globals()["evaluate_pair_admission"] = _evaluate_pair_admission
     globals()["pick_active_symbols"] = _pick_active_symbols
     globals()["setup_logging"] = _setup_logging
@@ -223,7 +232,7 @@ def _hot_reload_runtime_modules() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Bybit Spot Bot")
+    parser = argparse.ArgumentParser(description="Bybit Bot")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     args = parser.parse_args()
 
@@ -236,10 +245,12 @@ def main() -> None:
     )
     log = logging.getLogger("botik")
     log.info(
-        "Config loaded: version=%s host=%s ws=%s symbols=%s start_paused=%s execution_mode=%s",
+        "Config loaded: version=%s host=%s ws=%s category=%s strategy=%s symbols=%s start_paused=%s execution_mode=%s",
         app_version,
         config.bybit.host,
         config.bybit.ws_public_host,
+        config.bybit.market_category,
+        config.strategy.runtime_strategy,
         config.symbols,
         config.start_paused,
         config.execution.mode,
@@ -272,10 +283,23 @@ def main() -> None:
         api_secret = config.get_bybit_api_secret()
         rsa_private_key_path = config.get_bybit_rsa_private_key_path()
 
+        runtime_market_category = str(config.bybit.market_category or "spot").strip().lower()
+        if runtime_market_category not in {"spot", "linear"}:
+            log.warning("Unknown bybit.market_category=%s, fallback to spot", runtime_market_category)
+            runtime_market_category = "spot"
+        runtime_strategy_mode = str(config.strategy.runtime_strategy or "spread_maker").strip().lower()
+        if runtime_strategy_mode not in {"spread_maker", "spike_reversal"}:
+            log.warning("Unknown strategy.runtime_strategy=%s, fallback to spread_maker", runtime_strategy_mode)
+            runtime_strategy_mode = "spread_maker"
+
         executor: Any | None = None
         mode = config.execution.mode.lower().strip()
         if mode == "paper":
-            executor = PaperTradingClient(state=state, fill_on_cross=config.execution.paper_fill_on_cross)
+            executor = PaperTradingClient(
+                state=state,
+                fill_on_cross=config.execution.paper_fill_on_cross,
+                category=runtime_market_category,
+            )
             log.info("Execution mode: paper (no real exchange orders).")
         elif api_key and (api_secret or rsa_private_key_path):
             executor = BybitRestClient(
@@ -283,11 +307,13 @@ def main() -> None:
                 api_key=api_key,
                 api_secret=api_secret,
                 rsa_private_key_path=rsa_private_key_path,
+                category=runtime_market_category,
             )
             log.info(
-                "Execution mode: live auth=%s host=%s recv_window=%s",
+                "Execution mode: live auth=%s host=%s category=%s recv_window=%s",
                 executor.auth_mode,
                 config.bybit.host,
+                runtime_market_category,
                 executor.recv_window,
             )
         else:
@@ -298,10 +324,12 @@ def main() -> None:
 
         if auto_universe_enabled:
             try:
-                discovered = await discover_top_spot_symbols(
+                discovered = await discover_top_symbols_by_category(
+                    runtime_market_category,
                     host=config.strategy.auto_universe_host,
                     quote=config.strategy.auto_universe_quote,
                     limit=config.strategy.auto_universe_size,
+                    min_symbols=config.strategy.auto_universe_min_symbols,
                     min_turnover_24h=config.strategy.auto_universe_min_turnover_24h,
                     min_raw_spread_bps=config.strategy.auto_universe_min_raw_spread_bps,
                     min_top_book_notional=config.strategy.auto_universe_min_top_book_notional,
@@ -328,7 +356,21 @@ def main() -> None:
             log.info("Execution preflight passed.")
 
         risk_manager = RiskManager(config.risk)
-        strategy = MicroSpreadStrategy(config)
+        if runtime_strategy_mode == "spike_reversal":
+            strategy = SpikeReversalStrategy(config)
+            if runtime_market_category != "linear":
+                log.warning(
+                    "runtime_strategy=spike_reversal is designed for linear futures, current market_category=%s",
+                    runtime_market_category,
+                )
+        else:
+            strategy = MicroSpreadStrategy(config)
+        log.info(
+            "Runtime strategy: mode=%s class=%s market_category=%s",
+            runtime_strategy_mode,
+            strategy.__class__.__name__,
+            runtime_market_category,
+        )
         profile_ids = [p.profile_id.strip() for p in config.strategy.action_profiles if p.profile_id.strip()]
         if not profile_ids:
             profile_ids = ["default"]
@@ -356,6 +398,7 @@ def main() -> None:
         )
         policy_selector = PolicySelector(bandit=bandit)
         policy_mode = str(config.ml.mode).strip().lower()
+        policy_ml_enabled = policy_mode in {"predict", "online"}
         policy_model: ModelBundle | None = None
         policy_model_last_check_ts = 0.0
         policy_model_id = ""
@@ -389,11 +432,20 @@ def main() -> None:
         )
 
         min_position_qty = config.strategy.min_position_qty_base
+        min_active_position_usdt = max(float(getattr(config.strategy, "min_active_position_usdt", 1.0) or 1.0), 0.0)
+        spot_notional_floor_enabled = runtime_market_category == "spot"
         hold_timeout_sec = config.strategy.position_hold_timeout_sec
         force_exit_enabled = config.strategy.force_exit_enabled
         force_exit_tif = config.strategy.force_exit_time_in_force
+        force_exit_use_market = bool(config.strategy.force_exit_use_market)
         allow_taker_exit = bool(config.strategy.allow_taker_exit)
         force_exit_cooldown_sec = config.strategy.force_exit_cooldown_sec
+        force_exit_dust_cooldown_sec = max(float(config.strategy.force_exit_dust_cooldown_sec), float(force_exit_cooldown_sec))
+        execution_refresh_interval_sec = max(float(config.strategy.execution_refresh_interval_sec), 1.0)
+        execution_refresh_max_symbols = max(int(config.strategy.execution_refresh_max_symbols), 1)
+        execution_refresh_concurrency = max(int(config.strategy.execution_refresh_concurrency), 1)
+        fast_reprice_on_send = bool(config.strategy.fast_reprice_on_send)
+        quote_max_book_age_ms = max(int(config.strategy.quote_max_book_age_ms), 100)
         stop_loss_pct = max(config.strategy.stop_loss_pct, 0.0)
         take_profit_pct = max(config.strategy.take_profit_pct, 0.0)
         pnl_exit_enabled = config.strategy.pnl_exit_enabled
@@ -401,6 +453,17 @@ def main() -> None:
         fallback_breakeven_bps = max(float(config.strategy.fallback_breakeven_bps), 0.0)
         fallback_trailing_bps = max(float(config.strategy.fallback_trailing_bps), 0.0)
         fallback_trailing_activation_bps = max(float(config.strategy.fallback_trailing_activation_bps), 0.0)
+        log.info(
+            "Execution refresh tuning: interval=%.1fs max_symbols=%s concurrency=%s dust_cooldown=%.0fs fast_reprice=%s quote_max_age_ms=%s min_active_usdt=%.4f spot_notional_floor=%s",
+            execution_refresh_interval_sec,
+            execution_refresh_max_symbols,
+            execution_refresh_concurrency,
+            force_exit_dust_cooldown_sec,
+            1 if fast_reprice_on_send else 0,
+            quote_max_book_age_ms,
+            min_active_position_usdt,
+            1 if spot_notional_floor_enabled else 0,
+        )
 
         net_position_base: dict[str, float] = {s: 0.0 for s in config.symbols}
         avg_entry_price: dict[str, float] = {s: 0.0 for s in config.symbols}
@@ -411,9 +474,21 @@ def main() -> None:
         symbol_hold_timeout_sec: dict[str, float] = {s: float(hold_timeout_sec) for s in config.symbols}
         symbol_stop_loss_pct: dict[str, float] = {s: float(stop_loss_pct) for s in config.symbols}
         symbol_take_profit_pct: dict[str, float] = {s: float(take_profit_pct) for s in config.symbols}
+        symbol_target_profit_ratio: dict[str, float] = {s: float(max(config.strategy.target_profit, 0.0)) for s in config.symbols}
+        symbol_safety_buffer_ratio: dict[str, float] = {s: float(max(config.strategy.safety_buffer, 0.0)) for s in config.symbols}
         symbol_peak_pnl_bps: dict[str, float] = {s: 0.0 for s in config.symbols}
         symbol_position_floor: dict[str, float] = {s: float(min_position_qty) for s in config.symbols}
+        symbol_position_notional_floor: dict[str, float] = {s: float(min_active_position_usdt) for s in config.symbols}
+        dust_exit_suppressed_until: dict[str, float] = {s: 0.0 for s in config.symbols}
         seen_exec_ids: set[str] = set()
+        last_executions_sync_ts = 0.0
+        last_position_status_log_at = 0.0
+        # Spot wallet holdings: base coins (e.g. "BTC", "ETH") with non-dust balance.
+        # Refreshed periodically from the exchange wallet-balance API.
+        # This is the ground-truth for spot: a filled buy has NO open order,
+        # it simply lives in the wallet until we sell it.
+        wallet_held_base_symbols: set[str] = set()
+        last_wallet_balance_check_at: float = 0.0
 
         async def _resolve_position_floor(symbol: str) -> float:
             symbol_u = str(symbol or "").upper().strip()
@@ -438,6 +513,44 @@ def main() -> None:
         def _position_floor(symbol: str) -> float:
             symbol_u = str(symbol or "").upper().strip()
             return float(symbol_position_floor.get(symbol_u, float(min_position_qty)))
+
+        async def _resolve_position_notional_floor(symbol: str) -> float:
+            symbol_u = str(symbol or "").upper().strip()
+            if not symbol_u:
+                return float(min_active_position_usdt)
+            cached = symbol_position_notional_floor.get(symbol_u)
+            if cached is not None:
+                return float(cached)
+
+            floor = float(min_active_position_usdt)
+            if spot_notional_floor_enabled:
+                getter = getattr(executor, "get_symbol_min_notional_quote", None)
+                if callable(getter):
+                    try:
+                        exchange_min = await getter(symbol_u)
+                        if exchange_min and float(exchange_min) > 0:
+                            floor = max(floor, float(exchange_min))
+                    except Exception as exc:
+                        log.debug("get_symbol_min_notional_quote failed for %s: %s", symbol_u, exc)
+            symbol_position_notional_floor[symbol_u] = float(floor)
+            return float(floor)
+
+        def _position_notional_floor(symbol: str) -> float:
+            symbol_u = str(symbol or "").upper().strip()
+            return float(symbol_position_notional_floor.get(symbol_u, float(min_active_position_usdt)))
+
+        def _reset_symbol_runtime_state(symbol: str) -> None:
+            net_position_base[symbol] = 0.0
+            avg_entry_price[symbol] = 0.0
+            position_opened_at[symbol] = None
+            position_opened_wall_ms[symbol] = None
+            position_signal_id[symbol] = None
+            symbol_hold_timeout_sec[symbol] = float(hold_timeout_sec)
+            symbol_stop_loss_pct[symbol] = float(stop_loss_pct)
+            symbol_take_profit_pct[symbol] = float(take_profit_pct)
+            symbol_target_profit_ratio[symbol] = float(max(config.strategy.target_profit, 0.0))
+            symbol_safety_buffer_ratio[symbol] = float(max(config.strategy.safety_buffer, 0.0))
+            symbol_peak_pnl_bps[symbol] = 0.0
 
         def _sum_signal_fees_quote(conn_db: sqlite3.Connection, signal_id: str, symbol: str) -> float:
             rows = conn_db.execute(
@@ -467,9 +580,127 @@ def main() -> None:
                 return 0.0, 0.0
             return float(row[0] or 0.0), float(row[1] or 0.0)
 
+        def _sync_signal_outcome_from_executions(
+            conn_db: sqlite3.Connection,
+            signal_id: str | None,
+            symbol_hint: str | None = None,
+        ) -> None:
+            if not signal_id:
+                return
+
+            rows = conn_db.execute(
+                """
+                SELECT symbol, lower(COALESCE(side, '')), COALESCE(exec_price, 0.0), COALESCE(exec_qty, 0.0),
+                       COALESCE(exec_fee, 0.0), COALESCE(fee_currency, ''), COALESCE(exec_time_ms, 0)
+                FROM executions_raw
+                WHERE signal_id = ?
+                ORDER BY exec_time_ms ASC
+                """,
+                (signal_id,),
+            ).fetchall()
+            if not rows:
+                return
+
+            symbol = str(rows[0][0] or symbol_hint or "").upper().strip()
+            if not symbol:
+                return
+
+            buy_qty = 0.0
+            buy_notional = 0.0
+            sell_qty = 0.0
+            sell_notional = 0.0
+            total_fees_quote = 0.0
+            first_buy_ms: int | None = None
+            last_sell_ms: int | None = None
+
+            for row in rows:
+                row_symbol = str(row[0] or "").upper().strip()
+                if row_symbol:
+                    symbol = row_symbol
+                side = str(row[1] or "").lower()
+                exec_price = float(row[2] or 0.0)
+                exec_qty = float(row[3] or 0.0)
+                exec_fee = float(row[4] or 0.0)
+                fee_currency = str(row[5] or "")
+                exec_time_ms = int(row[6] or 0)
+                if exec_price <= 0 or exec_qty <= 0:
+                    continue
+
+                if side == "buy":
+                    buy_qty += exec_qty
+                    buy_notional += exec_price * exec_qty
+                    if first_buy_ms is None or (exec_time_ms > 0 and exec_time_ms < first_buy_ms):
+                        first_buy_ms = exec_time_ms if exec_time_ms > 0 else first_buy_ms
+                elif side == "sell":
+                    sell_qty += exec_qty
+                    sell_notional += exec_price * exec_qty
+                    if exec_time_ms > 0 and (last_sell_ms is None or exec_time_ms > last_sell_ms):
+                        last_sell_ms = exec_time_ms
+
+                total_fees_quote += _fee_to_quote(symbol, exec_fee, fee_currency, exec_price)
+
+            if buy_qty <= 0 or buy_notional <= 0:
+                return
+
+            entry_vwap = buy_notional / buy_qty
+            exit_vwap = (sell_notional / sell_qty) if sell_qty > 0 and sell_notional > 0 else None
+            update_orders_entry_exit_for_signal(
+                conn_db,
+                signal_id=signal_id,
+                entry_price=entry_vwap,
+                exit_price=exit_vwap,
+                updated_at_utc=utc_now_iso(),
+            )
+
+            if exit_vwap is None:
+                return
+
+            matched_qty = min(buy_qty, sell_qty)
+            if matched_qty <= 0:
+                return
+
+            hold_time_ms = 0
+            if first_buy_ms and last_sell_ms and last_sell_ms >= first_buy_ms:
+                hold_time_ms = int(last_sell_ms - first_buy_ms)
+
+            gross_pnl = (exit_vwap - entry_vwap) * matched_qty
+            net_pnl = gross_pnl - total_fees_quote
+
+            # Use realized filled notional as denominator to avoid distorted edge on qty mismatches.
+            denom = entry_vwap * matched_qty
+            if denom <= 0:
+                entry_basis_price, entry_basis_qty = _load_signal_entry_basis(conn_db, signal_id)
+                if entry_basis_price > 0 and entry_basis_qty > 0:
+                    denom = entry_basis_price * entry_basis_qty
+            net_edge_bps = (net_pnl / denom) * 10000.0 if denom > 0 else 0.0
+
+            upsert_outcome(
+                conn_db,
+                signal_id=signal_id,
+                symbol=symbol,
+                entry_vwap=entry_vwap,
+                exit_vwap=exit_vwap,
+                filled_qty=matched_qty,
+                hold_time_ms=hold_time_ms,
+                gross_pnl_quote=gross_pnl,
+                net_pnl_quote=net_pnl,
+                net_edge_bps=net_edge_bps,
+                max_adverse_excursion_bps=0.0,
+                max_favorable_excursion_bps=0.0,
+                was_fully_filled=sell_qty >= (buy_qty - 1e-9),
+                was_profitable=net_pnl > 0,
+                exit_reason="signal_roundtrip",
+            )
+            upsert_signal_reward(
+                conn_db,
+                signal_id=signal_id,
+                reward_net_edge_bps=net_edge_bps,
+            )
+            policy_selector.update_reward(signal_id=signal_id, reward_bps=net_edge_bps)
+
         def _maybe_refresh_policy_model(force: bool = False) -> None:
             nonlocal policy_model, policy_model_last_check_ts, policy_model_id
-            if policy_mode != "predict":
+            if not policy_ml_enabled:
                 return
             now_mono = time.monotonic()
             if not force and now_mono - policy_model_last_check_ts < 30.0:
@@ -494,17 +725,100 @@ def main() -> None:
                 policy_model_id = loaded.model_id
                 log.info("Policy model loaded: model_id=%s", policy_model_id)
 
-        async def refresh_positions_from_executions() -> None:
+        def _ordered_symbols_for_execution_sync(open_order_symbols: set[str] | None = None) -> list[str]:
+            selected: list[str] = []
+            seen: set[str] = set()
+
+            def _push(symbol: str) -> None:
+                s = str(symbol or "").upper().strip()
+                if not s or s in seen:
+                    return
+                seen.add(s)
+                selected.append(s)
+
+            for symbol, qty in net_position_base.items():
+                if abs(qty) >= _position_floor(symbol):
+                    _push(symbol)
+            for symbol in open_order_symbols or set():
+                _push(symbol)
+            for symbol in state.get_active_symbols() or []:
+                _push(symbol)
+            for symbol in config.symbols:
+                if len(selected) >= execution_refresh_max_symbols:
+                    break
+                _push(symbol)
+            return selected[:execution_refresh_max_symbols]
+
+        async def refresh_wallet_balance() -> None:
+            """
+            Query Bybit wallet balance and update wallet_held_base_symbols.
+            On spot, a filled buy has NO open order — the coin just sits in the wallet.
+            This is the only reliable way to know how many symbols we're holding.
+            Runs at most once every 15 seconds to avoid rate-limit pressure.
+            """
+            nonlocal wallet_held_base_symbols, last_wallet_balance_check_at
             if executor is None:
                 return
-            symbols_to_check: set[str] = set(state.get_active_symbols() or config.symbols)
-            symbols_to_check.update(s for s, q in net_position_base.items() if abs(q) >= _position_floor(s))
-            for symbol in symbols_to_check:
+            now = time.monotonic()
+            if now - last_wallet_balance_check_at < 15.0:
+                return
+            last_wallet_balance_check_at = now
+            try:
+                resp = await executor.get_wallet_balance(account_type="UNIFIED")
+                if resp.get("retCode") != 0:
+                    log.debug("refresh_wallet_balance: retCode=%s", resp.get("retCode"))
+                    return
+                accounts = (resp.get("result") or {}).get("list") or []
+                held: set[str] = set()
+                for account in accounts:
+                    for coin_info in (account.get("coin") or []):
+                        coin = str(coin_info.get("coin") or "").upper().strip()
+                        if not coin or coin in ("USDT", "USDC", "BUSD"):
+                            continue
+                        balance = float(coin_info.get("walletBalance") or 0.0)
+                        if balance > 0.0:
+                            held.add(coin)
+                wallet_held_base_symbols = held
+                log.debug("Wallet held base coins: %s", held)
+            except Exception as exc:
+                log.warning("refresh_wallet_balance failed: %s", exc)
+
+        async def refresh_positions_from_executions(
+            open_order_symbols: set[str] | None = None,
+            force: bool = False,
+        ) -> None:
+            nonlocal last_executions_sync_ts
+            if executor is None:
+                return
+            now_mono = time.monotonic()
+            if not force and (now_mono - last_executions_sync_ts) < execution_refresh_interval_sec:
+                return
+
+            symbols_to_check = _ordered_symbols_for_execution_sync(open_order_symbols=open_order_symbols)
+            if not symbols_to_check:
+                last_executions_sync_ts = now_mono
+                return
+
+            sem = asyncio.Semaphore(execution_refresh_concurrency)
+
+            async def _fetch_symbol(symbol: str) -> tuple[str, dict[str, Any] | None, str | None]:
+                async with sem:
+                    try:
+                        response = await executor.get_execution_list(symbol=symbol, limit=100)
+                        return symbol, response, None
+                    except Exception as exc:
+                        return symbol, None, str(exc)
+
+            fetch_results = await asyncio.gather(*[_fetch_symbol(symbol) for symbol in symbols_to_check])
+            last_executions_sync_ts = time.monotonic()
+
+            for symbol, resp, fetch_error in fetch_results:
                 symbol_floor = await _resolve_position_floor(symbol)
-                try:
-                    resp = await executor.get_execution_list(symbol=symbol, limit=100)
-                except Exception as exc:
-                    log.warning("get_execution_list failed for %s: %s", symbol, exc)
+                symbol_notional_floor = await _resolve_position_notional_floor(symbol)
+                if fetch_error is not None:
+                    log.warning("get_execution_list failed for %s: %s", symbol, fetch_error)
+                    continue
+                if not resp:
                     continue
                 if resp.get("retCode") != 0:
                     log.warning(
@@ -582,12 +896,18 @@ def main() -> None:
                     net_position_base[symbol] = new_qty
                     avg_entry_price[symbol] = new_avg
 
-                    if abs(old_qty) < symbol_floor and abs(new_qty) >= symbol_floor:
+                    abs_new_qty = abs(new_qty)
+                    new_notional_quote = abs_new_qty * float(price)
+                    new_is_effective = abs_new_qty >= symbol_floor and (
+                        not spot_notional_floor_enabled or symbol_notional_floor <= 0 or new_notional_quote >= symbol_notional_floor
+                    )
+
+                    if abs(old_qty) < symbol_floor and new_is_effective:
                         position_opened_at[symbol] = time.monotonic()
                         position_opened_wall_ms[symbol] = exec_time_ms
                         position_signal_id[symbol] = signal_id
                         symbol_peak_pnl_bps[symbol] = 0.0
-                    elif abs(new_qty) < symbol_floor:
+                    elif not new_is_effective:
                         opened_at = position_opened_at.get(symbol)
                         hold_time_ms = int((time.monotonic() - opened_at) * 1000) if opened_at else 0
                         qty_closed = abs(old_qty)
@@ -606,10 +926,11 @@ def main() -> None:
                             else _fee_to_quote(symbol, exec_fee, fee_currency, price)
                         )
                         net_pnl = gross_pnl - total_fees_quote
-                        entry_basis_price, entry_basis_qty = (
-                            _load_signal_entry_basis(conn, outcome_signal_id) if outcome_signal_id else (0.0, 0.0)
-                        )
-                        denom = entry_basis_price * entry_basis_qty if entry_basis_price > 0 and entry_basis_qty > 0 else entry_vwap * qty_closed
+                        denom = entry_vwap * qty_closed
+                        if denom <= 0 and outcome_signal_id:
+                            entry_basis_price, entry_basis_qty = _load_signal_entry_basis(conn, outcome_signal_id)
+                            if entry_basis_price > 0 and entry_basis_qty > 0:
+                                denom = entry_basis_price * entry_basis_qty
                         net_edge_bps = (net_pnl / denom) * 10000.0 if denom > 0 else 0.0
                         if outcome_signal_id:
                             upsert_outcome(
@@ -645,12 +966,7 @@ def main() -> None:
                         position_opened_at[symbol] = None
                         position_opened_wall_ms[symbol] = None
                         position_signal_id[symbol] = None
-                        net_position_base[symbol] = 0.0
-                        avg_entry_price[symbol] = 0.0
-                        symbol_hold_timeout_sec[symbol] = float(hold_timeout_sec)
-                        symbol_stop_loss_pct[symbol] = float(stop_loss_pct)
-                        symbol_take_profit_pct[symbol] = float(take_profit_pct)
-                        symbol_peak_pnl_bps[symbol] = 0.0
+                        _reset_symbol_runtime_state(symbol)
 
                     insert_order_event(
                         conn,
@@ -684,24 +1000,77 @@ def main() -> None:
                         liquidity="Maker" if str(item.get("isMaker") or "").lower() == "true" else "Taker",
                     )
 
+                    if order_link_id:
+                        update_order_status(
+                            conn,
+                            order_link_id=str(order_link_id),
+                            status="Filled",
+                            updated_at_utc=utc_now_iso(),
+                            exchange_order_id=item.get("orderId"),
+                        )
+                    _sync_signal_outcome_from_executions(conn, signal_id, symbol_hint=symbol)
+
         async def maybe_force_exit(symbol: str) -> bool:
             if executor is None:
+                return False
+            if time.monotonic() < dust_exit_suppressed_until.get(symbol, 0.0):
                 return False
             pos_qty = net_position_base.get(symbol, 0.0)
             pos_floor = await _resolve_position_floor(symbol)
             if abs(pos_qty) < pos_floor:
                 return False
 
+            notional_floor = await _resolve_position_notional_floor(symbol)
+            if spot_notional_floor_enabled and notional_floor > 0:
+                entry_ref_price = max(float(avg_entry_price.get(symbol, 0.0)), 0.0)
+                if entry_ref_price > 0 and (abs(pos_qty) * entry_ref_price) < notional_floor:
+                    dust_exit_suppressed_until[symbol] = time.monotonic() + force_exit_dust_cooldown_sec
+                    _reset_symbol_runtime_state(symbol)
+                    log.info(
+                        "Position treated as dust (entry notional floor): symbol=%s qty=%.12f entry=%.10f notional=%.8f floor=%.8f",
+                        symbol,
+                        abs(pos_qty),
+                        entry_ref_price,
+                        abs(pos_qty) * entry_ref_price,
+                        notional_floor,
+                    )
+                    return False
+
             opened_at = position_opened_at.get(symbol)
             if opened_at is None:
-                position_opened_at[symbol] = time.monotonic()
-                return True
+                # First time seeing this position in this session.
+                # If entry price is unknown (wallet-recovered without a DB fill record),
+                # treat it as already timed-out → triggers immediate force-exit below.
+                # Otherwise start the clock now and fall through to SL/TP/timeout checks.
+                if avg_entry_price.get(symbol, 0.0) <= 0:
+                    position_opened_at[symbol] = time.monotonic() - float(hold_timeout_sec) - 1.0
+                    log.warning(
+                        "Position with unknown entry — forcing immediate timeout exit: "
+                        "symbol=%s qty=%.8f", symbol, pos_qty,
+                    )
+                else:
+                    position_opened_at[symbol] = time.monotonic()
+                opened_at = position_opened_at[symbol]
+                # Do NOT return — fall through to SL/TP/timeout logic.
 
             ob = state.get_orderbook(symbol)
             if ob is None:
                 return True
 
             mark_price = ob.best_bid if pos_qty > 0 else ob.best_ask
+            if spot_notional_floor_enabled and notional_floor > 0 and (abs(pos_qty) * float(mark_price)) < notional_floor:
+                dust_exit_suppressed_until[symbol] = time.monotonic() + force_exit_dust_cooldown_sec
+                _reset_symbol_runtime_state(symbol)
+                log.info(
+                    "Position treated as dust (mark notional floor): symbol=%s qty=%.12f mark=%.10f notional=%.8f floor=%.8f",
+                    symbol,
+                    abs(pos_qty),
+                    float(mark_price),
+                    abs(pos_qty) * float(mark_price),
+                    notional_floor,
+                )
+                return False
+
             pnl_pct = unrealized_pnl_pct(
                 position_qty=pos_qty,
                 avg_entry_price=avg_entry_price.get(symbol, 0.0),
@@ -751,6 +1120,11 @@ def main() -> None:
             order_link_id = f"force-exit-{symbol}-{uuid.uuid4().hex[:10]}"
             exit_tif = force_exit_tif if allow_taker_exit else "PostOnly"
 
+            # Use Market order for emergency exits (stop-loss/timeout) — guaranteed fill on spot
+            # Limit+IOC at stale book price may silently cancel if market moved
+            use_market = force_exit_use_market and reason in ("stop_loss", "fallback_stoploss", "hold_timeout")
+            exit_order_type = "Market" if use_market else "Limit"
+
             ret = await executor.place_order(
                 symbol=symbol,
                 side=side,
@@ -758,15 +1132,28 @@ def main() -> None:
                 price=price_str,
                 order_link_id=order_link_id,
                 time_in_force=exit_tif,
+                order_type=exit_order_type,
             )
             last_force_exit_ts[symbol] = time.monotonic()
 
             if ret.get("retCode") != 0:
+                if ret.get("retCode") == -2 and str(ret.get("retMsg") or "") == "invalid_qty_after_normalization":
+                    dust_exit_suppressed_until[symbol] = time.monotonic() + force_exit_dust_cooldown_sec
+                    _reset_symbol_runtime_state(symbol)
+                    log.warning(
+                        "Force-exit skipped as dust: symbol=%s side=%s qty=%s cooldown=%.0fs",
+                        symbol,
+                        side,
+                        qty_str,
+                        force_exit_dust_cooldown_sec,
+                    )
+                    return False
                 log.warning(
-                    "Force-exit failed: symbol=%s side=%s qty=%s retCode=%s retMsg=%s",
+                    "Force-exit failed: symbol=%s side=%s qty=%s order_type=%s retCode=%s retMsg=%s",
                     symbol,
                     side,
                     qty_str,
+                    exit_order_type,
                     ret.get("retCode"),
                     ret.get("retMsg"),
                 )
@@ -792,24 +1179,221 @@ def main() -> None:
                 order_id=(ret.get("result") or {}).get("orderId"),
                 signal_id=position_signal_id.get(symbol),
                 side=side,
-                order_type="Limit",
+                order_type=exit_order_type,
                 time_in_force=force_exit_tif,
                 price=float(price_str),
                 qty=float(qty_str),
                 order_status="New",
             )
             log.warning(
-                "Force-exit submitted: symbol=%s side=%s qty=%s price=%s tif=%s reason=%s pnl_pct=%s age=%.1fs",
+                "Force-exit submitted: symbol=%s side=%s qty=%s price=%s tif=%s order_type=%s reason=%s pnl_pct=%s age=%.1fs",
                 symbol,
                 side,
                 qty_str,
                 price_str,
                 exit_tif,
+                exit_order_type,
                 reason,
                 f"{pnl_pct:.6f}" if pnl_pct is not None else "n/a",
                 age,
             )
             return True
+
+        def _planned_exit_price(symbol: str, position_qty: float, orderbook: Any) -> float | None:
+            entry = float(avg_entry_price.get(symbol, 0.0))
+            if entry <= 0:
+                entry = float(orderbook.mid or 0.0)
+            if entry <= 0:
+                return None
+
+            target_ratio = max(float(symbol_target_profit_ratio.get(symbol, config.strategy.target_profit)), 0.0)
+            safety_ratio = max(float(symbol_safety_buffer_ratio.get(symbol, config.strategy.safety_buffer)), 0.0)
+            fee_ratio = max(float(config.fees.maker_rate), 0.0)
+            required_ratio = target_ratio + safety_ratio + (2.0 * fee_ratio)
+
+            if position_qty > 0:
+                raw = entry * (1.0 + required_ratio)
+                raw = max(raw, float(orderbook.best_ask))
+            else:
+                raw = entry * (1.0 - required_ratio)
+                raw = min(raw, float(orderbook.best_bid))
+            if raw <= 0:
+                return None
+            return raw
+
+        async def maybe_place_position_exit_quote(
+            symbol: str,
+            open_position_orders: dict[str, list[dict[str, Any]]],
+        ) -> bool:
+            """
+            Keep a live PostOnly exit quote for an opened position.
+            This makes exit intent explicit and continuously repriced.
+            """
+            if executor is None:
+                return False
+            if time.monotonic() - last_force_exit_ts.get(symbol, 0.0) < force_exit_cooldown_sec:
+                return False
+
+            pos_qty = float(net_position_base.get(symbol, 0.0))
+            pos_floor = await _resolve_position_floor(symbol)
+            if abs(pos_qty) < pos_floor:
+                return False
+            notional_floor = await _resolve_position_notional_floor(symbol)
+
+            ob = state.get_orderbook(symbol)
+            if ob is None or ob.best_bid <= 0 or ob.best_ask <= 0 or ob.best_ask <= ob.best_bid:
+                return False
+
+            planned = _planned_exit_price(symbol, pos_qty, ob)
+            if planned is None:
+                return False
+
+            tick_size = state.get_tick_size(symbol) or config.strategy.default_tick_size
+            tick_size = max(float(tick_size), 1e-12)
+            planned_price = round(planned / tick_size) * tick_size
+            if pos_qty > 0 and planned_price <= ob.best_bid:
+                planned_price = ob.best_ask
+            if pos_qty < 0 and planned_price >= ob.best_ask:
+                planned_price = ob.best_bid
+            if planned_price <= 0:
+                return False
+
+            side = "Sell" if pos_qty > 0 else "Buy"
+            qty = abs(pos_qty)
+            if spot_notional_floor_enabled and notional_floor > 0 and (qty * planned_price) < notional_floor:
+                dust_exit_suppressed_until[symbol] = time.monotonic() + force_exit_dust_cooldown_sec
+                _reset_symbol_runtime_state(symbol)
+                log.info(
+                    "Position-exit quote skipped as dust (notional floor): symbol=%s side=%s qty=%.12f planned=%.10f notional=%.8f floor=%.8f",
+                    symbol,
+                    side,
+                    qty,
+                    planned_price,
+                    qty * planned_price,
+                    notional_floor,
+                )
+                return False
+
+            existing_orders = open_position_orders.get(symbol, [])
+            for existing in existing_orders:
+                if str(existing.get("side") or "").strip().lower() != side.lower():
+                    continue
+                ex_price = float(existing.get("price") or 0.0)
+                ex_qty = float(existing.get("qty") or 0.0)
+                if abs(ex_price - planned_price) <= tick_size and abs(ex_qty - qty) <= max(pos_floor, 1e-9):
+                    return False
+
+            for existing in existing_orders:
+                link = str(existing.get("orderLinkId") or "").strip()
+                ex_symbol = str(existing.get("symbol") or symbol).strip().upper() or symbol
+                if not link:
+                    continue
+                await executor.cancel_order(symbol=ex_symbol, order_link_id=link)
+
+            qty_str = _fmt_float(qty)
+            price_str = _fmt_float(planned_price)
+            order_link_id = f"px-{symbol}-{uuid.uuid4().hex[:10]}"
+            ret = await executor.place_order(
+                symbol=symbol,
+                side=side,
+                qty=qty_str,
+                price=price_str,
+                order_link_id=order_link_id,
+                time_in_force="PostOnly",
+            )
+            if ret.get("retCode") != 0:
+                if ret.get("retCode") == -2 and str(ret.get("retMsg") or "") == "invalid_qty_after_normalization":
+                    dust_exit_suppressed_until[symbol] = time.monotonic() + force_exit_dust_cooldown_sec
+                    _reset_symbol_runtime_state(symbol)
+                log.info(
+                    "Position-exit quote skipped: symbol=%s side=%s qty=%s price=%s retCode=%s retMsg=%s",
+                    symbol,
+                    side,
+                    qty_str,
+                    price_str,
+                    ret.get("retCode"),
+                    ret.get("retMsg"),
+                )
+                return False
+
+            risk_manager.register_order_placed()
+            insert_order(
+                conn,
+                symbol=symbol,
+                side=side,
+                order_link_id=order_link_id,
+                price=price_str,
+                qty=qty_str,
+                status="New",
+                created_at_utc=utc_now_iso(),
+                exchange_order_id=(ret.get("result") or {}).get("orderId"),
+            )
+            set_order_signal_map(conn, order_link_id, position_signal_id.get(symbol))
+            insert_order_event(
+                conn,
+                symbol=symbol,
+                order_link_id=order_link_id,
+                order_id=(ret.get("result") or {}).get("orderId"),
+                signal_id=position_signal_id.get(symbol),
+                side=side,
+                order_type="Limit",
+                time_in_force="PostOnly",
+                price=float(price_str),
+                qty=float(qty_str),
+                order_status="New",
+            )
+            log.info(
+                "Position-exit quote: symbol=%s side=%s qty=%s planned_exit=%s entry=%.8f mark=%.8f",
+                symbol,
+                side,
+                qty_str,
+                price_str,
+                float(avg_entry_price.get(symbol, 0.0)),
+                float(ob.best_bid if pos_qty > 0 else ob.best_ask),
+            )
+            return True
+
+        def _prepare_intent_for_send(intent: Any, maker_only: bool) -> Any | None:
+            """
+            Recompute quote from latest top-of-book right before sending.
+            Maker entries keep safe price inside spread; taker entries cross at best price.
+            """
+            if not fast_reprice_on_send:
+                return intent
+
+            ob = state.get_orderbook(intent.symbol)
+            if ob is None or ob.best_bid <= 0 or ob.best_ask <= 0 or ob.best_ask <= ob.best_bid:
+                return None
+
+            now_ms = int(time.time() * 1000)
+            book_ts = state.get_last_book_update_ms(intent.symbol)
+            if book_ts is None or (now_ms - int(book_ts)) > quote_max_book_age_ms:
+                return None
+
+            tick_size = state.get_tick_size(intent.symbol) or config.strategy.default_tick_size
+            tick_size = max(float(tick_size), 1e-12)
+            tick_offset = max(int(getattr(intent, "action_entry_tick_offset", None) or config.strategy.entry_tick_offset), 0)
+            tick = tick_size * tick_offset
+
+            if str(intent.side).upper() == "BUY":
+                if maker_only:
+                    target_price = ob.best_bid + tick
+                    if target_price >= ob.best_ask:
+                        target_price = ob.best_bid
+                else:
+                    target_price = ob.best_ask + tick
+            else:
+                if maker_only:
+                    target_price = ob.best_ask - tick
+                    if target_price <= ob.best_bid:
+                        target_price = ob.best_ask
+                else:
+                    target_price = ob.best_bid - tick
+
+            snapped_price = round(target_price / tick_size) * tick_size
+            if snapped_price <= 0:
+                return None
+            return replace(intent, price=float(snapped_price))
 
         async def guarded_place_order(intent: Any, time_in_force: str) -> dict[str, Any]:
             """
@@ -897,15 +1481,23 @@ def main() -> None:
                 try:
                     selected, summary = pick_active_symbols(state, config)
                     if not selected:
-                        selected = list(config.symbols[: max(int(config.strategy.scanner_top_k), 1)])
-                        summary["selected"] = len(selected)
-                        summary["fallback"] = True
+                        if config.strategy.strict_pair_filter:
+                            # With strict pair filter enabled, forcing fallback symbols only creates
+                            # guaranteed guarded rejects (PAIR_FILTER_NOT_PASS). Keep list empty.
+                            selected = []
+                            summary["selected"] = 0
+                            summary["fallback"] = False
+                            summary["no_pass_symbols"] = True
+                        else:
+                            selected = list(config.symbols[: max(int(config.strategy.scanner_top_k), 1)])
+                            summary["selected"] = len(selected)
+                            summary["fallback"] = True
                     else:
                         summary["fallback"] = False
 
                     _maybe_refresh_policy_model()
                     pair_ctx = state.get_all_pair_filter_snapshots()
-                    if policy_mode == "predict":
+                    if policy_ml_enabled:
                         if policy_model is not None:
                             selected_profiles = policy_selector.select(
                                 pass_symbols=selected,
@@ -967,7 +1559,7 @@ def main() -> None:
                         for symbol in config.symbols:
                             snap = state.get_pair_filter_snapshot(symbol) or {}
                             log.info(
-                                "PairFilter symbol=%s status=%s reason=%s median_spread_bps=%.4f trades_per_min=%.2f p95_trade_gap_ms=%.0f depth_bid_quote=%.2f depth_ask_quote=%.2f slippage_buy_bps=%.4f slippage_sell_bps=%.4f vol_1s_bps=%.4f min_required_spread_bps=%.4f stale_data=%s data_age_ms=%s",
+                                "PairFilter symbol=%s status=%s reason=%s median_spread_bps=%.4f trades_per_min=%.2f p95_trade_gap_ms=%.0f depth_bid_quote=%.2f depth_ask_quote=%.2f slippage_buy_bps=%.4f slippage_sell_bps=%.4f vol_1s_bps=%.4f min_required_spread_bps=%.4f impulse_bps=%.4f spike_dir=%s spike_strength_bps=%.4f stale_data=%s data_age_ms=%s",
                                 symbol,
                                 snap.get("status", "NA"),
                                 snap.get("reason", "NA"),
@@ -980,6 +1572,9 @@ def main() -> None:
                                 float(snap.get("slippage_sell_bps", 0.0)),
                                 float(snap.get("vol_1s_bps", 0.0)),
                                 float(snap.get("min_required_spread_bps", 0.0)),
+                                float(snap.get("impulse_bps", 0.0)),
+                                int(float(snap.get("spike_direction", 0.0) or 0.0)),
+                                float(snap.get("spike_strength_bps", 0.0)),
                                 bool(snap.get("stale_data", True)),
                                 snap.get("data_age_ms", "NA"),
                             )
@@ -1002,9 +1597,204 @@ def main() -> None:
                 except Exception as exc:
                     log.exception("Scanner loop error: %s", exc)
 
+        async def recover_positions_on_startup() -> None:
+            """
+            On bot startup or soft-restart: reconstruct open positions from:
+              1. Local DB (executions_raw, last 24h) — fast, no API call.
+              2. Exchange get_execution_list() — catches fills not yet in DB.
+            Seeds seen_exec_ids so the regular refresh loop won't double-count.
+            After recovery, any position past its SL/TP/timeout will be closed
+            by maybe_force_exit() on the very first trading loop iteration.
+            """
+            log.info("Startup position recovery: scanning DB executions_raw (last 24h)...")
+            cutoff_ms = int((time.time() - 86400) * 1000)  # 24 hours ago
+
+            # --- Step 1: Replay fills from local DB ---
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT exec_id, symbol, side, exec_qty, exec_price, exec_fee, fee_currency
+                    FROM executions_raw
+                    WHERE exec_time_ms > ?
+                    ORDER BY exec_time_ms ASC
+                    """,
+                    (cutoff_ms,),
+                ).fetchall()
+            except Exception as exc:
+                log.warning("Startup recovery: DB query failed, skipping DB replay: %s", exc)
+                rows = []
+
+            db_replayed = 0
+            for row in rows:
+                exec_id, symbol, side, exec_qty, exec_price, exec_fee, fee_currency = row
+                if not exec_id:
+                    continue
+                seen_exec_ids.add(exec_id)  # pre-seed to avoid double-counting
+
+                if not symbol or not side:
+                    continue
+                qty = float(exec_qty or 0.0)
+                price = float(exec_price or 0.0)
+                side_l = str(side).lower()
+                if qty <= 0 or side_l not in {"buy", "sell"}:
+                    continue
+
+                base_ccy, _ = _split_symbol_base_quote(symbol.upper())
+                fee = float(exec_fee or 0.0)
+                fee_ccy = str(fee_currency or "").upper()
+                effective_qty = qty
+                if base_ccy and fee_ccy == base_ccy:
+                    effective_qty = max(qty - fee, 0.0) if side_l == "buy" else qty + max(fee, 0.0)
+                if effective_qty <= 0:
+                    continue
+
+                net_position_base.setdefault(symbol, 0.0)
+                avg_entry_price.setdefault(symbol, 0.0)
+                old_qty = net_position_base[symbol]
+                old_avg = avg_entry_price[symbol]
+                new_qty, new_avg = apply_fill(
+                    current_qty=old_qty,
+                    current_avg_entry=old_avg,
+                    side=side_l,
+                    fill_qty=effective_qty,
+                    fill_price=price,
+                )
+                net_position_base[symbol] = new_qty
+                avg_entry_price[symbol] = new_avg
+                db_replayed += 1
+
+            log.info("Startup recovery: replayed %d fills from DB.", db_replayed)
+
+            # --- Step 2: Exchange API — catch fills not yet written to DB ---
+            if executor is not None:
+                all_symbols: set[str] = set(config.symbols)
+                all_symbols.update(s for s, q in net_position_base.items() if abs(q) > 0)
+                for symbol in all_symbols:
+                    try:
+                        resp = await executor.get_execution_list(symbol=symbol, limit=200)
+                    except Exception as exc:
+                        log.warning("Startup recovery: get_execution_list failed for %s: %s", symbol, exc)
+                        continue
+                    if resp.get("retCode") != 0:
+                        continue
+                    items = (resp.get("result") or {}).get("list") or []
+                    for item in reversed(items):
+                        exec_id = str(
+                            item.get("execId")
+                            or f"{item.get('orderId')}:{item.get('execTime')}:{item.get('execQty')}:{item.get('symbol')}"
+                        )
+                        if exec_id in seen_exec_ids:
+                            continue  # already replayed from DB or previous run
+                        seen_exec_ids.add(exec_id)
+
+                        side = str(item.get("side") or "").lower()
+                        qty = float(item.get("execQty") or item.get("qty") or 0.0)
+                        price = float(item.get("execPrice") or item.get("price") or 0.0)
+                        if qty <= 0 or side not in {"buy", "sell"}:
+                            continue
+
+                        base_ccy, _ = _split_symbol_base_quote(symbol.upper())
+                        exec_fee = float(item.get("execFee") or 0.0)
+                        fee_ccy = str(item.get("feeCurrency") or "").upper()
+                        effective_qty = qty
+                        if base_ccy and fee_ccy == base_ccy:
+                            effective_qty = max(qty - exec_fee, 0.0) if side == "buy" else qty + max(exec_fee, 0.0)
+                        if effective_qty <= 0:
+                            continue
+
+                        net_position_base.setdefault(symbol, 0.0)
+                        avg_entry_price.setdefault(symbol, 0.0)
+                        old_qty = net_position_base[symbol]
+                        old_avg = avg_entry_price[symbol]
+                        new_qty, new_avg = apply_fill(
+                            current_qty=old_qty,
+                            current_avg_entry=old_avg,
+                            side=side,
+                            fill_qty=effective_qty,
+                            fill_price=price,
+                        )
+                        net_position_base[symbol] = new_qty
+                        avg_entry_price[symbol] = new_avg
+
+            # --- Step 3: Wallet balance cross-check (spot ground truth) ---
+            # On spot, a filled buy has NO open order — coin just sits in wallet.
+            # If DB/API replay missed any fills, wallet balance is the last safety net.
+            if executor is not None:
+                try:
+                    wb_resp = await executor.get_wallet_balance(account_type="UNIFIED")
+                    if wb_resp.get("retCode") == 0:
+                        for account in (wb_resp.get("result") or {}).get("list") or []:
+                            for coin_info in (account.get("coin") or []):
+                                coin = str(coin_info.get("coin") or "").upper().strip()
+                                if not coin or coin in ("USDT", "USDC", "BUSD"):
+                                    continue
+                                wb_qty = float(coin_info.get("walletBalance") or 0.0)
+                                if wb_qty <= 0:
+                                    continue
+                                sym = f"{coin}USDT"
+                                tracked = abs(float(net_position_base.get(sym, 0.0)))
+                                if tracked < wb_qty * 0.5:
+                                    # We hold this coin but DB/API replay missed it.
+                                    # Mark it so the timeout exit fires quickly.
+                                    log.warning(
+                                        "Startup recovery: wallet holds %s=%.8f but net_position_base=%.8f — "
+                                        "injecting as timed-out position for immediate cleanup.",
+                                        sym, wb_qty, tracked,
+                                    )
+                                    net_position_base[sym] = wb_qty
+                                    # avg_entry unknown — use 0 so SL won't block, timeout fires
+                                    avg_entry_price.setdefault(sym, 0.0)
+                                    # Mark as opened hold_timeout ago → triggers timeout exit immediately
+                                    position_opened_at[sym] = time.monotonic() - float(hold_timeout_sec) - 10.0
+                                    symbol_peak_pnl_bps.setdefault(sym, 0.0)
+                except Exception as exc:
+                    log.warning("Startup recovery: wallet balance check failed: %s", exc)
+
+            # --- Step 4: Report and mark recovered positions ---
+            open_positions = {
+                s: q for s, q in net_position_base.items() if abs(q) >= _position_floor(s)
+            }
+            if open_positions:
+                log.warning(
+                    "Startup recovery: found %d open position(s) — will apply exit checks immediately: %s",
+                    len(open_positions),
+                    ", ".join(
+                        f"{s}=qty:{q:.8f} avg_entry:{avg_entry_price.get(s, 0.0):.6f}"
+                        for s, q in open_positions.items()
+                    ),
+                )
+                # Mark positions as opened so maybe_force_exit() processes them
+                for s, q in open_positions.items():
+                    if position_opened_at.get(s) is None:
+                        # Use current time — age=0, so only SL/TP triggers (not timeout yet)
+                        # This is safe: timeout will trigger after hold_timeout_sec from now
+                        position_opened_at[s] = time.monotonic()
+                        symbol_peak_pnl_bps[s] = 0.0
+            else:
+                log.info("Startup recovery: no open positions found — starting clean.")
+
         async def trading_loop() -> None:
+            nonlocal last_position_status_log_at
             if executor is None:
                 return
+
+            # Cancel ALL open orders before recovery so we start from a clean slate.
+            # This prevents stale SPREAD/spike quotes from accumulating across restarts.
+            try:
+                log.warning("Startup: cancelling all open orders before position recovery...")
+                cancel_resp = await executor.cancel_all_orders()
+                if cancel_resp.get("retCode") == 0:
+                    log.warning("Startup: all open orders cancelled successfully.")
+                else:
+                    log.warning(
+                        "Startup: cancel_all_orders returned retCode=%s retMsg=%s",
+                        cancel_resp.get("retCode"),
+                        cancel_resp.get("retMsg"),
+                    )
+            except Exception as exc:
+                log.warning("Startup: cancel_all_orders failed: %s", exc)
+
+            await recover_positions_on_startup()
 
             last_paused_log_at = 0.0
             loop_no = 0
@@ -1049,8 +1839,6 @@ def main() -> None:
                     continue
 
                 try:
-                    await refresh_positions_from_executions()
-
                     resp = await executor.get_open_orders()
                     if resp.get("retCode") == 10004:
                         log.error("Stopping trading loop: invalid REST signature (retCode=10004).")
@@ -1066,8 +1854,17 @@ def main() -> None:
 
                     total_exposure = 0.0
                     symbol_exposure: dict[str, float] = {}
-                    our_order_link_ids: list[tuple[str, str]] = []
+                    our_mm_order_link_ids: list[tuple[str, str]] = []
+                    open_position_orders: dict[str, list[dict[str, Any]]] = {}
                     open_list = (resp.get("result") or {}).get("list") or []
+                    open_order_symbols: set[str] = {
+                        str(order.get("symbol") or "").upper()
+                        for order in open_list
+                        if str(order.get("symbol") or "").strip()
+                    }
+                    await refresh_positions_from_executions(open_order_symbols=open_order_symbols)
+                    await refresh_wallet_balance()
+                    newly_placed_symbols: set[str] = set()  # symbols with orders placed THIS iteration
                     for order in open_list:
                         sym = order.get("symbol", "")
                         price = float(order.get("price") or 0)
@@ -1076,10 +1873,12 @@ def main() -> None:
                         notional = price * qty
                         total_exposure += notional
                         symbol_exposure[sym] = symbol_exposure.get(sym, 0.0) + notional
-                        if link.startswith("mm-"):
-                            our_order_link_ids.append((sym, link))
+                        if link.startswith("mm-") or link.startswith("spk-"):
+                            our_mm_order_link_ids.append((sym, link))
+                        elif link.startswith("px-"):
+                            open_position_orders.setdefault(sym, []).append(order)
 
-                    for sym, link in our_order_link_ids:
+                    for sym, link in our_mm_order_link_ids:
                         await executor.cancel_order(symbol=sym, order_link_id=link)
 
                     blocked_symbols: set[str] = set()
@@ -1089,20 +1888,61 @@ def main() -> None:
                         if await maybe_force_exit(symbol):
                             blocked_symbols.add(symbol)
 
+                    position_exit_quotes = 0
+                    for symbol in managed_symbols:
+                        if await maybe_place_position_exit_quote(symbol, open_position_orders):
+                            position_exit_quotes += 1
+
+                    now_pos_log = time.monotonic()
+                    if now_pos_log - last_position_status_log_at >= 10:
+                        for symbol in managed_symbols:
+                            pos_qty = float(net_position_base.get(symbol, 0.0))
+                            pos_floor = _position_floor(symbol)
+                            if abs(pos_qty) < pos_floor:
+                                continue
+                            ob = state.get_orderbook(symbol)
+                            if ob is None:
+                                continue
+                            planned = _planned_exit_price(symbol, pos_qty, ob)
+                            mark_price = ob.best_bid if pos_qty > 0 else ob.best_ask
+                            log.info(
+                                "PositionWatch symbol=%s qty=%.8f entry=%.8f mark=%.8f planned_exit=%s side=%s",
+                                symbol,
+                                pos_qty,
+                                float(avg_entry_price.get(symbol, 0.0)),
+                                float(mark_price),
+                                "n/a" if planned is None else _fmt_float(float(planned)),
+                                "Sell" if pos_qty > 0 else "Buy",
+                            )
+                        last_position_status_log_at = now_pos_log
+
                     intents = strategy.get_intents(state)
                     strategy_summary = strategy.get_last_summary()
                     risk_reject_count = 0
                     place_fail_count = 0
                     placed_count = 0
+                    fast_reprice_reject_count = 0
 
                     for intent in intents:
                         if intent.symbol in blocked_symbols:
                             continue
+                        maker_only_entry = (
+                            bool(intent.action_maker_only)
+                            if intent.action_maker_only is not None
+                            else runtime_strategy_mode != "spike_reversal"
+                        )
+                        time_in_force = "PostOnly" if maker_only_entry else "IOC"
+                        intent_to_send = _prepare_intent_for_send(intent, maker_only=maker_only_entry)
+                        if intent_to_send is None:
+                            fast_reprice_reject_count += 1
+                            continue
+                        if intent_to_send.action_maker_only is None:
+                            intent_to_send = replace(intent_to_send, action_maker_only=maker_only_entry)
 
-                        signal_id = f"sig-{intent.order_link_id}"
-                        ob = state.get_orderbook(intent.symbol)
-                        pair = state.get_pair_filter_snapshot(intent.symbol) or {}
-                        policy_meta = state.get_active_policy_meta(intent.symbol)
+                        signal_id = f"sig-{intent_to_send.order_link_id}"
+                        ob = state.get_orderbook(intent_to_send.symbol)
+                        pair = state.get_pair_filter_snapshot(intent_to_send.symbol) or {}
+                        policy_meta = state.get_active_policy_meta(intent_to_send.symbol)
                         best_bid = ob.best_bid if ob is not None else 0.0
                         best_ask = ob.best_ask if ob is not None else 0.0
                         mid = ob.mid if ob is not None else 0.0
@@ -1111,8 +1951,8 @@ def main() -> None:
                             conn,
                             signal_id=signal_id,
                             ts_signal_ms=int(time.time() * 1000),
-                            symbol=intent.symbol,
-                            side=intent.side,
+                            symbol=intent_to_send.symbol,
+                            side=intent_to_send.side,
                             best_bid=best_bid,
                             best_ask=best_ask,
                             mid=mid,
@@ -1124,19 +1964,22 @@ def main() -> None:
                             trades_per_min=float(pair.get("trades_per_min", 0.0)),
                             p95_trade_gap_ms=float(pair.get("p95_trade_gap_ms", 0.0)),
                             vol_1s_bps=float(pair.get("vol_1s_bps", 0.0)),
+                            impulse_bps=float(pair.get("impulse_bps", 0.0)),
+                            spike_direction=int(float(pair.get("spike_direction", 0.0) or 0.0)),
+                            spike_strength_bps=float(pair.get("spike_strength_bps", 0.0)),
                             min_required_spread_bps=float(pair.get("min_required_spread_bps", 0.0)),
                             scanner_status=str(pair.get("status", "NA")),
-                            model_version=str(intent.model_version or ""),
-                            profile_id=intent.profile_id,
-                            action_entry_tick_offset=intent.action_entry_tick_offset,
-                            action_order_qty_base=intent.action_order_qty_base,
-                            action_target_profit=intent.action_target_profit,
-                            action_safety_buffer=intent.action_safety_buffer,
-                            action_min_top_book_qty=intent.action_min_top_book_qty,
-                            action_stop_loss_pct=intent.action_stop_loss_pct,
-                            action_take_profit_pct=intent.action_take_profit_pct,
-                            action_hold_timeout_sec=intent.action_hold_timeout_sec,
-                            action_maker_only=intent.action_maker_only,
+                            model_version=str(intent_to_send.model_version or ""),
+                            profile_id=intent_to_send.profile_id,
+                            action_entry_tick_offset=intent_to_send.action_entry_tick_offset,
+                            action_order_qty_base=intent_to_send.action_order_qty_base,
+                            action_target_profit=intent_to_send.action_target_profit,
+                            action_safety_buffer=intent_to_send.action_safety_buffer,
+                            action_min_top_book_qty=intent_to_send.action_min_top_book_qty,
+                            action_stop_loss_pct=intent_to_send.action_stop_loss_pct,
+                            action_take_profit_pct=intent_to_send.action_take_profit_pct,
+                            action_hold_timeout_sec=intent_to_send.action_hold_timeout_sec,
+                            action_maker_only=intent_to_send.action_maker_only,
                             policy_used=str(policy_meta.get("policy_used") or ("ML" if policy_model is not None else "Bandit")),
                             pred_open_prob=(
                                 float(policy_meta.get("pred_open_prob"))
@@ -1155,27 +1998,41 @@ def main() -> None:
                                 or policy_model_id
                                 or ""
                             ),
-                            order_size_quote=float(intent.price * intent.qty),
-                            order_size_base=float(intent.qty),
-                            entry_price=float(intent.price),
+                            order_size_quote=float(intent_to_send.price * intent_to_send.qty),
+                            order_size_base=float(intent_to_send.qty),
+                            entry_price=float(intent_to_send.price),
                         )
 
+                        # Count unique symbols we're "in" — three independent sources:
+                        # 1. net_position_base: fills tracked via WS execution stream
+                        # 2. open_order_symbols: pending orders fetched from exchange this loop
+                        # 3. wallet_held_base_symbols → {coin}USDT: actual wallet holdings
+                        #    (ground truth for spot — a filled buy has NO open order, coin is just held)
+                        # 4. newly_placed_symbols: orders placed earlier in THIS loop iteration
+                        #    (open_order_symbols is stale — fetched at start of loop, before new placements)
+                        _filled_pos_symbols = {
+                            s for s, q in net_position_base.items() if abs(q) >= _position_floor(s)
+                        }
+                        _wallet_symbols = {f"{c}USDT" for c in wallet_held_base_symbols}
+                        _all_active_symbols = (
+                            _filled_pos_symbols | open_order_symbols | _wallet_symbols | newly_placed_symbols
+                        ) - {intent_to_send.symbol}
+                        current_open_pos_count = len(_all_active_symbols)
                         risk = risk_manager.check_order(
-                            intent.symbol,
-                            intent.side,
-                            intent.price,
-                            intent.qty,
+                            intent_to_send.symbol,
+                            intent_to_send.side,
+                            intent_to_send.price,
+                            intent_to_send.qty,
                             total_exposure,
-                            symbol_exposure.get(intent.symbol, 0.0),
+                            symbol_exposure.get(intent_to_send.symbol, 0.0),
+                            current_open_positions=current_open_pos_count,
                         )
                         if not risk.allowed:
                             risk_reject_count += 1
                             log.debug("Risk reject: %s", risk.reason)
                             continue
 
-                        # Runtime mode is maker-only for entry/quote orders.
-                        time_in_force = "PostOnly"
-                        ret = await guarded_place_order(intent, time_in_force)
+                        ret = await guarded_place_order(intent_to_send, time_in_force)
 
                         if ret.get("retCode") == 10004:
                             log.error("Stopping trading loop: invalid REST signature on place_order (10004).")
@@ -1184,7 +2041,7 @@ def main() -> None:
                         if ret.get("retCode") != 0:
                             log.warning(
                                 "place_order failed: symbol=%s retCode=%s retMsg=%s",
-                                intent.symbol,
+                                intent_to_send.symbol,
                                 ret.get("retCode"),
                                 ret.get("retMsg"),
                             )
@@ -1192,40 +2049,45 @@ def main() -> None:
                             continue
 
                         placed_count += 1
+                        newly_placed_symbols.add(intent_to_send.symbol)  # track intra-iteration placements
                         risk_manager.register_order_placed()
-                        if intent.action_hold_timeout_sec is not None:
-                            symbol_hold_timeout_sec[intent.symbol] = float(max(intent.action_hold_timeout_sec, 1))
-                        if intent.action_stop_loss_pct is not None:
-                            symbol_stop_loss_pct[intent.symbol] = float(max(intent.action_stop_loss_pct, 0.0))
-                        if intent.action_take_profit_pct is not None:
-                            symbol_take_profit_pct[intent.symbol] = float(max(intent.action_take_profit_pct, 0.0))
-                        total_exposure += intent.price * intent.qty
-                        symbol_exposure[intent.symbol] = (
-                            symbol_exposure.get(intent.symbol, 0.0) + intent.price * intent.qty
+                        if intent_to_send.action_hold_timeout_sec is not None:
+                            symbol_hold_timeout_sec[intent_to_send.symbol] = float(max(intent_to_send.action_hold_timeout_sec, 1))
+                        if intent_to_send.action_stop_loss_pct is not None:
+                            symbol_stop_loss_pct[intent_to_send.symbol] = float(max(intent_to_send.action_stop_loss_pct, 0.0))
+                        if intent_to_send.action_take_profit_pct is not None:
+                            symbol_take_profit_pct[intent_to_send.symbol] = float(max(intent_to_send.action_take_profit_pct, 0.0))
+                        if intent_to_send.action_target_profit is not None:
+                            symbol_target_profit_ratio[intent_to_send.symbol] = float(max(intent_to_send.action_target_profit, 0.0))
+                        if intent_to_send.action_safety_buffer is not None:
+                            symbol_safety_buffer_ratio[intent_to_send.symbol] = float(max(intent_to_send.action_safety_buffer, 0.0))
+                        total_exposure += intent_to_send.price * intent_to_send.qty
+                        symbol_exposure[intent_to_send.symbol] = (
+                            symbol_exposure.get(intent_to_send.symbol, 0.0) + intent_to_send.price * intent_to_send.qty
                         )
                         insert_order(
                             conn,
-                            symbol=intent.symbol,
-                            side=intent.side,
-                            order_link_id=intent.order_link_id,
-                            price=_fmt_float(intent.price),
-                            qty=_fmt_float(intent.qty),
+                            symbol=intent_to_send.symbol,
+                            side=intent_to_send.side,
+                            order_link_id=intent_to_send.order_link_id,
+                            price=_fmt_float(intent_to_send.price),
+                            qty=_fmt_float(intent_to_send.qty),
                             status="New",
                             created_at_utc=utc_now_iso(),
                             exchange_order_id=(ret.get("result") or {}).get("orderId"),
                         )
-                        set_order_signal_map(conn, intent.order_link_id, signal_id)
+                        set_order_signal_map(conn, intent_to_send.order_link_id, signal_id)
                         insert_order_event(
                             conn,
-                            symbol=intent.symbol,
-                            order_link_id=intent.order_link_id,
+                            symbol=intent_to_send.symbol,
+                            order_link_id=intent_to_send.order_link_id,
                             order_id=(ret.get("result") or {}).get("orderId"),
                             signal_id=signal_id,
-                            side=intent.side,
+                            side=intent_to_send.side,
                             order_type="Limit",
                             time_in_force=time_in_force,
-                            price=float(intent.price),
-                            qty=float(intent.qty),
+                            price=float(intent_to_send.price),
+                            qty=float(intent_to_send.qty),
                             order_status="New",
                         )
 
@@ -1233,7 +2095,7 @@ def main() -> None:
                     active_ws_books_ready = sum(1 for s in active_symbols if state.get_orderbook(s) is not None)
                     scanner_snapshot = state.get_scanner_snapshot()
                     log.info(
-                        "Loop #%s: ws_books=%s/%s active_ws_books=%s/%s active_symbols=%s open_orders=%s mm_canceled=%s intents=%s placed=%s risk_reject=%s place_fail=%s blocked_symbols=%s scanner=%s strategy=%s",
+                        "Loop #%s: ws_books=%s/%s active_ws_books=%s/%s active_symbols=%s open_orders=%s mm_canceled=%s pos_exit_quotes=%s intents=%s placed=%s risk_reject=%s place_fail=%s fast_reprice_reject=%s blocked_symbols=%s scanner=%s strategy=%s",
                         loop_no,
                         ws_books_ready,
                         len(config.symbols),
@@ -1241,11 +2103,13 @@ def main() -> None:
                         len(active_symbols),
                         ",".join(active_symbols[:8]) if active_symbols else "none",
                         len(open_list),
-                        len(our_order_link_ids),
+                        len(our_mm_order_link_ids),
+                        position_exit_quotes,
                         len(intents),
                         placed_count,
                         risk_reject_count,
                         place_fail_count,
+                        fast_reprice_reject_count,
                         len(blocked_symbols),
                         scanner_snapshot,
                         strategy_summary,
@@ -1253,12 +2117,13 @@ def main() -> None:
                 except Exception as exc:
                     log.exception("Trading loop error: %s", exc)
 
-        ws = BybitSpotOrderbookWS(
+        ws = BybitPublicOrderbookWS(
             ws_host=config.bybit.ws_public_host,
             symbols=config.symbols,
             depth=config.ws_depth,
             state=state,
             tick_size=config.strategy.default_tick_size,
+            category=runtime_market_category,
         )
         interval = config.storage.metrics_interval_sec
 
@@ -1268,20 +2133,29 @@ def main() -> None:
                     raise RestartRequested("restart_requested")
                 await asyncio.sleep(interval)
                 ts = utc_now_iso()
+                metric_rows: list[tuple[str, str, float | None, float | None, float | None, int | None, float | None]] = []
                 for symbol in config.symbols:
                     ob = state.get_orderbook(symbol)
                     if ob is None:
                         continue
-                    insert_metrics(
-                        conn,
-                        symbol=symbol,
-                        ts_utc=ts,
-                        best_bid=ob.best_bid,
-                        best_ask=ob.best_ask,
-                        mid=ob.mid,
-                        spread_ticks=ob.spread_ticks,
-                        imbalance_top_n=ob.imbalance_top_n,
+                    metric_rows.append(
+                        (
+                            symbol,
+                            ts,
+                            ob.best_bid,
+                            ob.best_ask,
+                            ob.mid,
+                            ob.spread_ticks,
+                            ob.imbalance_top_n,
+                        )
                     )
+                if not metric_rows:
+                    continue
+                try:
+                    insert_metrics_batch(conn, metric_rows)
+                except sqlite3.OperationalError as exc:
+                    # Metrics are best-effort; skip this slice on lock contention and keep trading loop alive.
+                    log.warning("metrics_loop write skipped: %s", exc)
 
         async def universe_loop() -> None:
             if not auto_universe_enabled:
@@ -1292,10 +2166,12 @@ def main() -> None:
                     raise RestartRequested("restart_requested")
                 await asyncio.sleep(auto_universe_refresh_sec)
                 try:
-                    discovered = await discover_top_spot_symbols(
+                    discovered = await discover_top_symbols_by_category(
+                        runtime_market_category,
                         host=config.strategy.auto_universe_host,
                         quote=config.strategy.auto_universe_quote,
                         limit=config.strategy.auto_universe_size,
+                        min_symbols=config.strategy.auto_universe_min_symbols,
                         min_turnover_24h=config.strategy.auto_universe_min_turnover_24h,
                         min_raw_spread_bps=config.strategy.auto_universe_min_raw_spread_bps,
                         min_top_book_notional=config.strategy.auto_universe_min_top_book_notional,
@@ -1327,9 +2203,15 @@ def main() -> None:
                         position_opened_wall_ms.setdefault(s, None)
                         position_opened_at.setdefault(s, None)
                         last_force_exit_ts.setdefault(s, 0.0)
+                        dust_exit_suppressed_until.setdefault(s, 0.0)
                         symbol_hold_timeout_sec.setdefault(s, float(hold_timeout_sec))
                         symbol_stop_loss_pct.setdefault(s, float(stop_loss_pct))
                         symbol_take_profit_pct.setdefault(s, float(take_profit_pct))
+                        symbol_target_profit_ratio.setdefault(s, float(max(config.strategy.target_profit, 0.0)))
+                        symbol_safety_buffer_ratio.setdefault(s, float(max(config.strategy.safety_buffer, 0.0)))
+                        symbol_peak_pnl_bps.setdefault(s, 0.0)
+                        symbol_position_floor.setdefault(s, float(min_position_qty))
+                        symbol_position_notional_floor.setdefault(s, float(min_active_position_usdt))
 
                     await ws.update_symbols(merged)
 

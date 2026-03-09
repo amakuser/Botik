@@ -5,10 +5,69 @@ SQLite-хранилище: WAL, таблицы orders, fills, metrics, pnl_snaps
 from __future__ import annotations
 
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
 # Включение WAL и создание таблиц при первом подключении
+
+
+_LOCK_RETRY_ATTEMPTS = 5
+_LOCK_RETRY_BASE_DELAY_SEC = 0.05
+_BUSY_TIMEOUT_MS = 5000
+
+
+def _is_locked_error(exc: sqlite3.OperationalError) -> bool:
+    msg = str(exc).strip().lower()
+    return ("locked" in msg) or ("busy" in msg)
+
+
+def _execute_write(
+    conn: sqlite3.Connection,
+    sql: str,
+    params: tuple[Any, ...] = (),
+    *,
+    retries: int = _LOCK_RETRY_ATTEMPTS,
+) -> sqlite3.Cursor:
+    for attempt in range(max(retries, 0) + 1):
+        try:
+            cur = conn.execute(sql, params)
+            conn.commit()
+            return cur
+        except sqlite3.OperationalError as exc:
+            if not _is_locked_error(exc) or attempt >= retries:
+                raise
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            time.sleep(_LOCK_RETRY_BASE_DELAY_SEC * float(attempt + 1))
+    raise RuntimeError("unreachable")
+
+
+def _executemany_write(
+    conn: sqlite3.Connection,
+    sql: str,
+    rows: list[tuple[Any, ...]],
+    *,
+    retries: int = _LOCK_RETRY_ATTEMPTS,
+) -> int:
+    if not rows:
+        return 0
+    for attempt in range(max(retries, 0) + 1):
+        try:
+            cur = conn.executemany(sql, rows)
+            conn.commit()
+            return int(cur.rowcount or 0)
+        except sqlite3.OperationalError as exc:
+            if not _is_locked_error(exc) or attempt >= retries:
+                raise
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            time.sleep(_LOCK_RETRY_BASE_DELAY_SEC * float(attempt + 1))
+    raise RuntimeError("unreachable")
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -104,7 +163,9 @@ def get_connection(db_path: str | Path) -> sqlite3.Connection:
     """Возвращает подключение с включённым WAL и созданными таблицами."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=float(_BUSY_TIMEOUT_MS) / 1000.0)
+    conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA synchronous=NORMAL")
     _ensure_schema(conn)
     return conn
 
@@ -120,12 +181,12 @@ def insert_order(
     created_at_utc: str,
     exchange_order_id: str | None = None,
 ) -> int:
-    cur = conn.execute(
+    cur = _execute_write(
+        conn,
         """INSERT INTO orders (symbol, side, exchange_order_id, order_link_id, price, qty, status, created_at_utc)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (symbol, side, exchange_order_id, order_link_id, price, qty, status, created_at_utc),
     )
-    conn.commit()
     return cur.lastrowid or 0
 
 
@@ -137,16 +198,17 @@ def update_order_status(
     exchange_order_id: str | None = None,
 ) -> None:
     if exchange_order_id:
-        conn.execute(
+        _execute_write(
+            conn,
             "UPDATE orders SET status=?, updated_at_utc=?, exchange_order_id=? WHERE order_link_id=?",
             (status, updated_at_utc, exchange_order_id, order_link_id),
         )
     else:
-        conn.execute(
+        _execute_write(
+            conn,
             "UPDATE orders SET status=?, updated_at_utc=? WHERE order_link_id=?",
             (status, updated_at_utc, order_link_id),
         )
-    conn.commit()
 
 
 def update_orders_entry_exit_for_signal(
@@ -161,7 +223,8 @@ def update_orders_entry_exit_for_signal(
         return
     if not _table_exists(conn, "order_signal_map"):
         return
-    conn.execute(
+    _execute_write(
+        conn,
         """
         UPDATE orders
         SET entry_price = ?, exit_price = ?, updated_at_utc = ?
@@ -173,7 +236,6 @@ def update_orders_entry_exit_for_signal(
         """,
         (entry_price, exit_price, updated_at_utc, signal_id),
     )
-    conn.commit()
 
 
 def insert_fill(
@@ -189,12 +251,12 @@ def insert_fill(
     fee_currency: str | None = None,
     liquidity: str | None = None,
 ) -> int:
-    cur = conn.execute(
+    cur = _execute_write(
+        conn,
         """INSERT INTO fills (order_link_id, exchange_order_id, symbol, side, price, qty, fee, fee_currency, liquidity, filled_at_utc)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (order_link_id, exchange_order_id, symbol, side, price, qty, fee, fee_currency, liquidity, filled_at_utc),
     )
-    conn.commit()
     return cur.lastrowid or 0
 
 
@@ -208,13 +270,22 @@ def insert_metrics(
     spread_ticks: int | None = None,
     imbalance_top_n: float | None = None,
 ) -> int:
-    cur = conn.execute(
+    cur = _execute_write(
+        conn,
         """INSERT INTO metrics_1s (symbol, ts_utc, best_bid, best_ask, mid, spread_ticks, imbalance_top_n)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (symbol, ts_utc, best_bid, best_ask, mid, spread_ticks, imbalance_top_n),
     )
-    conn.commit()
     return cur.lastrowid or 0
+
+
+def insert_metrics_batch(conn: sqlite3.Connection, rows: list[tuple[str, str, float | None, float | None, float | None, int | None, float | None]]) -> int:
+    return _executemany_write(
+        conn,
+        """INSERT INTO metrics_1s (symbol, ts_utc, best_bid, best_ask, mid, spread_ticks, imbalance_top_n)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        rows,
+    )
 
 
 def insert_pnl_snapshot(
@@ -224,11 +295,11 @@ def insert_pnl_snapshot(
     total_fees_usdt: float | None = None,
     extra_json: str | None = None,
 ) -> int:
-    cur = conn.execute(
+    cur = _execute_write(
+        conn,
         "INSERT INTO pnl_snapshots (ts_utc, realised_pnl_usdt, total_fees_usdt, extra_json) VALUES (?, ?, ?, ?)",
         (ts_utc, realised_pnl_usdt, total_fees_usdt, extra_json),
     )
-    conn.commit()
     return cur.lastrowid or 0
 
 
@@ -241,8 +312,9 @@ def upsert_model_registry(
     is_active: bool = False,
 ) -> None:
     if is_active:
-        conn.execute("UPDATE model_registry SET is_active=0")
-    conn.execute(
+        _execute_write(conn, "UPDATE model_registry SET is_active=0")
+    _execute_write(
+        conn,
         """INSERT INTO model_registry (model_id, path_or_payload, metrics_json, created_at_utc, is_active)
            VALUES (?, ?, ?, ?, ?)
            ON CONFLICT(model_id) DO UPDATE SET
@@ -252,7 +324,6 @@ def upsert_model_registry(
              is_active=excluded.is_active""",
         (model_id, path_or_payload, metrics_json, created_at_utc, 1 if is_active else 0),
     )
-    conn.commit()
 
 
 def get_active_model(conn: sqlite3.Connection) -> dict[str, Any] | None:

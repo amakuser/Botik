@@ -27,6 +27,19 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-clipped))
 
 
+def _align_feature_count(X: np.ndarray, expected_cols: int) -> np.ndarray:
+    if X.ndim != 2:
+        return X
+    cols = int(X.shape[1])
+    target = max(int(expected_cols), 1)
+    if cols == target:
+        return X
+    if cols > target:
+        return X[:, :target]
+    pad = np.zeros((X.shape[0], target - cols), dtype=float)
+    return np.hstack([X, pad])
+
+
 def train_lifecycle_models(
     X: np.ndarray,
     y_open: np.ndarray,
@@ -115,7 +128,9 @@ def predict_batch(bundle: dict[str, Any], X: np.ndarray) -> dict[str, np.ndarray
     clf: SGDClassifier = bundle["clf_open"]
     reg: SGDRegressor | None = bundle.get("reg_edge")
 
-    Xs = scaler.transform(X)
+    expected_cols = int(getattr(scaler, "n_features_in_", X.shape[1] if X.ndim == 2 else 1))
+    X_aligned = _align_feature_count(np.array(X, dtype=float), expected_cols)
+    Xs = scaler.transform(X_aligned)
     if hasattr(clf, "predict_proba"):
         open_proba = clf.predict_proba(Xs)[:, 1]
     else:

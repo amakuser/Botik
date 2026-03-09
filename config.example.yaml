@@ -4,6 +4,7 @@
 bybit:
   host: "api-demo.bybit.com"   # DEMO; main: api.bybit.com
   ws_public_host: "stream.bybit.com"   # public market data; testnet: stream-testnet.bybit.com
+  market_category: "spot"  # spot | linear
   api_key_env: "BYBIT_API_KEY"
   api_secret_key_env: "BYBIT_API_SECRET_KEY"
   # Legacy fallback variable:
@@ -17,6 +18,7 @@ symbols:
 ws_depth: 50
 
 strategy:
+  runtime_strategy: "spread_maker"  # spread_maker | spike_reversal
   min_spread_ticks: 1
   min_spread_bps: 8
   replace_interval_ms: 5000
@@ -37,6 +39,7 @@ strategy:
   force_exit_enabled: true
   force_exit_time_in_force: "IOC"
   force_exit_cooldown_sec: 10
+  force_exit_dust_cooldown_sec: 300
   allow_taker_exit: true
   stop_loss_pct: 0.003
   take_profit_pct: 0.005
@@ -48,14 +51,20 @@ strategy:
   allow_partial_outcome: false
   scanner_enabled: true
   scanner_interval_sec: 3
-  scanner_top_k: 6
+  scanner_top_k: 80
+  fast_reprice_on_send: true
+  quote_max_book_age_ms: 1200
+  execution_refresh_interval_sec: 8
+  execution_refresh_max_symbols: 12
+  execution_refresh_concurrency: 4
   auto_universe_enabled: true
   auto_universe_host: "api.bybit.com"
   auto_universe_quote: "USDT"
   auto_universe_exclude_st_tag_1: true
-  auto_universe_size: 40
+  auto_universe_size: 250
+  auto_universe_min_symbols: 120
   auto_universe_refresh_sec: 180
-  auto_universe_min_turnover_24h: 3000000
+  auto_universe_min_turnover_24h: 300000
   auto_universe_min_raw_spread_bps: 0
   auto_universe_min_top_book_notional: 0
   bandit_enabled: true
@@ -103,6 +112,21 @@ strategy:
   max_vol_to_spread_ratio: 1.2
   max_trade_silence_ms: 12000
   max_book_silence_ms: 5000
+  spike_window_sec: 3
+  spike_threshold_bps: 12
+  spike_min_trades_per_min: 8
+  spike_burst_enabled: true
+  spike_burst_slices: 4
+  spike_burst_qty_scale: 0.25
+  spike_burst_tick_step: 1
+  spike_profile_id: "spike"
+  spike_reversal_reverse: true
+  spike_reversal_taker: true
+  spike_reversal_min_strength_bps: 12
+  spike_reversal_entry_offset_ticks: 1
+  spike_reversal_qty_scale: 1.0
+  spike_reversal_max_symbols: 40
+  spike_reversal_cooldown_sec: 2.0
   strict_pair_filter: true
 
   inventory:
@@ -132,7 +156,7 @@ execution:
   paper_fill_on_cross: true
 
 ml:
-  mode: "bootstrap"   # bootstrap | train | predict
+  mode: "bootstrap"   # bootstrap | train | predict | online
   enabled: true
   run_interval_sec: 300
   model_dir: "data/models"

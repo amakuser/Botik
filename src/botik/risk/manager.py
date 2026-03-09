@@ -55,6 +55,7 @@ class RiskManager:
         self.max_total_pct = risk_config.max_total_exposure_pct_of_initial
         self.max_symbol_exposure_pct = risk_config.max_symbol_exposure_pct
         self.max_orders_per_minute = risk_config.max_orders_per_minute
+        self.max_open_positions = int(risk_config.max_open_positions)
         self._order_timestamps: deque[float] = deque()
 
     def _max_total_exposure_usdt(self) -> float:
@@ -85,10 +86,12 @@ class RiskManager:
         qty: float,
         current_total_exposure_usdt: float,
         current_symbol_exposure_usdt: float,
+        current_open_positions: int = 0,
     ) -> RiskCheckResult:
         """
         Проверить, можно ли выставить ордер. Экспозиция — сумма notional (price*qty)
         по уже открытым ордерам (total и по символу).
+        current_open_positions — кол-во символов с открытой позицией прямо сейчас.
         """
         notional = price * qty
         if notional <= 0:
@@ -96,6 +99,13 @@ class RiskManager:
 
         if self._orders_in_last_minute() >= self.max_orders_per_minute:
             return RiskCheckResult(False, "max_orders_per_minute exceeded")
+
+        # Hard cap on simultaneous open positions to prevent loss accumulation
+        if self.max_open_positions > 0 and current_open_positions >= self.max_open_positions:
+            return RiskCheckResult(
+                False,
+                f"max_open_positions reached ({current_open_positions}/{self.max_open_positions})",
+            )
 
         new_total = current_total_exposure_usdt + notional
         if new_total > self._max_total_exposure_usdt():

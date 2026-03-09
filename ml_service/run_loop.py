@@ -2,9 +2,10 @@
 Lifecycle ML service process.
 
 Modes:
-- bootstrap: collect stats + autocalibration only
+- bootstrap: stats + autocalibration + gated training on closed lifecycle dataset
 - train: incremental training on closed lifecycle dataset
 - predict: score latest signals with active model
+- online: train and predict in the same loop
 """
 from __future__ import annotations
 
@@ -74,7 +75,7 @@ def _latest_policy_context(conn) -> tuple[str, str]:
     return str(row[0] or ""), str(row[1] or "")
 
 
-def _compute_training_metrics(conn, window: int = 20) -> dict[str, float]:
+def _compute_training_metrics(conn, window: int = 200) -> dict[str, float]:
     rows = conn.execute(
         """
         SELECT COALESCE(net_edge_bps, 0.0), COALESCE(was_profitable, 0)
@@ -85,7 +86,8 @@ def _compute_training_metrics(conn, window: int = 20) -> dict[str, float]:
         (max(int(window), 1),),
     ).fetchall()
     if rows:
-        net_edge_mean = float(sum(float(r[0] or 0.0) for r in rows) / len(rows))
+        clipped_edges = [max(min(float(r[0] or 0.0), 5000.0), -5000.0) for r in rows]
+        net_edge_mean = float(sum(clipped_edges) / len(clipped_edges))
         win_rate = float(sum(int(r[1] or 0) for r in rows) / len(rows))
     else:
         net_edge_mean = 0.0
@@ -345,7 +347,7 @@ def run_predict_once(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Lifecycle ML service")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
-    parser.add_argument("--mode", choices=["bootstrap", "train", "predict"], default=None)
+    parser.add_argument("--mode", choices=["bootstrap", "train", "predict", "online"], default=None)
     parser.add_argument("--online-interval", type=int, default=None, help="Loop interval seconds")
     parser.add_argument("--train-once", action="store_true", help="Legacy alias for --mode train (single run)")
     parser.add_argument("--predict-once", action="store_true", help="Run predict one time and exit")
@@ -374,7 +376,7 @@ def main() -> None:
         mode = "train"
     if args.predict_once:
         mode = "predict"
-    if mode not in {"bootstrap", "train", "predict"}:
+    if mode not in {"bootstrap", "train", "predict", "online"}:
         mode = "bootstrap"
 
     interval_sec = int(args.online_interval or config.ml.run_interval_sec)
@@ -401,7 +403,7 @@ def main() -> None:
             policy_used, profile_id = _latest_policy_context(conn)
             logger.info("Model %s, policy=%s, model=%s", active_model_id, policy_used or "n/a", profile_id or "n/a")
 
-            latest_metrics = _compute_training_metrics(conn, window=20)
+            latest_metrics = _compute_training_metrics(conn, window=200)
             _append_model_stats(conn, active_model_id, latest_metrics)
             logger.info(
                 "training_metrics model=%s net_edge_mean=%.4f win_rate=%.2f%% fill_rate=%.2f%%",
@@ -411,7 +413,10 @@ def main() -> None:
                 float(latest_metrics["fill_rate"]) * 100.0,
             )
 
-            if mode in {"bootstrap", "train"}:
+            train_enabled = mode in {"bootstrap", "train", "online"}
+            predict_enabled = mode in {"predict", "online"}
+
+            if train_enabled:
                 closed_now = _count_closed_signals(conn)
                 can_train = (
                     not paused
@@ -445,7 +450,8 @@ def main() -> None:
                     )
                 elif paused:
                     logger.info("training paused by flag: %s", training_pause_flag)
-            elif mode == "predict":
+
+            if predict_enabled:
                 run_predict_once(
                     conn,
                     target_edge_bps=target_edge_bps,

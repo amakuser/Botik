@@ -21,6 +21,7 @@ class BybitConfig(BaseModel):
     rsa_private_key_path_env: str = "BYBIT_RSA_PRIVATE_KEY_PATH"
     # Public Spot market data host.
     ws_public_host: str = "stream.bybit.com"
+    market_category: str = "spot"  # spot | linear
 
 
 class StrategyInventoryConfig(BaseModel):
@@ -42,6 +43,7 @@ class ActionProfileConfig(BaseModel):
 
 
 class StrategyConfig(BaseModel):
+    runtime_strategy: str = "spread_maker"  # spread_maker | spike_reversal
     min_spread_ticks: int = 1
     min_spread_bps: float = 8.0
     replace_interval_ms: int = 5000
@@ -60,9 +62,13 @@ class StrategyConfig(BaseModel):
     maker_only: bool = True
     position_hold_timeout_sec: int = 180
     min_position_qty_base: float = 0.000001
+    # Positions below this quote notional are treated as dust (primarily for spot).
+    min_active_position_usdt: float = 1.0
     force_exit_enabled: bool = True
     force_exit_time_in_force: str = "IOC"
+    force_exit_use_market: bool = False  # When True, stop-loss exits use Market order (guaranteed fill on spot)
     force_exit_cooldown_sec: int = 10
+    force_exit_dust_cooldown_sec: int = 300
     allow_taker_exit: bool = True
     stop_loss_pct: float = 0.003
     take_profit_pct: float = 0.005
@@ -75,11 +81,17 @@ class StrategyConfig(BaseModel):
     scanner_enabled: bool = True
     scanner_interval_sec: int = 3
     scanner_top_k: int = 30
+    fast_reprice_on_send: bool = True
+    quote_max_book_age_ms: int = 1200
+    execution_refresh_interval_sec: float = 8.0
+    execution_refresh_max_symbols: int = 12
+    execution_refresh_concurrency: int = 4
     auto_universe_enabled: bool = False
     auto_universe_host: str = "api.bybit.com"
     auto_universe_quote: str = "USDT"
     auto_universe_exclude_st_tag_1: bool = True
     auto_universe_size: int = 200
+    auto_universe_min_symbols: int = 60
     auto_universe_refresh_sec: int = 180
     auto_universe_min_turnover_24h: float = 3_000_000.0
     auto_universe_min_raw_spread_bps: float = 0.0
@@ -94,7 +106,8 @@ class StrategyConfig(BaseModel):
     vol_window_sec: int = 60
     min_hold_seconds: int = 15
     cooldown_seconds: int = 60
-    order_notional_quote: float = 50.0
+    order_notional_quote: float = 50.0   # used by pair admission filter only
+    max_order_notional_usdt: float = 10.0  # hard cap: no single order > this USDT value
     bootstrap_fee_entry_bps: float = 2.0
     bootstrap_fee_exit_bps: float = 2.0
     safety_buffer_bps: float = 0.5
@@ -109,6 +122,21 @@ class StrategyConfig(BaseModel):
     max_vol_to_spread_ratio: float = 1.2
     max_trade_silence_ms: int = 12000
     max_book_silence_ms: int = 5000
+    spike_window_sec: int = 3
+    spike_threshold_bps: float = 12.0
+    spike_min_trades_per_min: float = 8.0
+    spike_burst_enabled: bool = True
+    spike_burst_slices: int = 4
+    spike_burst_qty_scale: float = 0.25
+    spike_burst_tick_step: int = 1
+    spike_profile_id: str = "spike"
+    spike_reversal_reverse: bool = True
+    spike_reversal_taker: bool = True
+    spike_reversal_min_strength_bps: float = 12.0
+    spike_reversal_entry_offset_ticks: int = 1
+    spike_reversal_qty_scale: float = 1.0
+    spike_reversal_max_symbols: int = 40
+    spike_reversal_cooldown_sec: float = 2.0
     strict_pair_filter: bool = True
 
     inventory: StrategyInventoryConfig = Field(default_factory=StrategyInventoryConfig)
@@ -130,6 +158,7 @@ class RiskConfig(BaseModel):
     max_total_exposure_pct_of_initial: float = 2.0
     max_symbol_exposure_pct: float = 1.0
     max_orders_per_minute: int = 30
+    max_open_positions: int = 0  # 0 = unlimited; set >0 to hard-cap simultaneous open positions
 
 
 class FeesConfig(BaseModel):
@@ -160,7 +189,7 @@ class ExecutionConfig(BaseModel):
 
 
 class MlConfig(BaseModel):
-    mode: str = "bootstrap"  # bootstrap | train | predict
+    mode: str = "bootstrap"  # bootstrap | train | predict | online
     enabled: bool = True
     run_interval_sec: int = 300
     model_dir: str = "data/models"

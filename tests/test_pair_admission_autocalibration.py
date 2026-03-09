@@ -54,6 +54,8 @@ def test_autocalibration_changes_min_required_spread(tmp_path: Path) -> None:
     config.strategy.bootstrap_fee_exit_bps = 2.0
     config.fees.maker_rate = 0.0
     config.fees.taker_rate = 0.0
+    # Keep baseline deterministic: do not read a real project autocalibration file.
+    config.ml.autocalibration_path = str(tmp_path / "autocalibration_missing.json")
 
     no_auto = evaluate_pair_admission(symbol=symbol, state=state, config=config, now_ms=1_700_000_020_000)
     base_required = float(no_auto.metrics["min_required_spread_bps"])

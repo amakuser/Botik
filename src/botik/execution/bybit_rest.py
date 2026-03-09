@@ -1,5 +1,5 @@
 """
-REST client for Bybit Spot (demo/mainnet depending on base_url).
+REST client for Bybit V5 (spot/linear depending on configured category).
 
 Features:
 - HMAC (primary) and RSA signatures.
@@ -34,15 +34,17 @@ class BybitRestClient:
         api_secret: str | None = None,
         rsa_private_key_path: str | None = None,
         recv_window: int = 20000,
+        category: str = "spot",
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.api_secret = (api_secret or "").strip()
         self.rsa_private_key_path = (rsa_private_key_path or "").strip() or None
         self.recv_window = str(recv_window)
+        self.category = self._sanitize_category(category)
         self._rsa_private_key = None
         self.time_offset_ms = 0
-        self._spot_lot_filters: dict[str, dict[str, Decimal]] = {}
+        self._lot_filters: dict[str, dict[str, Decimal]] = {}
 
         # HMAC is the primary mode. RSA is used only if HMAC secret is not provided.
         if self.api_secret:
@@ -55,6 +57,17 @@ class BybitRestClient:
 
     def _timestamp(self) -> str:
         return str(int(time.time() * 1000) + self.time_offset_ms)
+
+    @staticmethod
+    def _sanitize_category(category: str) -> str:
+        value = str(category or "").strip().lower()
+        if value in {"spot", "linear"}:
+            return value
+        return "spot"
+
+    def _default_settle_coin(self) -> str:
+        # Bot runtime currently trades USDT-quoted linear symbols.
+        return "USDT"
 
     async def sync_server_time(self) -> int:
         """
@@ -140,18 +153,18 @@ class BybitRestClient:
             return value
         return (value / step).to_integral_value(rounding=ROUND_UP) * step
 
-    async def _get_spot_lot_filters(self, symbol: str) -> dict[str, Decimal] | None:
+    async def _get_lot_filters(self, symbol: str) -> dict[str, Decimal] | None:
         symbol_u = symbol.upper().strip()
         if not symbol_u:
             return None
-        cached = self._spot_lot_filters.get(symbol_u)
+        cached = self._lot_filters.get(symbol_u)
         if cached is not None:
             return cached
 
         out = await self._request(
             "GET",
             "/v5/market/instruments-info",
-            params={"category": "spot", "symbol": symbol_u},
+            params={"category": self.category, "symbol": symbol_u},
             retry_on_time_skew=False,
             retry_on_transport=True,
         )
@@ -173,7 +186,7 @@ class BybitRestClient:
         try:
             qty_step = Decimal(str(lot.get("qtyStep") or lot.get("basePrecision") or "0.000001"))
             min_qty = Decimal(str(lot.get("minOrderQty") or qty_step))
-            min_amt = Decimal(str(lot.get("minOrderAmt") or "0"))
+            min_amt = Decimal(str(lot.get("minOrderAmt") or lot.get("minNotionalValue") or "0"))
         except (InvalidOperation, ValueError, TypeError):
             logger.warning("Invalid lotSizeFilter values for %s: %s", symbol_u, lot)
             return None
@@ -190,12 +203,12 @@ class BybitRestClient:
             "min_qty": min_qty,
             "min_amt": min_amt,
         }
-        self._spot_lot_filters[symbol_u] = parsed
+        self._lot_filters[symbol_u] = parsed
         return parsed
 
     async def get_symbol_min_qty(self, symbol: str) -> float | None:
         """Return exchange min tradable base quantity for the symbol."""
-        filters = await self._get_spot_lot_filters(symbol)
+        filters = await self._get_lot_filters(symbol)
         if not filters:
             return None
         try:
@@ -203,7 +216,17 @@ class BybitRestClient:
         except (TypeError, ValueError, InvalidOperation):
             return None
 
-    async def _normalize_spot_qty(self, symbol: str, side: str, qty: str, price: str) -> str | None:
+    async def get_symbol_min_notional_quote(self, symbol: str) -> float | None:
+        """Return exchange min tradable quote notional for the symbol."""
+        filters = await self._get_lot_filters(symbol)
+        if not filters:
+            return None
+        try:
+            return float(filters["min_amt"])
+        except (TypeError, ValueError, InvalidOperation):
+            return None
+
+    async def _normalize_order_qty(self, symbol: str, side: str, qty: str, price: str) -> str | None:
         try:
             qty_dec = Decimal(str(qty))
             price_dec = Decimal(str(price))
@@ -213,31 +236,52 @@ class BybitRestClient:
             return None
         side_u = side.upper().strip()
 
-        filters = await self._get_spot_lot_filters(symbol)
+        # Remember original requested notional for inflation guard.
+        original_notional = qty_dec * price_dec if price_dec > 0 else Decimal("0")
+
+        filters = await self._get_lot_filters(symbol)
         if not filters:
             return self._fmt_decimal(qty_dec)
 
         qty_step = filters["qty_step"]
         min_qty = filters["min_qty"]
         min_amt = filters["min_amt"]
+        spot_sell_floor_strict = self.category == "spot" and side_u == "SELL"
 
         if qty_dec < min_qty:
-            if side_u == "SELL":
+            if spot_sell_floor_strict:
                 return None
             qty_dec = min_qty
         qty_dec = self._quantize_down(qty_dec, qty_step)
         if qty_dec < min_qty:
-            if side_u == "SELL":
+            if spot_sell_floor_strict:
                 return None
             qty_dec = self._quantize_up(min_qty, qty_step)
 
         if min_amt > 0 and price_dec > 0 and (qty_dec * price_dec) < min_amt:
-            if side_u == "SELL":
+            if spot_sell_floor_strict:
                 return None
             qty_dec = self._quantize_up(min_amt / price_dec, qty_step)
 
         if qty_dec <= 0:
             return None
+
+        # Safety guard: reject if normalization inflated the notional by more than 3×.
+        # This prevents tiny base-qty orders from being silently bumped to exchange
+        # minimums that are disproportionately large relative to intended order size.
+        if price_dec > 0 and original_notional > 0:
+            final_notional = qty_dec * price_dec
+            inflation_ratio = float(final_notional / original_notional)
+            if inflation_ratio > 3.0:
+                logger.warning(
+                    "Order qty normalization rejected: symbol=%s side=%s "
+                    "original_qty=%s normalized_qty=%s price=%s "
+                    "original_notional=%.4f final_notional=%.4f inflation=%.1f×",
+                    symbol, side, qty, self._fmt_decimal(qty_dec), price,
+                    float(original_notional), float(final_notional), inflation_ratio,
+                )
+                return None
+
         return self._fmt_decimal(qty_dec)
 
     async def _send(
@@ -347,27 +391,30 @@ class BybitRestClient:
         price: str,
         order_link_id: str,
         time_in_force: str = "PostOnly",
+        order_type: str = "Limit",
     ) -> dict[str, Any]:
-        normalized_qty = await self._normalize_spot_qty(symbol=symbol, side=side, qty=qty, price=price)
+        normalized_qty = await self._normalize_order_qty(symbol=symbol, side=side, qty=qty, price=price)
         if not normalized_qty:
             return {"retCode": -2, "retMsg": "invalid_qty_after_normalization", "result": {}}
         if normalized_qty != qty:
             logger.info("Order qty normalized: symbol=%s qty=%s -> %s", symbol, qty, normalized_qty)
 
-        body = {
-            "category": "spot",
+        body: dict[str, Any] = {
+            "category": self.category,
             "symbol": symbol,
             "side": side,
-            "orderType": "Limit",
+            "orderType": order_type,
             "qty": normalized_qty,
-            "price": price,
             "timeInForce": time_in_force,
             "orderLinkId": order_link_id,
         }
+        # Market orders on Bybit do not accept a price field
+        if order_type == "Limit":
+            body["price"] = price
         return await self._request("POST", "/v5/order/create", json_body=body)
 
     async def cancel_order(self, symbol: str, order_link_id: str | None = None, order_id: str | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {"category": "spot", "symbol": symbol}
+        body: dict[str, Any] = {"category": self.category, "symbol": symbol}
         if order_id:
             body["orderId"] = order_id
         if order_link_id:
@@ -375,19 +422,23 @@ class BybitRestClient:
         return await self._request("POST", "/v5/order/cancel", json_body=body)
 
     async def cancel_all_orders(self, symbol: str | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {"category": "spot"}
+        body: dict[str, Any] = {"category": self.category}
         if symbol:
             body["symbol"] = symbol
+        elif self.category == "linear":
+            body["settleCoin"] = self._default_settle_coin()
         return await self._request("POST", "/v5/order/cancel-all", json_body=body)
 
     async def get_open_orders(self, symbol: str | None = None) -> dict[str, Any]:
-        params: dict[str, Any] = {"category": "spot"}
+        params: dict[str, Any] = {"category": self.category}
         if symbol:
             params["symbol"] = symbol
+        elif self.category == "linear":
+            params["settleCoin"] = self._default_settle_coin()
         return await self._request("GET", "/v5/order/realtime", params=params)
 
     async def get_order(self, symbol: str, order_link_id: str | None = None, order_id: str | None = None) -> dict[str, Any]:
-        params: dict[str, Any] = {"category": "spot", "symbol": symbol}
+        params: dict[str, Any] = {"category": self.category, "symbol": symbol}
         if order_id:
             params["orderId"] = order_id
         if order_link_id:
@@ -404,7 +455,7 @@ class BybitRestClient:
         order_link_id: str | None = None,
         limit: int = 50,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"category": "spot", "symbol": symbol, "limit": limit}
+        params: dict[str, Any] = {"category": self.category, "symbol": symbol, "limit": limit}
         if order_id:
             params["orderId"] = order_id
         if order_link_id:
