@@ -156,6 +156,14 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     """)
     _ensure_column(conn, "orders", "entry_price", "REAL")
     _ensure_column(conn, "orders", "exit_price", "REAL")
+    # Domain-separated additive schema (shared core + spot + futures).
+    from src.botik.storage.core_store import ensure_core_schema
+    from src.botik.storage.spot_store import ensure_spot_schema
+    from src.botik.storage.futures_store import ensure_futures_schema
+
+    ensure_core_schema(conn)
+    ensure_spot_schema(conn)
+    ensure_futures_schema(conn)
     conn.commit()
 
 
