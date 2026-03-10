@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from src.botik.config import ActionProfileConfig, load_config
+from src.botik.config import ActionProfileConfig, AppConfig, load_config
 from src.botik.control.telegram_bot import start_telegram_bot_in_thread
 from src.botik.execution.bybit_rest import BybitRestClient
 from src.botik.execution.paper import PaperTradingClient
@@ -95,6 +95,15 @@ class RestartRequested(Exception):
 
 def _fmt_float(value: float) -> str:
     return f"{value:.8f}".rstrip("0").rstrip(".")
+
+
+def resolve_risk_leverage(config: AppConfig, runtime_market_category: str) -> float:
+    if str(runtime_market_category or "").strip().lower() != "linear":
+        return 1.0
+    try:
+        return max(float(getattr(config.risk, "default_leverage", 1.0)), 1.0)
+    except (TypeError, ValueError):
+        return 1.0
 
 
 _KNOWN_QUOTE_SUFFIXES = (
@@ -3582,11 +3591,7 @@ def main() -> None:
                             _filled_pos_symbols | open_order_symbols | _wallet_symbols | newly_placed_symbols
                         ) - {intent_to_send.symbol}
                         current_open_pos_count = len(_all_active_symbols)
-                        _risk_leverage = (
-                            max(float(config.risk.default_leverage), 1.0)
-                            if runtime_market_category == "linear"
-                            else 1.0
-                        )
+                        _risk_leverage = resolve_risk_leverage(config, runtime_market_category)
                         risk = risk_manager.check_order(
                             intent_to_send.symbol,
                             intent_to_send.side,

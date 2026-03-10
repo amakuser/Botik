@@ -87,13 +87,20 @@ class RiskManager:
         current_total_exposure_usdt: float,
         current_symbol_exposure_usdt: float,
         current_open_positions: int = 0,
+        leverage: float | None = 1.0,
     ) -> RiskCheckResult:
         """
         Проверить, можно ли выставить ордер. Экспозиция — сумма notional (price*qty)
         по уже открытым ордерам (total и по символу).
         current_open_positions — кол-во символов с открытой позицией прямо сейчас.
+        leverage — кредитное плечо (для linear/futures): реальная экспозиция = notional × leverage.
         """
-        notional = price * qty
+        try:
+            raw_leverage = float(leverage) if leverage is not None else 1.0
+        except (TypeError, ValueError):
+            raw_leverage = 1.0
+        effective_leverage = max(raw_leverage, 1.0)
+        notional = price * qty * effective_leverage
         if notional <= 0:
             return RiskCheckResult(False, "notional <= 0")
 

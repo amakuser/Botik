@@ -162,6 +162,7 @@ class RiskConfig(BaseModel):
     max_symbol_exposure_pct: float = 1.0
     max_orders_per_minute: int = 30
     max_open_positions: int = 0  # 0 = unlimited; set >0 to hard-cap simultaneous open positions
+    default_leverage: float = 1.0  # leverage multiplier for linear/futures exposure checks
 
 
 class FeesConfig(BaseModel):

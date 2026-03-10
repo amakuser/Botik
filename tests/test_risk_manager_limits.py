@@ -84,3 +84,44 @@ def test_orders_per_minute_tracked(manager):
     )
     assert result.allowed is False
     assert "minute" in result.reason.lower() or "order" in result.reason.lower()
+
+
+def test_leverage_multiplies_exposure(manager):
+    """With 10x leverage, a $50 notional order becomes $500 effective exposure."""
+    # Without leverage: $50 notional is within 200 USDT limit -> allowed
+    result_1x = manager.check_order(
+        symbol="BTCUSDT",
+        side="Buy",
+        price=50000.0,
+        qty=0.001,  # notional = $50
+        current_total_exposure_usdt=0,
+        current_symbol_exposure_usdt=0,
+        leverage=1.0,
+    )
+    assert result_1x.allowed is True
+
+    # With 10x leverage: effective notional = $50 * 10 = $500 > 200 limit -> rejected
+    result_10x = manager.check_order(
+        symbol="BTCUSDT",
+        side="Buy",
+        price=50000.0,
+        qty=0.001,  # notional = $50, but effective = $500
+        current_total_exposure_usdt=0,
+        current_symbol_exposure_usdt=0,
+        leverage=10.0,
+    )
+    assert result_10x.allowed is False
+    assert "total_exposure" in result_10x.reason.lower() or "exceed" in result_10x.reason.lower()
+
+
+def test_none_leverage_is_treated_as_1x(manager):
+    result = manager.check_order(
+        symbol="BTCUSDT",
+        side="Buy",
+        price=50000.0,
+        qty=0.001,  # notional = $50
+        current_total_exposure_usdt=0,
+        current_symbol_exposure_usdt=0,
+        leverage=None,
+    )
+    assert result.allowed is True
