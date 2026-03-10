@@ -133,3 +133,35 @@ def test_runtime_capabilities_for_mode_reports_paper_as_unsupported() -> None:
     live = runtime_capabilities_for_mode("live")
     assert live["reconciliation"] == "supported"
     assert live["protection"] == "supported"
+
+
+def test_load_runtime_ops_status_snapshot_reports_issue_counts_and_lock_symbols(tmp_path: Path) -> None:
+    db_path = tmp_path / "gui_ops_issue_counts.db"
+    conn = get_connection(db_path)
+    try:
+        insert_reconciliation_issue(
+            conn,
+            issue_type="orphaned_exchange_order",
+            domain="futures",
+            severity="warning",
+            symbol="BTCUSDT",
+            details={"source": "test"},
+            status="open",
+        )
+        insert_reconciliation_issue(
+            conn,
+            issue_type="local_position_missing_on_exchange",
+            domain="futures",
+            severity="warning",
+            symbol="ETHUSDT",
+            details={"source": "test"},
+            status="resolved",
+        )
+    finally:
+        conn.close()
+
+    snapshot = load_runtime_ops_status_snapshot(db_path)
+    assert int(snapshot["reconciliation_open_issues"]) == 1
+    assert int(snapshot["reconciliation_resolved_issues"]) >= 1
+    assert "BTCUSDT" in list(snapshot["reconciliation_lock_symbols"])
+    assert "ETHUSDT" not in list(snapshot["reconciliation_lock_symbols"])

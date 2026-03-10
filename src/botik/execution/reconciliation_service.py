@@ -12,6 +12,7 @@ from src.botik.storage.core_store import (
     insert_account_snapshot,
     insert_event_audit,
     insert_reconciliation_issue,
+    resolve_reconciliation_issue,
     start_reconciliation_run,
 )
 from src.botik.storage.futures_store import (
@@ -35,6 +36,13 @@ from src.botik.storage.spot_store import (
 
 logger = logging.getLogger("botik.reconciliation")
 
+ENTRY_LOCK_ISSUE_TYPES = {
+    "orphaned_exchange_position",
+    "orphaned_exchange_order",
+    "local_position_missing_on_exchange",
+    "local_order_missing_on_exchange",
+}
+
 
 class ExchangeReconciliationService:
     def __init__(
@@ -55,6 +63,7 @@ class ExchangeReconciliationService:
         self.managed_symbols = managed_symbols
         self.symbols_limit = max(int(symbols_limit), 1)
         self.service_name = str(service_name)
+        self._active_lock_issue_keys: set[tuple[str, str, str]] = set()
 
     @staticmethod
     def _f(value: Any, default: float = 0.0) -> float:
@@ -93,31 +102,115 @@ class ExchangeReconciliationService:
         details: dict[str, Any],
         symbol: str | None = None,
     ) -> str:
+        issue_type_norm = str(issue_type or "").strip()
+        domain_norm = str(domain or "").strip()
+        symbol_norm = str(symbol or "").upper().strip()
+
         row = self.conn.execute(
             """
             SELECT issue_id
             FROM reconciliation_issues
-            WHERE status='open'
+            WHERE LOWER(COALESCE(status, '')) IN ('open', 'active')
               AND issue_type=?
               AND domain=?
               AND COALESCE(symbol, '') = COALESCE(?, '')
             ORDER BY created_at_utc DESC
             LIMIT 1
             """,
-            (issue_type, domain, symbol),
+            (issue_type_norm, domain_norm, symbol_norm),
         ).fetchone()
         if row and row[0]:
+            if issue_type_norm in ENTRY_LOCK_ISSUE_TYPES and symbol_norm:
+                self._active_lock_issue_keys.add((issue_type_norm, domain_norm, symbol_norm))
             return str(row[0])
-        return insert_reconciliation_issue(
+        issue_id_created = insert_reconciliation_issue(
             self.conn,
-            issue_type=issue_type,
-            domain=domain,
+            issue_type=issue_type_norm,
+            domain=domain_norm,
             severity=severity,
             details=details,
-            symbol=symbol,
+            symbol=(symbol_norm or None),
             reconciliation_run_id=run_id,
             status="open",
         )
+        if issue_type_norm in ENTRY_LOCK_ISSUE_TYPES and symbol_norm:
+            self._active_lock_issue_keys.add((issue_type_norm, domain_norm, symbol_norm))
+        return issue_id_created
+
+    def _resolve_stale_entry_lock_issues(self, *, run_id: str, summary: dict[str, Any]) -> None:
+        eligible_pairs: list[tuple[str, str]] = []
+        orders_checked = bool(summary.get("open_orders_checked"))
+        positions_checked = bool(summary.get("futures_positions_checked"))
+
+        if orders_checked:
+            order_domain = "futures" if self.market_category == "linear" else "spot"
+            eligible_pairs.extend(
+                [
+                    ("orphaned_exchange_order", order_domain),
+                    ("local_order_missing_on_exchange", order_domain),
+                ]
+            )
+        if self.market_category == "linear" and positions_checked:
+            eligible_pairs.extend(
+                [
+                    ("orphaned_exchange_position", "futures"),
+                    ("local_position_missing_on_exchange", "futures"),
+                ]
+            )
+        if not eligible_pairs:
+            return
+
+        where_pair = " OR ".join("(issue_type=? AND domain=?)" for _ in eligible_pairs)
+        params: list[str] = []
+        for issue_type, domain in eligible_pairs:
+            params.extend([issue_type, domain])
+        rows = self.conn.execute(
+            f"""
+            SELECT issue_id, issue_type, domain, COALESCE(symbol, '')
+            FROM reconciliation_issues
+            WHERE LOWER(COALESCE(status, '')) IN ('open', 'active')
+              AND ({where_pair})
+            """,
+            tuple(params),
+        ).fetchall()
+
+        unlocked_symbols: set[str] = set()
+        for issue_id, issue_type, domain, symbol in rows:
+            issue_type_norm = str(issue_type or "").strip()
+            domain_norm = str(domain or "").strip()
+            symbol_norm = str(symbol or "").upper().strip()
+            issue_key = (issue_type_norm, domain_norm, symbol_norm)
+            if issue_key in self._active_lock_issue_keys:
+                continue
+            if not resolve_reconciliation_issue(self.conn, issue_id=str(issue_id)):
+                continue
+            summary["issues_resolved"] = int(summary.get("issues_resolved") or 0) + 1
+            if symbol_norm:
+                unlocked_symbols.add(symbol_norm)
+            insert_event_audit(
+                self.conn,
+                event_type="reconciliation_issue_resolved",
+                domain=domain_norm or "shared",
+                symbol=(symbol_norm or None),
+                ref_id=str(issue_id),
+                payload={
+                    "issue_type": issue_type_norm,
+                    "resolved_by": "reconciliation_auto_resolve",
+                    "reconciliation_run_id": run_id,
+                    "reason": "conflict_absent_in_latest_reconciliation",
+                },
+            )
+            logger.info(
+                "Resolved reconciliation issue: issue_id=%s type=%s domain=%s symbol=%s",
+                issue_id,
+                issue_type_norm,
+                domain_norm,
+                symbol_norm or "-",
+            )
+
+        summary["locks_released"] = int(summary.get("locks_released") or 0) + len(unlocked_symbols)
+        if unlocked_symbols:
+            summary["unlocked_symbols"] = sorted(set(summary.get("unlocked_symbols") or []) | unlocked_symbols)
 
     async def run(self, *, trigger_source: str) -> dict[str, Any]:
         summary: dict[str, Any] = {
@@ -134,7 +227,12 @@ class ExchangeReconciliationService:
             "funding_events_seen": 0,
             "liq_risk_snapshots": 0,
             "issues_created": 0,
+            "issues_resolved": 0,
+            "locks_released": 0,
+            "open_orders_checked": False,
+            "futures_positions_checked": False,
         }
+        self._active_lock_issue_keys.clear()
         run_id = start_reconciliation_run(self.conn, trigger_source=trigger_source)
         insert_event_audit(
             self.conn,
@@ -149,6 +247,7 @@ class ExchangeReconciliationService:
             await self._reconcile_fills(run_id, summary)
             if self.market_category == "linear":
                 await self._reconcile_futures_positions(run_id, summary)
+            self._resolve_stale_entry_lock_issues(run_id=run_id, summary=summary)
             finish_reconciliation_run(self.conn, reconciliation_run_id=run_id, status="success", summary=summary)
             insert_event_audit(
                 self.conn,
@@ -306,6 +405,7 @@ class ExchangeReconciliationService:
         resp = await self.executor.get_open_orders()
         if resp.get("retCode") != 0:
             return
+        summary["open_orders_checked"] = True
         open_list = (resp.get("result") or {}).get("list") or []
         insert_account_snapshot(
             self.conn,
@@ -508,6 +608,7 @@ class ExchangeReconciliationService:
         resp = await self.executor.get_positions()
         if resp.get("retCode") != 0:
             return
+        summary["futures_positions_checked"] = True
         pos_list = (resp.get("result") or {}).get("list") or []
         insert_account_snapshot(
             self.conn,

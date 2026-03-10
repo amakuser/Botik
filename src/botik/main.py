@@ -155,7 +155,7 @@ def load_reconciliation_symbol_locks(conn: sqlite3.Connection) -> dict[str, list
         f"""
         SELECT UPPER(COALESCE(symbol, '')), COALESCE(issue_type, '')
         FROM reconciliation_issues
-        WHERE status='open'
+        WHERE LOWER(COALESCE(status, '')) IN ('open', 'active')
           AND issue_type IN ({placeholders})
           AND COALESCE(symbol, '') <> ''
         ORDER BY created_at_utc DESC

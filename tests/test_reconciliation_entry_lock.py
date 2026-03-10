@@ -44,3 +44,22 @@ def test_reconciliation_entry_lock_ignores_non_blocking_issue_types(tmp_path: Pa
         assert reason is None
     finally:
         conn.close()
+
+
+def test_reconciliation_entry_lock_ignores_resolved_blocking_issue(tmp_path: Path) -> None:
+    db_path = tmp_path / "reconciliation_lock_resolved.db"
+    conn = get_connection(db_path)
+    try:
+        insert_reconciliation_issue(
+            conn,
+            issue_type="orphaned_exchange_order",
+            domain="spot",
+            severity="warning",
+            symbol="SOLUSDT",
+            details={"source": "test"},
+            status="resolved",
+        )
+        reason = get_reconciliation_entry_block_reason(conn, symbol="SOLUSDT")
+        assert reason is None
+    finally:
+        conn.close()

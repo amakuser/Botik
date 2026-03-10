@@ -205,16 +205,18 @@ def resolve_reconciliation_issue(
     *,
     issue_id: str,
     resolved_at_utc: str | None = None,
-) -> None:
-    conn.execute(
+) -> bool:
+    cur = conn.execute(
         """
         UPDATE reconciliation_issues
         SET status='resolved', resolved_at_utc=?
         WHERE issue_id=?
+          AND LOWER(COALESCE(status, '')) IN ('open', 'active')
         """,
         (str(resolved_at_utc or utc_now_iso()), str(issue_id)),
     )
     conn.commit()
+    return bool(cur.rowcount)
 
 
 def insert_account_snapshot(

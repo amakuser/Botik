@@ -61,6 +61,13 @@ STRATEGY_MODE_RUNTIME: dict[str, dict[str, str]] = {
     },
 }
 
+RECONCILIATION_ENTRY_LOCK_ISSUES: tuple[str, ...] = (
+    "orphaned_exchange_position",
+    "orphaned_exchange_order",
+    "local_position_missing_on_exchange",
+    "local_order_missing_on_exchange",
+)
+
 
 # Windows sleep control flags (SetThreadExecutionState).
 _ES_CONTINUOUS = 0x80000000
@@ -221,6 +228,9 @@ def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
         "reconciliation_last_timestamp": "-",
         "reconciliation_last_trigger": "-",
         "reconciliation_summary_issues": None,
+        "reconciliation_open_issues": 0,
+        "reconciliation_resolved_issues": 0,
+        "reconciliation_lock_symbols": [],
         "futures_protection_counts": {},
         "futures_protection_line": "none",
         "futures_risk_telemetry_line": "funding=none | liq=none",
@@ -235,6 +245,33 @@ def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
         out["reconciliation_issues_freshness"] = _latest_table_ts(conn, "reconciliation_issues")
         out["futures_funding_freshness"] = _latest_table_ts(conn, "futures_funding_events")
         out["futures_liq_snapshots_freshness"] = _latest_table_ts(conn, "futures_liquidation_risk_snapshots")
+
+        if _table_exists_local(conn, "reconciliation_issues"):
+            counts_row = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('open', 'active') THEN 1 ELSE 0 END) AS open_cnt,
+                    SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS resolved_cnt
+                FROM reconciliation_issues
+                """
+            ).fetchone()
+            if counts_row:
+                out["reconciliation_open_issues"] = int(counts_row[0] or 0)
+                out["reconciliation_resolved_issues"] = int(counts_row[1] or 0)
+            placeholders = ",".join("?" for _ in RECONCILIATION_ENTRY_LOCK_ISSUES)
+            lock_rows = conn.execute(
+                f"""
+                SELECT DISTINCT UPPER(COALESCE(symbol, ''))
+                FROM reconciliation_issues
+                WHERE LOWER(COALESCE(status, '')) IN ('open', 'active')
+                  AND issue_type IN ({placeholders})
+                  AND COALESCE(symbol, '') <> ''
+                ORDER BY UPPER(COALESCE(symbol, '')) ASC
+                LIMIT 20
+                """,
+                tuple(RECONCILIATION_ENTRY_LOCK_ISSUES),
+            ).fetchall()
+            out["reconciliation_lock_symbols"] = [str(r[0] or "") for r in lock_rows if str(r[0] or "").strip()]
 
         funding_line = "funding=none"
         if _table_exists_local(conn, "futures_funding_events"):
@@ -3095,6 +3132,8 @@ class BotikGui:
             "reconciliation_status_line": (
                 f"reconciliation: {ops_status.get('reconciliation_last_status')} @ {ops_status.get('reconciliation_last_timestamp')} "
                 f"({ops_status.get('reconciliation_last_trigger')})"
+                f" | issues open={ops_status.get('reconciliation_open_issues')} resolved={ops_status.get('reconciliation_resolved_issues')}"
+                f" | locks={','.join(list(ops_status.get('reconciliation_lock_symbols') or [])[:3]) or '-'}"
             ),
             "panel_freshness_line": (
                 f"freshness: spot={ops_status.get('spot_holdings_freshness')} | fut_pos={ops_status.get('futures_positions_freshness')} "
