@@ -644,6 +644,35 @@ def executor_supports_capability(
     return False
 
 
+async def run_reconciliation_startup(
+    service: ExchangeReconciliationService | None,
+    *,
+    log: logging.Logger,
+) -> tuple[float, dict[str, Any] | None]:
+    if service is None:
+        return 0.0, None
+    summary = await service.run(trigger_source="startup")
+    log.info("Reconciliation startup summary: %s", summary)
+    return time.monotonic(), summary
+
+
+async def run_reconciliation_scheduled_if_due(
+    service: ExchangeReconciliationService | None,
+    *,
+    last_run_ts: float,
+    interval_sec: float,
+    log: logging.Logger,
+) -> tuple[float, dict[str, Any] | None]:
+    if service is None:
+        return last_run_ts, None
+    now_ts = time.monotonic()
+    if (now_ts - float(last_run_ts)) < float(interval_sec):
+        return last_run_ts, None
+    summary = await service.run(trigger_source="scheduled")
+    log.info("Reconciliation scheduled summary: %s", summary)
+    return now_ts, summary
+
+
 def _git_head(repo_root: Path) -> str:
     try:
         proc = subprocess.run(
@@ -3149,10 +3178,10 @@ def main() -> None:
             if executor is None:
                 return
 
-            if reconciliation_service is not None:
-                rec_summary = await reconciliation_service.run(trigger_source="startup")
-                last_reconciliation_run_ts = time.monotonic()
-                log.info("Reconciliation startup summary: %s", rec_summary)
+            last_reconciliation_run_ts, _ = await run_reconciliation_startup(
+                reconciliation_service,
+                log=log,
+            )
 
             # Cancel ALL open orders before recovery so we start from a clean slate.
             # This prevents stale SPREAD/spike quotes from accumulating across restarts.
@@ -3189,12 +3218,12 @@ def main() -> None:
                             break
                     state.set_active_symbols(active_symbols)
 
-                if reconciliation_service is not None:
-                    now_recon = time.monotonic()
-                    if (now_recon - last_reconciliation_run_ts) >= reconciliation_interval_sec:
-                        rec_summary = await reconciliation_service.run(trigger_source="scheduled")
-                        last_reconciliation_run_ts = now_recon
-                        log.info("Reconciliation scheduled summary: %s", rec_summary)
+                last_reconciliation_run_ts, _ = await run_reconciliation_scheduled_if_due(
+                    reconciliation_service,
+                    last_run_ts=last_reconciliation_run_ts,
+                    interval_sec=reconciliation_interval_sec,
+                    log=log,
+                )
 
                 if state.panic_requested:
                     try:
