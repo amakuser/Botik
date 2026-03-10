@@ -4,6 +4,53 @@ Futures-specific risk state classification.
 from __future__ import annotations
 
 
+BLOCKING_PROTECTION_STATUSES = {
+    "pending",
+    "repairing",
+    "failed",
+    "unprotected",
+}
+
+
+def normalize_protection_status(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def is_blocking_protection_status(value: str | None) -> bool:
+    return normalize_protection_status(value) in BLOCKING_PROTECTION_STATUSES
+
+
+def transition_protection_status(
+    *,
+    current_status: str | None,
+    apply_attempted: bool,
+    apply_success: bool,
+    verify_status: str | None = None,
+) -> str:
+    """
+    Minimal protection status state machine used by runtime:
+      pending -> protected / unprotected / failed
+      repairing -> protected / failed
+    """
+    current = normalize_protection_status(current_status)
+    verified = normalize_protection_status(verify_status)
+    if not apply_attempted:
+        return current or "pending"
+    if not apply_success:
+        return "failed"
+    if verified == "protected":
+        return "protected"
+    if verified == "closed":
+        return "closed"
+    if verified == "failed":
+        return "failed"
+    if verified == "unprotected":
+        if current == "pending":
+            return "unprotected"
+        return "failed"
+    return "failed"
+
+
 def classify_futures_state(
     *,
     protection_status: str,
