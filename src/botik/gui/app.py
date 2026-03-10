@@ -115,6 +115,127 @@ def _upsert_env(path: Path, updates: dict[str, str]) -> None:
     path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 
 
+def _table_exists_local(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (str(table_name),),
+    ).fetchone()
+    return bool(row)
+
+
+def _table_columns_local(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {str(r[1]) for r in rows if len(r) > 1 and r[1]}
+
+
+def _latest_table_ts(
+    conn: sqlite3.Connection,
+    table_name: str,
+    *,
+    preferred_columns: tuple[str, ...] = ("updated_at_utc", "created_at_utc", "finished_at_utc", "started_at_utc"),
+) -> str:
+    if not _table_exists_local(conn, table_name):
+        return "-"
+    cols = _table_columns_local(conn, table_name)
+    ts_col = next((c for c in preferred_columns if c in cols), "")
+    if not ts_col:
+        return "-"
+    try:
+        row = conn.execute(f"SELECT COALESCE(MAX({ts_col}), '') FROM {table_name}").fetchone()
+    except sqlite3.Error:
+        return "-"
+    value = str((row[0] if row else "") or "").strip()
+    return value or "-"
+
+
+def runtime_capabilities_for_mode(mode: str) -> dict[str, str]:
+    mode_norm = str(mode or "").strip().lower()
+    if mode_norm == "paper":
+        return {"reconciliation": "unsupported", "protection": "unsupported"}
+    return {"reconciliation": "supported", "protection": "supported"}
+
+
+def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "spot_holdings_freshness": "-",
+        "futures_positions_freshness": "-",
+        "futures_orders_freshness": "-",
+        "reconciliation_issues_freshness": "-",
+        "reconciliation_last_status": "skipped",
+        "reconciliation_last_timestamp": "-",
+        "reconciliation_last_trigger": "-",
+        "reconciliation_summary_issues": None,
+        "futures_protection_counts": {},
+        "futures_protection_line": "none",
+    }
+    if not db_path.exists():
+        return out
+    conn = sqlite3.connect(str(db_path))
+    try:
+        out["spot_holdings_freshness"] = _latest_table_ts(conn, "spot_holdings")
+        out["futures_positions_freshness"] = _latest_table_ts(conn, "futures_positions")
+        out["futures_orders_freshness"] = _latest_table_ts(conn, "futures_open_orders")
+        out["reconciliation_issues_freshness"] = _latest_table_ts(conn, "reconciliation_issues")
+
+        if _table_exists_local(conn, "reconciliation_runs"):
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(status, ''),
+                    COALESCE(trigger_source, ''),
+                    COALESCE(finished_at_utc, started_at_utc, ''),
+                    COALESCE(summary_json, '')
+                FROM reconciliation_runs
+                ORDER BY COALESCE(finished_at_utc, started_at_utc) DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if row:
+                status = str(row[0] or "").strip().lower() or "skipped"
+                out["reconciliation_last_status"] = status
+                out["reconciliation_last_trigger"] = str(row[1] or "").strip() or "-"
+                out["reconciliation_last_timestamp"] = str(row[2] or "").strip() or "-"
+                summary_text = str(row[3] or "").strip()
+                if summary_text:
+                    try:
+                        summary = json.loads(summary_text)
+                    except Exception:
+                        summary = {}
+                    if isinstance(summary, dict):
+                        issues_value = summary.get("issues_created")
+                        if isinstance(issues_value, (int, float)):
+                            out["reconciliation_summary_issues"] = int(issues_value)
+
+        if _table_exists_local(conn, "futures_positions"):
+            rows = conn.execute(
+                """
+                SELECT LOWER(COALESCE(protection_status, '')), COUNT(*)
+                FROM futures_positions
+                WHERE ABS(COALESCE(qty, 0.0)) > 0
+                GROUP BY LOWER(COALESCE(protection_status, ''))
+                """
+            ).fetchall()
+            counts: dict[str, int] = {}
+            for status, count in rows:
+                status_key = str(status or "").strip() or "unknown"
+                counts[status_key] = int(count or 0)
+            out["futures_protection_counts"] = counts
+            if counts:
+                preferred = ["protected", "pending", "repairing", "unprotected", "failed", "unknown"]
+                parts: list[str] = []
+                for key in preferred:
+                    if key in counts:
+                        parts.append(f"{key}={counts[key]}")
+                for key in sorted(k for k in counts.keys() if k not in preferred):
+                    parts.append(f"{key}={counts[key]}")
+                out["futures_protection_line"] = " | ".join(parts)
+    except sqlite3.Error:
+        return out
+    finally:
+        conn.close()
+    return out
+
+
 class ManagedProcess:
     def __init__(self, name: str, on_output: Callable[[str], None]) -> None:
         self.name = name
@@ -286,6 +407,10 @@ class BotikGui:
         self.open_orders_var = tk.StringVar(value="0")
         self.api_status_var = tk.StringVar(value="not checked")
         self.snapshot_time_var = tk.StringVar(value="-")
+        self.runtime_capabilities_var = tk.StringVar(value="capabilities: n/a")
+        self.reconciliation_status_var = tk.StringVar(value="reconciliation: n/a")
+        self.panel_freshness_var = tk.StringVar(value="freshness: n/a")
+        self.futures_protection_status_var = tk.StringVar(value="protection: n/a")
         self.ml_model_id_var = tk.StringVar(value="bootstrap")
         self.ml_training_state_var = tk.StringVar(value="idle")
         self.ml_progress_text_var = tk.StringVar(value="0%")
@@ -818,6 +943,22 @@ class BotikGui:
         self.ml_led.pack(side=tk.LEFT, padx=(0, 6))
         self.ml_label = ttk.Label(self.ml_row, text="ml: stopped", style="Body.TLabel")
         self.ml_label.pack(side=tk.LEFT)
+        ttk.Separator(status_card, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(6, 6))
+        ttk.Label(status_card, textvariable=self.runtime_capabilities_var, style="Body.TLabel", justify=tk.LEFT).pack(
+            anchor=tk.W, pady=2
+        )
+        ttk.Label(status_card, textvariable=self.reconciliation_status_var, style="Body.TLabel", justify=tk.LEFT).pack(
+            anchor=tk.W, pady=2
+        )
+        ttk.Label(status_card, textvariable=self.panel_freshness_var, style="Body.TLabel", justify=tk.LEFT).pack(
+            anchor=tk.W, pady=2
+        )
+        ttk.Label(
+            status_card,
+            textvariable=self.futures_protection_status_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=2)
 
         ml_card = ttk.Frame(right, style="Card.TFrame", padding=10)
         ml_card.pack(fill=tk.X, pady=8)
@@ -2760,6 +2901,8 @@ class BotikGui:
         db_path = self._resolve_db_path(raw_cfg)
         botik_log_path = self._resolve_botik_log_path(raw_cfg)
         pause_flag_path = self._resolve_training_pause_flag(raw_cfg)
+        runtime_caps = runtime_capabilities_for_mode(mode)
+        ops_status = load_runtime_ops_status_snapshot(db_path)
         batch_size = max(int((raw_cfg.get("ml") or {}).get("train_batch_size") or 50), 1)
         ml_metrics = self._read_ml_metrics(db_path)
         closed_count = int(ml_metrics.get("closed_count", 0))
@@ -2850,6 +2993,26 @@ class BotikGui:
             "models_total": len(model_rows),
             "api_status": f"mode={mode}; modes={','.join(enabled_modes)}",
             "updated_at": datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
+            "runtime_capabilities_status": (
+                f"capabilities: recon={runtime_caps.get('reconciliation')} | protection={runtime_caps.get('protection')}"
+            ),
+            "reconciliation_status_line": (
+                f"reconciliation: {ops_status.get('reconciliation_last_status')} @ {ops_status.get('reconciliation_last_timestamp')} "
+                f"({ops_status.get('reconciliation_last_trigger')})"
+            ),
+            "panel_freshness_line": (
+                f"freshness: spot={ops_status.get('spot_holdings_freshness')} | fut_pos={ops_status.get('futures_positions_freshness')} "
+                f"| fut_ord={ops_status.get('futures_orders_freshness')} | issues={ops_status.get('reconciliation_issues_freshness')}"
+            ),
+            "futures_protection_status_line": f"protection: {ops_status.get('futures_protection_line')}",
+            "reconciliation_last_status": str(ops_status.get("reconciliation_last_status") or "skipped"),
+            "reconciliation_last_timestamp": str(ops_status.get("reconciliation_last_timestamp") or "-"),
+            "reconciliation_last_trigger": str(ops_status.get("reconciliation_last_trigger") or "-"),
+            "spot_holdings_freshness": str(ops_status.get("spot_holdings_freshness") or "-"),
+            "futures_positions_freshness": str(ops_status.get("futures_positions_freshness") or "-"),
+            "futures_orders_freshness": str(ops_status.get("futures_orders_freshness") or "-"),
+            "reconciliation_issues_freshness": str(ops_status.get("reconciliation_issues_freshness") or "-"),
+            "futures_protection_counts": dict(ops_status.get("futures_protection_counts") or {}),
             "ml_model_id": str(ml_metrics.get("model_id") or "bootstrap"),
             "ml_net_edge_mean": float(ml_metrics.get("net_edge_mean") or 0.0),
             "ml_win_rate": float(ml_metrics.get("win_rate") or 0.0),
@@ -2867,6 +3030,10 @@ class BotikGui:
             "ml_runtime_mode": ml_mode,
         }
 
+        if mode == "paper":
+            snapshot["runtime_capabilities_status"] = "capabilities: recon=unsupported | protection=unsupported (paper mode)"
+            snapshot["reconciliation_status_line"] = "reconciliation: unsupported (paper mode)"
+            snapshot["futures_protection_status_line"] = "protection: unsupported (paper mode)"
         if mode != "live":
             local_open = self._read_local_open_orders(
                 db_path,
@@ -3999,6 +4166,12 @@ class BotikGui:
         self.open_orders_var.set(str(snapshot.get("open_orders_count", 0)))
         self.api_status_var.set(str(snapshot.get("api_status", "n/a")))
         self.snapshot_time_var.set(str(snapshot.get("updated_at", "-")))
+        self.runtime_capabilities_var.set(str(snapshot.get("runtime_capabilities_status", "capabilities: n/a")))
+        self.reconciliation_status_var.set(str(snapshot.get("reconciliation_status_line", "reconciliation: n/a")))
+        self.panel_freshness_var.set(str(snapshot.get("panel_freshness_line", "freshness: n/a")))
+        self.futures_protection_status_var.set(
+            str(snapshot.get("futures_protection_status_line", "protection: n/a"))
+        )
         self._set_tree_rows(self.open_orders_tree, list(snapshot.get("open_orders_rows") or []))
         self._set_tree_rows(self.order_history_tree, list(snapshot.get("history_rows") or []))
         if self.stats_history_tree is not None and active_tab == "stats":
