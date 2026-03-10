@@ -4,7 +4,12 @@ from pathlib import Path
 
 from src.botik.gui.app import load_runtime_ops_status_snapshot, runtime_capabilities_for_mode
 from src.botik.storage.core_store import finish_reconciliation_run, insert_reconciliation_issue, start_reconciliation_run
-from src.botik.storage.futures_store import upsert_futures_open_order, upsert_futures_position
+from src.botik.storage.futures_store import (
+    insert_futures_funding_event,
+    insert_futures_liquidation_risk_snapshot,
+    upsert_futures_open_order,
+    upsert_futures_position,
+)
 from src.botik.storage.spot_store import upsert_spot_holding
 from src.botik.storage.sqlite_store import get_connection
 
@@ -64,6 +69,27 @@ def test_load_runtime_ops_status_snapshot_reports_freshness_and_reconciliation(t
             reduce_only=True,
             strategy_owner="test",
         )
+        insert_futures_funding_event(
+            conn,
+            account_type="UNIFIED",
+            symbol="ETHUSDT",
+            side="Buy",
+            position_idx=0,
+            funding_rate=0.0001,
+            funding_fee=-0.12,
+            funding_time_ms=1700000001000,
+        )
+        insert_futures_liquidation_risk_snapshot(
+            conn,
+            account_type="UNIFIED",
+            symbol="ETHUSDT",
+            side="Buy",
+            position_idx=0,
+            mark_price=3010.0,
+            liq_price=2500.0,
+            distance_to_liq_bps=1694.35,
+            payload={"source": "test"},
+        )
 
         run_id = start_reconciliation_run(conn, trigger_source="startup")
         insert_reconciliation_issue(
@@ -90,9 +116,13 @@ def test_load_runtime_ops_status_snapshot_reports_freshness_and_reconciliation(t
     assert snapshot["futures_positions_freshness"] != "-"
     assert snapshot["futures_orders_freshness"] != "-"
     assert snapshot["reconciliation_issues_freshness"] != "-"
+    assert snapshot["futures_funding_freshness"] != "-"
+    assert snapshot["futures_liq_snapshots_freshness"] != "-"
     assert snapshot["reconciliation_last_status"] == "success"
     assert snapshot["reconciliation_last_trigger"] == "startup"
     assert str(snapshot["futures_protection_line"]).find("pending=1") >= 0
+    assert str(snapshot["futures_risk_telemetry_line"]).find("funding=ETHUSDT") >= 0
+    assert str(snapshot["futures_risk_telemetry_line"]).find("liq=ETHUSDT") >= 0
 
 
 def test_runtime_capabilities_for_mode_reports_paper_as_unsupported() -> None:

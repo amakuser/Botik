@@ -15,12 +15,15 @@ from src.botik.storage.core_store import (
     start_reconciliation_run,
 )
 from src.botik.storage.futures_store import (
+    insert_futures_funding_event,
     insert_futures_fill,
+    insert_futures_liquidation_risk_snapshot,
     list_futures_positions,
     upsert_futures_open_order,
     upsert_futures_position,
     upsert_futures_protection,
 )
+from src.botik.risk.futures_rules import compute_distance_to_liq_bps
 from src.botik.storage.spot_store import (
     insert_spot_fill,
     list_spot_holdings,
@@ -128,6 +131,8 @@ class ExchangeReconciliationService:
             "futures_positions_seen": 0,
             "futures_positions_orphaned": 0,
             "fills_seen": 0,
+            "funding_events_seen": 0,
+            "liq_risk_snapshots": 0,
             "issues_created": 0,
         }
         run_id = start_reconciliation_run(self.conn, trigger_source=trigger_source)
@@ -463,6 +468,24 @@ class ExchangeReconciliationService:
                         is_maker=bool(item.get("isMaker")),
                         exec_time_ms=self._i(item.get("execTime")),
                     )
+                    exec_type = str(item.get("execType") or "").strip().lower()
+                    if "funding" in exec_type:
+                        inserted = insert_futures_funding_event(
+                            self.conn,
+                            account_type=self.account_type,
+                            symbol=str(item.get("symbol") or symbol).upper(),
+                            side=(str(item.get("side") or "").strip() or None),
+                            position_idx=(self._i(item.get("positionIdx")) if item.get("positionIdx") is not None else None),
+                            funding_rate=(
+                                self._f(item.get("fundingRate"))
+                                if item.get("fundingRate") not in (None, "")
+                                else None
+                            ),
+                            funding_fee=self._f(item.get("execFee")),
+                            funding_time_ms=self._i(item.get("execTime")),
+                        )
+                        if inserted:
+                            summary["funding_events_seen"] += 1
                 else:
                     insert_spot_fill(
                         self.conn,
@@ -512,6 +535,13 @@ class ExchangeReconciliationService:
             stop_loss = self._f(item.get("stopLoss"))
             take_profit = self._f(item.get("takeProfit"))
             trailing = self._f(item.get("trailingStop"))
+            mark_price = self._f(item.get("markPrice"))
+            liq_price = self._f(item.get("liqPrice"))
+            distance_to_liq_bps = compute_distance_to_liq_bps(
+                side=side,
+                mark_price=mark_price,
+                liq_price=liq_price,
+            )
             status = "protected" if stop_loss > 0 and take_profit > 0 else "unprotected"
             orphaned = key not in local_map
 
@@ -525,8 +555,8 @@ class ExchangeReconciliationService:
                 leverage=self._f(item.get("leverage")),
                 qty=qty,
                 entry_price=self._f(item.get("avgPrice") or item.get("entryPrice")),
-                mark_price=self._f(item.get("markPrice")),
-                liq_price=self._f(item.get("liqPrice")),
+                mark_price=mark_price,
+                liq_price=liq_price,
                 unrealized_pnl=self._f(item.get("unrealisedPnl") or item.get("unrealizedPnl")),
                 realized_pnl=self._f(item.get("cumRealisedPnl") or item.get("realizedPnl")),
                 take_profit=(take_profit if take_profit > 0 else None),
@@ -550,6 +580,28 @@ class ExchangeReconciliationService:
                 trailing_stop=(trailing if trailing > 0 else None),
                 details={"size": qty},
             )
+            insert_futures_liquidation_risk_snapshot(
+                self.conn,
+                account_type=self.account_type,
+                symbol=symbol,
+                side=side,
+                position_idx=idx,
+                mark_price=(mark_price if mark_price > 0 else None),
+                liq_price=(liq_price if liq_price > 0 else None),
+                distance_to_liq_bps=distance_to_liq_bps,
+                margin_ratio=(
+                    self._f(item.get("positionMMByMp"))
+                    if item.get("positionMMByMp") not in (None, "")
+                    else None
+                ),
+                payload={
+                    "source": "exchange_position_list",
+                    "qty": qty,
+                    "leverage": self._f(item.get("leverage")),
+                    "protection_status": status,
+                },
+            )
+            summary["liq_risk_snapshots"] += 1
 
             if orphaned:
                 issue_id = self._issue_once(

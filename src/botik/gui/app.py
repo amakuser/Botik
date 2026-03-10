@@ -161,12 +161,15 @@ def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
         "futures_positions_freshness": "-",
         "futures_orders_freshness": "-",
         "reconciliation_issues_freshness": "-",
+        "futures_funding_freshness": "-",
+        "futures_liq_snapshots_freshness": "-",
         "reconciliation_last_status": "skipped",
         "reconciliation_last_timestamp": "-",
         "reconciliation_last_trigger": "-",
         "reconciliation_summary_issues": None,
         "futures_protection_counts": {},
         "futures_protection_line": "none",
+        "futures_risk_telemetry_line": "funding=none | liq=none",
     }
     if not db_path.exists():
         return out
@@ -176,6 +179,40 @@ def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
         out["futures_positions_freshness"] = _latest_table_ts(conn, "futures_positions")
         out["futures_orders_freshness"] = _latest_table_ts(conn, "futures_open_orders")
         out["reconciliation_issues_freshness"] = _latest_table_ts(conn, "reconciliation_issues")
+        out["futures_funding_freshness"] = _latest_table_ts(conn, "futures_funding_events")
+        out["futures_liq_snapshots_freshness"] = _latest_table_ts(conn, "futures_liquidation_risk_snapshots")
+
+        funding_line = "funding=none"
+        if _table_exists_local(conn, "futures_funding_events"):
+            funding_row = conn.execute(
+                """
+                SELECT COALESCE(symbol, ''), COALESCE(funding_fee, 0), COALESCE(funding_time_ms, 0)
+                FROM futures_funding_events
+                ORDER BY COALESCE(funding_time_ms, 0) DESC, id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if funding_row:
+                funding_line = (
+                    f"funding={str(funding_row[0] or '-')} fee={float(funding_row[1] or 0):.6f}"
+                    f" t={int(funding_row[2] or 0)}"
+                )
+
+        liq_line = "liq=none"
+        if _table_exists_local(conn, "futures_liquidation_risk_snapshots"):
+            liq_row = conn.execute(
+                """
+                SELECT COALESCE(symbol, ''), distance_to_liq_bps, COALESCE(created_at_utc, '')
+                FROM futures_liquidation_risk_snapshots
+                ORDER BY created_at_utc DESC, id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if liq_row:
+                dist = liq_row[1]
+                dist_text = "-" if dist is None else f"{float(dist):.2f}bps"
+                liq_line = f"liq={str(liq_row[0] or '-')} dist={dist_text} @ {str(liq_row[2] or '-')}"
+        out["futures_risk_telemetry_line"] = f"{funding_line} | {liq_line}"
 
         if _table_exists_local(conn, "reconciliation_runs"):
             row = conn.execute(
@@ -3002,9 +3039,13 @@ class BotikGui:
             ),
             "panel_freshness_line": (
                 f"freshness: spot={ops_status.get('spot_holdings_freshness')} | fut_pos={ops_status.get('futures_positions_freshness')} "
-                f"| fut_ord={ops_status.get('futures_orders_freshness')} | issues={ops_status.get('reconciliation_issues_freshness')}"
+                f"| fut_ord={ops_status.get('futures_orders_freshness')} | issues={ops_status.get('reconciliation_issues_freshness')} "
+                f"| funding={ops_status.get('futures_funding_freshness')} | liq={ops_status.get('futures_liq_snapshots_freshness')}"
             ),
-            "futures_protection_status_line": f"protection: {ops_status.get('futures_protection_line')}",
+            "futures_protection_status_line": (
+                f"protection: {ops_status.get('futures_protection_line')}; "
+                f"{ops_status.get('futures_risk_telemetry_line')}"
+            ),
             "reconciliation_last_status": str(ops_status.get("reconciliation_last_status") or "skipped"),
             "reconciliation_last_timestamp": str(ops_status.get("reconciliation_last_timestamp") or "-"),
             "reconciliation_last_trigger": str(ops_status.get("reconciliation_last_trigger") or "-"),
@@ -3012,6 +3053,8 @@ class BotikGui:
             "futures_positions_freshness": str(ops_status.get("futures_positions_freshness") or "-"),
             "futures_orders_freshness": str(ops_status.get("futures_orders_freshness") or "-"),
             "reconciliation_issues_freshness": str(ops_status.get("reconciliation_issues_freshness") or "-"),
+            "futures_funding_freshness": str(ops_status.get("futures_funding_freshness") or "-"),
+            "futures_liq_snapshots_freshness": str(ops_status.get("futures_liq_snapshots_freshness") or "-"),
             "futures_protection_counts": dict(ops_status.get("futures_protection_counts") or {}),
             "ml_model_id": str(ml_metrics.get("model_id") or "bootstrap"),
             "ml_net_edge_mean": float(ml_metrics.get("net_edge_mean") or 0.0),
@@ -3033,7 +3076,7 @@ class BotikGui:
         if mode == "paper":
             snapshot["runtime_capabilities_status"] = "capabilities: recon=unsupported | protection=unsupported (paper mode)"
             snapshot["reconciliation_status_line"] = "reconciliation: unsupported (paper mode)"
-            snapshot["futures_protection_status_line"] = "protection: unsupported (paper mode)"
+            snapshot["futures_protection_status_line"] = "protection: unsupported (paper mode); funding=unsupported | liq=unsupported"
         if mode != "live":
             local_open = self._read_local_open_orders(
                 db_path,

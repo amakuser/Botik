@@ -149,6 +149,7 @@ def ensure_futures_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_futures_protection_status ON futures_protection_orders(status, updated_at_utc);
 
+        -- Funding fee events imported from reconciliation/runtime when execution payloads expose them.
         CREATE TABLE IF NOT EXISTS futures_funding_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             account_type TEXT NOT NULL,
@@ -162,6 +163,7 @@ def ensure_futures_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_futures_funding_symbol_time ON futures_funding_events(symbol, funding_time_ms);
 
+        -- Per-position liquidation risk telemetry snapshots from exchange position data.
         CREATE TABLE IF NOT EXISTS futures_liquidation_risk_snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             account_type TEXT NOT NULL,
@@ -426,6 +428,202 @@ def insert_futures_fill(
         ),
     )
     conn.commit()
+
+
+def insert_futures_funding_event(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str,
+    symbol: str,
+    funding_fee: float,
+    funding_time_ms: int,
+    side: str | None = None,
+    position_idx: int | None = None,
+    funding_rate: float | None = None,
+    created_at_utc: str | None = None,
+) -> bool:
+    symbol_u = str(symbol).upper()
+    funding_fee_v = _safe_float(funding_fee)
+    funding_time = _safe_int(funding_time_ms)
+    side_v = (str(side) if side is not None else None)
+    pos_idx_v = (_safe_int(position_idx) if position_idx is not None else None)
+
+    row = conn.execute(
+        """
+        SELECT id
+        FROM futures_funding_events
+        WHERE account_type=?
+          AND symbol=?
+          AND COALESCE(side, '')=COALESCE(?, '')
+          AND COALESCE(position_idx, -1)=COALESCE(?, -1)
+          AND COALESCE(funding_time_ms, 0)=?
+          AND COALESCE(funding_fee, 0)=?
+        LIMIT 1
+        """,
+        (
+            str(account_type),
+            symbol_u,
+            side_v,
+            pos_idx_v,
+            funding_time,
+            funding_fee_v,
+        ),
+    ).fetchone()
+    if row:
+        return False
+
+    conn.execute(
+        """
+        INSERT INTO futures_funding_events (
+            account_type, symbol, side, position_idx, funding_rate, funding_fee, funding_time_ms, created_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(account_type),
+            symbol_u,
+            side_v,
+            pos_idx_v,
+            (_safe_float(funding_rate) if funding_rate is not None else None),
+            funding_fee_v,
+            funding_time,
+            str(created_at_utc or utc_now_iso()),
+        ),
+    )
+    conn.commit()
+    return True
+
+
+def insert_futures_liquidation_risk_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str,
+    symbol: str,
+    side: str | None,
+    position_idx: int | None,
+    mark_price: float | None,
+    liq_price: float | None,
+    distance_to_liq_bps: float | None,
+    margin_ratio: float | None = None,
+    payload: dict[str, Any] | str | None = None,
+    created_at_utc: str | None = None,
+) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO futures_liquidation_risk_snapshots (
+            account_type, symbol, side, position_idx, mark_price, liq_price,
+            distance_to_liq_bps, margin_ratio, payload_json, created_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(account_type),
+            str(symbol).upper(),
+            side,
+            (_safe_int(position_idx) if position_idx is not None else None),
+            (_safe_float(mark_price) if mark_price is not None else None),
+            (_safe_float(liq_price) if liq_price is not None else None),
+            (_safe_float(distance_to_liq_bps) if distance_to_liq_bps is not None else None),
+            (_safe_float(margin_ratio) if margin_ratio is not None else None),
+            _json_text(payload or {}),
+            str(created_at_utc or utc_now_iso()),
+        ),
+    )
+    conn.commit()
+    return int(cur.lastrowid or 0)
+
+
+def list_recent_futures_funding_events(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str | None = None,
+    symbol: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    where_parts: list[str] = []
+    params: list[Any] = []
+    if account_type:
+        where_parts.append("account_type=?")
+        params.append(str(account_type))
+    if symbol:
+        where_parts.append("symbol=?")
+        params.append(str(symbol).upper())
+    where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    rows = conn.execute(
+        f"""
+        SELECT account_type, symbol, side, position_idx, funding_rate, funding_fee, funding_time_ms, created_at_utc
+        FROM futures_funding_events
+        {where_sql}
+        ORDER BY COALESCE(funding_time_ms, 0) DESC, id DESC
+        LIMIT ?
+        """,
+        tuple(params + [max(int(limit), 1)]),
+    ).fetchall()
+    return [
+        {
+            "account_type": row[0],
+            "symbol": row[1],
+            "side": row[2],
+            "position_idx": (_safe_int(row[3]) if row[3] is not None else None),
+            "funding_rate": (_safe_float(row[4]) if row[4] is not None else None),
+            "funding_fee": (_safe_float(row[5]) if row[5] is not None else None),
+            "funding_time_ms": (_safe_int(row[6]) if row[6] is not None else None),
+            "created_at_utc": row[7],
+        }
+        for row in rows
+    ]
+
+
+def list_recent_futures_liquidation_risk_snapshots(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str | None = None,
+    symbol: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    where_parts: list[str] = []
+    params: list[Any] = []
+    if account_type:
+        where_parts.append("account_type=?")
+        params.append(str(account_type))
+    if symbol:
+        where_parts.append("symbol=?")
+        params.append(str(symbol).upper())
+    where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    rows = conn.execute(
+        f"""
+        SELECT
+            account_type, symbol, side, position_idx, mark_price, liq_price, distance_to_liq_bps,
+            margin_ratio, payload_json, created_at_utc
+        FROM futures_liquidation_risk_snapshots
+        {where_sql}
+        ORDER BY created_at_utc DESC, id DESC
+        LIMIT ?
+        """,
+        tuple(params + [max(int(limit), 1)]),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        payload_text = str(row[8] or "")
+        try:
+            payload: Any = json.loads(payload_text) if payload_text else {}
+        except Exception:
+            payload = payload_text
+        out.append(
+            {
+                "account_type": row[0],
+                "symbol": row[1],
+                "side": row[2],
+                "position_idx": (_safe_int(row[3]) if row[3] is not None else None),
+                "mark_price": (_safe_float(row[4]) if row[4] is not None else None),
+                "liq_price": (_safe_float(row[5]) if row[5] is not None else None),
+                "distance_to_liq_bps": (_safe_float(row[6]) if row[6] is not None else None),
+                "margin_ratio": (_safe_float(row[7]) if row[7] is not None else None),
+                "payload": payload,
+                "created_at_utc": row[9],
+            }
+        )
+    return out
 
 
 def upsert_futures_protection(
