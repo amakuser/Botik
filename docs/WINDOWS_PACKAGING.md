@@ -8,9 +8,15 @@
 ## Entrypoints
 
 - GUI default: `botik.exe`
-- Headless mode (optional): `botik.exe --nogui --config config.yaml`
+- Headless trading: `botik.exe --nogui --role trading --config config.yaml`
+- Headless ML: `botik.exe --nogui --role ml --config config.yaml --ml-mode online`
 
 Main launcher for packaged build: `src/botik/windows_entry.py`.
+
+Важно:
+- packaged GUI запускает runtime subprocess через `botik.exe --nogui --role ...`;
+- packaged flow не должен зависеть от system Python/venv;
+- `python -m ...` относится к source/dev mode.
 
 ## Build locally
 
@@ -26,6 +32,7 @@ run_windows_gui.bat
 ```
 
 `build_portable_exe.bat` copies `dist\botik.exe` to project root as `botik.exe`.
+`run_windows_gui.bat` в этом контексте — helper-скрипт; основной пользовательский запуск остается через `botik.exe`.
 
 Script logs are written to `logs\script_logs\`:
 
@@ -55,6 +62,17 @@ iscc installer.iss
 - GUI runs without console (`pythonw` semantics via windowed executable).
 - GUI event log is written to `logs\gui.log`.
 - Core bot logs are written by existing logging config (default `logs\botik.log`).
+
+## Source mode vs packaged mode
+
+- Source/dev mode:
+  - `python -m src.botik.gui.app`
+  - `python -m src.botik.main --config ...`
+  - `python -m ml_service.run_loop --config ... --mode ...`
+- Packaged mode:
+  - `botik.exe` (GUI)
+  - `botik.exe --nogui --role trading ...`
+  - `botik.exe --nogui --role ml ...`
 
 ## Update behavior
 

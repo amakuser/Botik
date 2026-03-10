@@ -155,6 +155,60 @@ def runtime_capabilities_for_mode(mode: str) -> dict[str, str]:
     return {"reconciliation": "supported", "protection": "supported"}
 
 
+def detect_launcher_mode() -> str:
+    # PyInstaller runtime sets sys.frozen=True.
+    return "packaged" if bool(getattr(sys, "frozen", False)) else "source"
+
+
+def build_worker_launch_command(
+    *,
+    process_kind: str,
+    launcher_mode: str,
+    python_path: str,
+    config_path: str | None,
+    packaged_executable: str | None = None,
+    ml_mode: str | None = None,
+) -> tuple[list[str], bool, str]:
+    kind = str(process_kind or "").strip().lower()
+    if kind not in {"trading", "ml"}:
+        return [], False, f"unsupported_process_kind:{kind or 'empty'}"
+
+    mode = str(launcher_mode or "").strip().lower() or "source"
+    cfg = str(config_path or "").strip()
+
+    if mode == "packaged":
+        exe = str(packaged_executable or "").strip()
+        if not exe:
+            exe = str(Path(sys.executable))
+        if not exe:
+            return [], False, "packaged_launcher_missing_executable"
+        cmd = [exe, "--nogui", "--role", kind]
+        if cfg:
+            cmd.extend(["--config", cfg])
+        if kind == "ml":
+            ml_mode_value = str(ml_mode or "").strip().lower()
+            if ml_mode_value:
+                cmd.extend(["--ml-mode", ml_mode_value])
+        return cmd, True, "packaged"
+
+    py = str(python_path or "").strip() or sys.executable
+    if not py:
+        return [], False, "source_launcher_missing_python"
+    if kind == "trading":
+        cmd = [py, "-m", "src.botik.main"]
+        if cfg:
+            cmd.extend(["--config", cfg])
+        return cmd, True, "source"
+
+    cmd = [py, "-m", "ml_service.run_loop"]
+    if cfg:
+        cmd.extend(["--config", cfg])
+    ml_mode_value = str(ml_mode or "").strip().lower()
+    if ml_mode_value:
+        cmd.extend(["--mode", ml_mode_value])
+    return cmd, True, "source"
+
+
 def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
     out: dict[str, Any] = {
         "spot_holdings_freshness": "-",
@@ -398,6 +452,8 @@ class BotikGui:
         self.trading = self.trading_processes["spot_spread"]
         self.ml = ManagedProcess("ml", self._enqueue_log)
         self.sleep_blocker = SleepBlocker(self._enqueue_log)
+        self.launcher_mode = detect_launcher_mode()
+        self.packaged_executable = str(Path(sys.executable)) if self.launcher_mode == "packaged" else ""
 
         self.python_var = tk.StringVar(value=_default_python())
         self.config_var = tk.StringVar(value=str(DEFAULT_CONFIG_PATH))
@@ -618,7 +674,10 @@ class BotikGui:
         self.config_var.trace_add("write", lambda *_: self._refresh_runtime_labels())
 
     def _refresh_runtime_labels(self) -> None:
-        py_name = Path(self.python_var.get()).name or "python"
+        if self.launcher_mode == "packaged":
+            py_name = Path(self.packaged_executable or sys.executable).name or "botik.exe"
+        else:
+            py_name = Path(self.python_var.get()).name or "python"
         cfg_name = Path(self.config_var.get()).name or "config.yaml"
         self.runtime_python_name_var.set(py_name)
         self.runtime_config_name_var.set(cfg_name)
@@ -4848,7 +4907,18 @@ class BotikGui:
                 already_running_modes.append(strategy_mode)
                 continue
             cfg_path = self._write_runtime_config_for_mode(strategy_mode)
-            cmd = self._cmd("-m", "src.botik.main", "--config", str(cfg_path))
+            cmd, supported, reason = build_worker_launch_command(
+                process_kind="trading",
+                launcher_mode=self.launcher_mode,
+                python_path=self.python_var.get(),
+                config_path=str(cfg_path),
+                packaged_executable=self.packaged_executable,
+            )
+            if not supported or not cmd:
+                self._enqueue_log(
+                    f"[ui] trading launch skipped for {strategy_mode}: unsupported launcher path ({reason})"
+                )
+                continue
             if proc.start(cmd, ROOT_DIR, env=child_env):
                 started_modes.append(strategy_mode)
 
@@ -4892,7 +4962,18 @@ class BotikGui:
         ml_mode = str(((raw_cfg.get("ml") or {}).get("mode") or "bootstrap")).strip().lower()
         if ml_mode not in {"bootstrap", "train", "predict", "online"}:
             ml_mode = "bootstrap"
-        cmd = self._cmd("-m", "ml_service.run_loop", "--config", self.config_var.get(), "--mode", ml_mode)
+        cmd, supported, reason = build_worker_launch_command(
+            process_kind="ml",
+            launcher_mode=self.launcher_mode,
+            python_path=self.python_var.get(),
+            config_path=self.config_var.get(),
+            packaged_executable=self.packaged_executable,
+            ml_mode=ml_mode,
+        )
+        if not supported or not cmd:
+            msg = f"ML launch unsupported in current mode ({reason})."
+            self._enqueue_log(f"[ui] {msg}")
+            return msg
         started = self.ml.start(cmd, ROOT_DIR)
         return "ML process started." if started else "ML already running."
 
