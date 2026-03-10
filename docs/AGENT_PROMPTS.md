@@ -1,28 +1,78 @@
-# Подсказки для AI / агента (Botik)
+﻿# AGENT PROMPTS / GUIDELINES (Botik)
 
-## Структура проекта
+## 1. Repo scope
 
-- **Торговый бот:** `src/botik/` — точка входа `main.py`, конфиг `config.py`, маркетдата `marketdata/`, исполнение `execution/`, стратегия `strategy/`, риск `risk/`, состояние `state/`, хранилище `storage/`, управление `control/`, утилиты `utils/`.
-- **ML-сервис:** `ml_service/` — отдельный процесс; `features.py`, `dataset.py`, `train.py`, `evaluate.py`, `run_loop.py`.
-- **Конфиг:** корень — `config.example.yaml`, `.env.example`. Секреты только в `.env` (не коммитить).
-- **Тесты:** `tests/` — например `test_risk_manager_limits.py`, `test_micro_spread_logic.py`.
-- **Документация:** `docs/PLAN.md`, `docs/AGENT_PROMPTS.md`.
+Botik — не spot-only проект. Поддерживаются два торговых домена:
+- Spot holdings/orders/fills
+- Futures positions/orders/protection
 
-## Правила кода
+Работай поверх существующего кода, без rewrite.
 
-- **Секреты:** никогда не коммитить `.env`, ключи, токены. В репо только `.env.example` с пустыми значениями.
-- **Ордера:** любой ордер должен проходить **только через RiskManager** (жёсткие лимиты). Прямые вызовы execution в обход RiskManager не допускаются.
-- **На диск:** сырой стакан не писать. Писать только агрегаты (metrics), ордера, сделки (fills), PnL.
-- **Идентификаторы** в коде — на английском; комментарии и README — на русском.
+## 2. Entry points
 
-## Частые места изменений
+- Runtime: `src/botik/main.py`
+- Desktop GUI: `src/botik/gui/app.py`
+- Windows packaged launcher: `src/botik/windows_entry.py`
 
-- Параметры стратегии и риска — `config.py` и `config.example.yaml`.
-- Логика лимитов — `src/botik/risk/manager.py`.
-- Логика микро-спреда — `src/botik/strategy/micro_spread.py`.
-- Команды Telegram — `src/botik/control/telegram_bot.py`.
+Single-exe flow должен сохраняться (GUI по умолчанию, `--nogui` опционально).
 
----
+## 3. Domain model (обязательно учитывать)
 
-*Как проверить:* после изменений — запуск тестов и бота в DEMO.  
-*Частые ошибки:* добавить секрет в конфиг-файл в репо; обойти RiskManager при выставлении ордера.
+### Shared core
+- `account_snapshots`
+- `reconciliation_runs`
+- `reconciliation_issues`
+- `strategy_runs`
+- `events_audit`
+
+### Spot
+- `spot_balances`
+- `spot_holdings`
+- `spot_orders`
+- `spot_fills`
+- `spot_position_intents`
+- `spot_exit_decisions`
+
+### Futures
+- `futures_positions`
+- `futures_open_orders`
+- `futures_fills`
+- `futures_protection_orders`
+- `futures_position_decisions`
+
+## 4. Runtime invariants
+
+1. Legacy write-path (`orders`, `fills`) нельзя ломать без причины.
+2. Domain writes должны идти параллельно legacy.
+3. Reconciliation запускается при старте и по расписанию.
+4. Symbol-level reconciliation lock блокирует только новые entry, не read-only refresh.
+5. Futures protection не подтверждается только по `retCode`; нужен verify-from-exchange.
+6. Block entry по futures symbol при protection status:
+   - `pending`
+   - `repairing`
+   - `failed`
+   - `unprotected`
+
+## 5. Paper mode policy
+
+Paper mode — ограниченный режим:
+- protection capability unsupported,
+- reconciliation capability unsupported.
+
+Нельзя создавать ложное состояние “всё protected/reconciled”.
+Нужно явно логировать/отображать unsupported статус.
+
+## 6. Change policy
+
+- Не делать broad refactor без запроса.
+- Не удалять schema foundation и launcher flow.
+- Не ломать ML pipeline без необходимости.
+- Делать маленькие проверяемые этапы с тестами.
+- Коммитить атомарно, с понятным сообщением.
+
+## 7. Проверка перед merge
+
+Минимум:
+- `pytest -q`
+- проверка `git status`
+- если менялся runtime wiring, добавить/обновить tests на call-path, а не только helper-level.

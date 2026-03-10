@@ -1,51 +1,63 @@
-# План проекта: Bybit Spot DEMO Bot + ML Service
+﻿# PLAN
 
-## Что это
+## Текущий вектор
 
-**Bybit Spot DEMO trading bot** — бот для автоматической торговли на **демо-счёте** Bybit (api-demo.bybit.com). Он реально выставляет и снимает ордера на DEMO, считает PnL по сделкам (fills). Отдельно работает **ML-сервис** (обучение и аналитика) в своём процессе, чтобы не мешать торговому циклу.
+Проект ведётся как dual-domain торговый runtime без rewrite:
+- Spot domain
+- Futures domain
+- Shared core для аудита/синхронизации
 
-- Код и идентификаторы — на **английском**.
-- Комментарии и документация — на **русском** (понятно для ученика).
+Цель текущей волны — удерживать корректный runtime wiring и операционную прозрачность, не ломая уже внедрённые P0 изменения.
 
-## Статус: Надёжность Trading (WS mainnet + REST demo, HMAC)
+## Что уже закреплено
 
-- В качестве рабочего контура закреплён режим: **public WS mainnet** (`stream.bybit.com`) + **REST demo** (`api-demo.bybit.com`).
-- Основной режим подписи для REST: **HMAC** (`BYBIT_API_SECRET_KEY`), с fallback на `BYBIT_API_SECRET`.
-- RSA (`BYBIT_RSA_PRIVATE_KEY_PATH`) оставлен как поддерживаемый резервный путь.
-- В REST-клиент добавлена синхронизация времени с `/v5/market/time` и одноразовый автоповтор при `retCode=10002`.
-- Добавлен smoke-инструмент `bybit_smoke_test.py` для сценариев:
-  - WS smoke / WS compare
-  - create order
-  - verify in open orders
-  - keep-open или cancel-cleanup
+1. Domain separation в storage:
+- shared core таблицы (`account_snapshots`, `reconciliation_runs`, `reconciliation_issues`, `strategy_runs`, `events_audit`)
+- spot таблицы (`spot_holdings/orders/fills/intents/exit_decisions`)
+- futures таблицы (`futures_positions/open_orders/fills/protection_orders/position_decisions`)
 
-## Безопасность и дисциплина
+2. Runtime параллельно пишет:
+- legacy (`orders`, `fills`)
+- domain tables (spot/futures)
 
-- **Торговля по умолчанию выключена:** `start_paused=true`. Включить можно только командой **/resume** в Telegram.
-- **/pause** — запрещает новые ордера (бот продолжает получать данные).
-- **/panic** — отменяет все ордера; опционально закрытие позиции рыночным ордером только если в конфиге `allow_panic_market_close=true`.
-- **Секреты** (API-ключи, токены) — только в `.env`. В репозиторий коммитим только `.env.example`.
-- **Каждый ордер** проходит через **RiskManager** (жёсткие лимиты по экспозиции, количеству ордеров и т.д.).
-- **На диск** пишем только агрегаты (метрики), ордера, сделки и PnL — «архив улик». Сырой стакан на диск не пишем.
+3. Reconciliation:
+- autostart перед strategy loop
+- scheduled loop
+- фиксация reconciliation issues + audit
+- symbol-level entry lock по критичным mismatch issue
 
-## Шаги разработки (1–6)
+4. Futures protection flow:
+- apply trading stop + verify-from-exchange
+- статусы: `pending/protected/unprotected/repairing/failed`
+- запрет новых entry по symbol при blocking protection status
 
-| Шаг | Содержание |
-|-----|-------------|
-| **1** | Гигиена репозитория: `.gitignore`, `.env.example`, удаление секретов из кода, `docs/PLAN.md`, `docs/AGENT_PROMPTS.md`, README на русском. |
-| **2** | Конфиг (pydantic-settings + YAML), логирование с ротацией, схема SQLite (orders, fills, metrics, pnl_snapshots, model_registry), retention 30 дней / лимит 50GB. |
-| **3** | Маркетдата: WebSocket подписка на стакан top-50 по символам, in-memory orderbook (best bid/ask, mid, spread_ticks, imbalance), запись агрегатов в БД. |
-| **4** | Исполнение: REST к Bybit DEMO (place/cancel/orders/balance), RiskManager с тестами, стратегия micro-spread (0–2 post-only лимита, TTL, инвентарь). PnL по fills с учётом комиссий (факт из fills или fallback maker/taker). |
-| **5** | Telegram: команды /status, /pause, /resume, /panic, /set_risk; логирование команд и событий. |
-| **6** | ML-сервис (отдельный процесс): online-аналитика, offline-обучение по архиву (sklearn, батчами), модель в model_registry; интерфейс с возможностью замены на PyTorch позже. |
+5. Paper mode safety:
+- capability явно отмечаются как unsupported для protection/reconciliation
+- runtime не симулирует ложный protected/reconciled статус
 
-## Архив и ML
+## Ближайшие этапы
 
-- **Архив:** 30 дней, лимит ~50GB; при превышении — удаление старых метрик, VACUUM по расписанию.
-- **Обучение** идёт по тому, что записано в архив: агрегаты + fills + ордера. ML не блокирует торговлю — отдельный процесс.
+### Этап A: Documentation consistency
+- README и docs должны честно описывать dual-domain runtime.
+- Убрать spot-only формулировки и противоречия.
 
----
+### Этап B: Risk separation end-to-end
+- Уточнить runtime decisions для spot и futures путей без broad rewrite.
+- Подтвердить тестами, что futures path protection/liquidation-aware.
 
-*Как проверить:* после каждого шага — запуск/тесты по инструкциям в README и в комментариях к файлам.  
-*Частые ошибки:* забыть скопировать `.env.example` в `.env` или закоммитить `.env`.  
-*Что улучшить позже:* единый pyproject.toml вместо requirements.txt при желании; расширение списка символов через конфиг.
+### Этап C: GUI operator safety/freshness/status
+- Добавить индикаторы свежести данных и operational статусы.
+- Показать reconciliation status и protection lifecycle явно.
+- Отдельно показать unsupported capability в paper mode.
+
+### Этап D: Integration coverage for wiring
+- Проверить startup autostart reconciliation.
+- Проверить protection verify wiring в runtime path.
+- Проверить safety-path paper mode и read-model wiring.
+
+## Принципы изменений
+
+- Без rewrite проекта.
+- Без ломки single-exe/launcher flow.
+- Без удаления legacy path, пока нужна совместимость.
+- Изменения малыми проверяемыми шагами (commit + push на этап).
