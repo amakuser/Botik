@@ -30,6 +30,9 @@ from src.botik.learning.policy import PolicySelector
 from src.botik.learning.policy_manager import ModelBundle, load_active_model
 from src.botik.risk.futures_protection import build_futures_protection_plan, futures_entry_allowed
 from src.botik.risk.futures_rules import (
+    classify_futures_state,
+    compute_distance_to_liq_bps,
+    is_entry_blocking_futures_risk_state,
     is_blocking_protection_status,
     normalize_protection_status,
     transition_protection_status,
@@ -199,6 +202,125 @@ def get_futures_blocking_protection_status(
     if not is_blocking_protection_status(status):
         return None
     return status
+
+
+def evaluate_futures_symbol_risk(
+    conn: sqlite3.Connection,
+    *,
+    symbol: str,
+    account_type: str = "UNIFIED",
+    fallback_mark_price: float | None = None,
+) -> dict[str, Any]:
+    symbol_u = str(symbol or "").upper().strip()
+    row = conn.execute(
+        """
+        SELECT
+            COALESCE(side, ''),
+            ABS(COALESCE(qty, 0)),
+            COALESCE(entry_price, 0),
+            COALESCE(mark_price, 0),
+            COALESCE(liq_price, 0),
+            COALESCE(protection_status, ''),
+            COALESCE(updated_at_utc, '')
+        FROM futures_positions
+        WHERE account_type=?
+          AND symbol=?
+          AND ABS(COALESCE(qty, 0)) > 0
+        ORDER BY updated_at_utc DESC
+        LIMIT 1
+        """,
+        (str(account_type), symbol_u),
+    ).fetchone()
+    if not row:
+        return {
+            "symbol": symbol_u,
+            "risk_state": "unknown",
+            "protection_status": "",
+            "distance_to_liq_bps": None,
+            "unrealized_pnl_pct": None,
+            "position_side": "",
+            "position_qty": 0.0,
+            "entry_price": None,
+            "mark_price": None,
+            "liq_price": None,
+            "updated_at_utc": "",
+        }
+    side = str(row[0] or "")
+    qty_abs = float(row[1] or 0.0)
+    qty_signed = qty_abs if side.strip().lower() in {"buy", "long"} else -qty_abs
+    entry_price = float(row[2] or 0.0)
+    mark_price_db = float(row[3] or 0.0)
+    liq_price = float(row[4] or 0.0)
+    protection_status = normalize_protection_status(row[5] or "")
+    updated_at_utc = str(row[6] or "")
+
+    mark_price = mark_price_db if mark_price_db > 0 else float(fallback_mark_price or 0.0)
+    if mark_price <= 0:
+        mark_price = 0.0
+
+    pnl_pct: float | None = None
+    if qty_abs > 0 and entry_price > 0 and mark_price > 0:
+        pnl_pct = unrealized_pnl_pct(
+            position_qty=qty_signed,
+            avg_entry_price=entry_price,
+            mark_price=mark_price,
+        )
+
+    distance_to_liq_bps = compute_distance_to_liq_bps(
+        side=side,
+        mark_price=(mark_price if mark_price > 0 else None),
+        liq_price=(liq_price if liq_price > 0 else None),
+    )
+    risk_state = classify_futures_state(
+        protection_status=protection_status,
+        unrealized_pnl_pct=pnl_pct,
+        distance_to_liq_bps=distance_to_liq_bps,
+    )
+    return {
+        "symbol": symbol_u,
+        "risk_state": str(risk_state),
+        "protection_status": protection_status,
+        "distance_to_liq_bps": distance_to_liq_bps,
+        "unrealized_pnl_pct": pnl_pct,
+        "position_side": side,
+        "position_qty": qty_abs,
+        "entry_price": (entry_price if entry_price > 0 else None),
+        "mark_price": (mark_price if mark_price > 0 else None),
+        "liq_price": (liq_price if liq_price > 0 else None),
+        "updated_at_utc": updated_at_utc,
+    }
+
+
+def futures_entry_risk_gate(
+    conn: sqlite3.Connection,
+    *,
+    symbol: str,
+    account_type: str = "UNIFIED",
+    fallback_mark_price: float | None = None,
+) -> tuple[bool, str, dict[str, Any]]:
+    risk_view = evaluate_futures_symbol_risk(
+        conn,
+        symbol=symbol,
+        account_type=account_type,
+        fallback_mark_price=fallback_mark_price,
+    )
+    risk_state = str(risk_view.get("risk_state") or "").strip().lower()
+    if is_entry_blocking_futures_risk_state(risk_state):
+        return False, f"symbol_risk_state_{risk_state}", risk_view
+    return True, "ok", risk_view
+
+
+def futures_force_exit_reason_from_risk_state(
+    *,
+    current_reason: str | None,
+    risk_state: str | None,
+) -> str | None:
+    risk = str(risk_state or "").strip().lower()
+    if risk == "hard_failure":
+        return current_reason or "futures_hard_failure"
+    if risk == "unprotected_position":
+        return current_reason or "futures_unprotected_position"
+    return current_reason
 
 
 def write_runtime_order_legacy_and_domain(
@@ -599,6 +721,9 @@ def _hot_reload_runtime_modules() -> None:
         futures_entry_allowed as _futures_entry_allowed,
     )
     from src.botik.risk.futures_rules import (
+        classify_futures_state as _classify_futures_state,
+        compute_distance_to_liq_bps as _compute_distance_to_liq_bps,
+        is_entry_blocking_futures_risk_state as _is_entry_blocking_futures_risk_state,
         is_blocking_protection_status as _is_blocking_protection_status,
         normalize_protection_status as _normalize_protection_status,
         transition_protection_status as _transition_protection_status,
@@ -665,6 +790,9 @@ def _hot_reload_runtime_modules() -> None:
     globals()["futures_entry_allowed"] = _futures_entry_allowed
     globals()["normalize_protection_status"] = _normalize_protection_status
     globals()["is_blocking_protection_status"] = _is_blocking_protection_status
+    globals()["compute_distance_to_liq_bps"] = _compute_distance_to_liq_bps
+    globals()["classify_futures_state"] = _classify_futures_state
+    globals()["is_entry_blocking_futures_risk_state"] = _is_entry_blocking_futures_risk_state
     globals()["transition_protection_status"] = _transition_protection_status
     globals()["can_auto_sell_hold"] = _can_auto_sell_hold
     globals()["apply_fill"] = _apply_fill
@@ -2160,6 +2288,28 @@ def main() -> None:
                 peak_pnl_bps=float(symbol_peak_pnl_bps.get(symbol, 0.0)),
             )
             symbol_peak_pnl_bps[symbol] = updated_peak
+            futures_risk_view: dict[str, Any] = {}
+            if runtime_market_category == "linear":
+                futures_risk_view = evaluate_futures_symbol_risk(
+                    conn,
+                    symbol=symbol,
+                    account_type="UNIFIED",
+                    fallback_mark_price=float(mark_price),
+                )
+                futures_risk_state = str(futures_risk_view.get("risk_state") or "").strip().lower()
+                if futures_risk_state and futures_risk_state != "unknown":
+                    _record_futures_decision(
+                        symbol=symbol,
+                        side=("Sell" if pos_qty > 0 else "Buy"),
+                        decision_type="risk_state_observed",
+                        reason=futures_risk_state,
+                        payload=futures_risk_view,
+                        applied=False,
+                    )
+                reason = futures_force_exit_reason_from_risk_state(
+                    current_reason=reason,
+                    risk_state=futures_risk_state,
+                )
 
             # Symbol has an open position: block opening additional inventory.
             if reason is None:
@@ -2176,6 +2326,10 @@ def main() -> None:
                     "pnl_pct": pnl_pct,
                     "age_sec": age,
                     "qty": pos_qty,
+                    "futures_risk_state": futures_risk_view.get("risk_state") if futures_risk_view else None,
+                    "distance_to_liq_bps": (
+                        futures_risk_view.get("distance_to_liq_bps") if futures_risk_view else None
+                    ),
                 },
             )
             if runtime_market_category == "spot":
@@ -3297,6 +3451,35 @@ def main() -> None:
                             continue
 
                         if runtime_market_category == "linear":
+                            gate_mark_price = float(ob.mid) if ob is not None and float(ob.mid or 0.0) > 0 else None
+                            risk_gate_allowed, risk_gate_reason, risk_gate_view = futures_entry_risk_gate(
+                                conn,
+                                symbol=intent_to_send.symbol,
+                                account_type="UNIFIED",
+                                fallback_mark_price=gate_mark_price,
+                            )
+                            if not risk_gate_allowed:
+                                risk_reject_count += 1
+                                _record_futures_decision(
+                                    symbol=intent_to_send.symbol,
+                                    side=intent_to_send.side,
+                                    decision_type="entry_rejected",
+                                    reason=risk_gate_reason,
+                                    payload={
+                                        "order_link_id": intent_to_send.order_link_id,
+                                        "risk_gate": risk_gate_view,
+                                    },
+                                    applied=False,
+                                )
+                                log.warning(
+                                    "Futures entry rejected by symbol risk gate: symbol=%s reason=%s risk_state=%s distance_to_liq_bps=%s",
+                                    intent_to_send.symbol,
+                                    risk_gate_reason,
+                                    risk_gate_view.get("risk_state"),
+                                    risk_gate_view.get("distance_to_liq_bps"),
+                                )
+                                continue
+
                             entry_sl_pct = (
                                 float(intent_to_send.action_stop_loss_pct)
                                 if intent_to_send.action_stop_loss_pct is not None

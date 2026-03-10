@@ -11,6 +11,12 @@ BLOCKING_PROTECTION_STATUSES = {
     "unprotected",
 }
 
+ENTRY_BLOCKING_FUTURES_RISK_STATES = {
+    "unprotected_position",
+    "soft_failure",
+    "hard_failure",
+}
+
 
 def normalize_protection_status(value: str | None) -> str:
     return str(value or "").strip().lower()
@@ -18,6 +24,28 @@ def normalize_protection_status(value: str | None) -> str:
 
 def is_blocking_protection_status(value: str | None) -> bool:
     return normalize_protection_status(value) in BLOCKING_PROTECTION_STATUSES
+
+
+def is_entry_blocking_futures_risk_state(value: str | None) -> bool:
+    return str(value or "").strip().lower() in ENTRY_BLOCKING_FUTURES_RISK_STATES
+
+
+def compute_distance_to_liq_bps(
+    *,
+    side: str,
+    mark_price: float | None,
+    liq_price: float | None,
+) -> float | None:
+    mark = float(mark_price or 0.0)
+    liq = float(liq_price or 0.0)
+    if mark <= 0 or liq <= 0:
+        return None
+    side_norm = str(side or "").strip().lower()
+    if side_norm in {"buy", "long"}:
+        return ((mark - liq) / mark) * 10000.0
+    if side_norm in {"sell", "short"}:
+        return ((liq - mark) / mark) * 10000.0
+    return (abs(mark - liq) / mark) * 10000.0
 
 
 def transition_protection_status(
