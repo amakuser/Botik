@@ -2,10 +2,12 @@ manifest_version: 1
 product: botik_dashboard
 shell:
   name: Dashboard Shell
-  version: 0.0.1
+  version: from_VERSION
   build_sha: from_version_txt
+  version_source: VERSION
+  build_source: version.txt
 components:
-  workspace_pack: 0.0.1
+  workspace_pack: 0.0.2
   spot_runtime: 1.0.0
   futures_training_engine: 0.1.0
   telegram_bot_module: 1.0.0

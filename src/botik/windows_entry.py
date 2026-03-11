@@ -1,7 +1,7 @@
 """
 Windows packaged entrypoint.
 
-Default mode: GUI desktop.
+Default mode: Dashboard Shell desktop.
 Optional: --nogui to run trading runtime without desktop window.
 """
 from __future__ import annotations

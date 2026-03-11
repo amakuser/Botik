@@ -32,7 +32,7 @@ from tkinter import ttk, messagebox
 import yaml
 
 from src.botik.risk.position import apply_fill
-from src.botik.version import get_app_version_label
+from src.botik.version import get_app_version_label, load_app_version, load_build_sha
 from src.botik.gui.theme import apply_dark_theme
 from src.botik.gui.ui_components import card, labeled_combobox, labeled_entry
 from src.botik.utils.runtime import runtime_root
@@ -42,6 +42,7 @@ ROOT_DIR = runtime_root(__file__, levels_up=3)
 ENV_PATH = ROOT_DIR / ".env"
 DEFAULT_CONFIG_PATH = ROOT_DIR / "config.yaml"
 GUI_LOG_PATH = ROOT_DIR / "logs" / "gui.log"
+DASHBOARD_RELEASE_MANIFEST_PATH = ROOT_DIR / "dashboard_release_manifest.yaml"
 
 STRATEGY_PRESET_LABELS: dict[str, str] = {
     "Spot Spread (Maker)": "spot_spread",
@@ -228,6 +229,116 @@ def build_worker_launch_command(
     if ml_mode_value:
         cmd.extend(["--mode", ml_mode_value])
     return cmd, True, "source"
+
+
+def _component_text(value: Any, *, fallback: str = "unknown") -> str:
+    text = str(value or "").strip()
+    return text or fallback
+
+
+def load_shell_build_sha() -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        if proc.returncode == 0:
+            value = str(proc.stdout or "").strip()
+            if value:
+                return value
+    except Exception:
+        pass
+    return _component_text(load_build_sha(), fallback="unknown")
+
+
+def load_dashboard_release_manifest(path: Path | None = None) -> dict[str, str]:
+    version_data = load_app_version()
+    out: dict[str, str] = {
+        "shell_version": _component_text(version_data.version, fallback="0.0.0"),
+        "shell_build_sha": load_shell_build_sha(),
+        "workspace_pack_version": "unknown",
+        "spot_runtime_version": "unknown",
+        "futures_training_engine_version": "unknown",
+        "telegram_bot_module_version": "unknown",
+        "active_spot_model_version": "unknown",
+        "active_futures_model_version": "unknown",
+        "db_schema_version": "unknown",
+        "active_config_profile": "unknown",
+        "loaded_at": "-",
+        "manifest_status": "missing",
+        "manifest_path": str(path or DASHBOARD_RELEASE_MANIFEST_PATH),
+    }
+    manifest_path = path or DASHBOARD_RELEASE_MANIFEST_PATH
+    if not manifest_path.exists():
+        return out
+    try:
+        raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(raw, dict):
+            out["manifest_status"] = "failed"
+            return out
+        components = raw.get("components") if isinstance(raw.get("components"), dict) else {}
+        release = raw.get("release") if isinstance(raw.get("release"), dict) else {}
+        out["workspace_pack_version"] = _component_text(
+            components.get("workspace_pack") if isinstance(components, dict) else "",
+            fallback="unknown",
+        )
+        out["spot_runtime_version"] = _component_text(
+            components.get("spot_runtime") if isinstance(components, dict) else "",
+            fallback="unknown",
+        )
+        out["futures_training_engine_version"] = _component_text(
+            components.get("futures_training_engine") if isinstance(components, dict) else "",
+            fallback="unknown",
+        )
+        out["telegram_bot_module_version"] = _component_text(
+            components.get("telegram_bot_module") if isinstance(components, dict) else "",
+            fallback="unknown",
+        )
+        out["active_spot_model_version"] = _component_text(
+            components.get("active_spot_model") if isinstance(components, dict) else "",
+            fallback="unknown",
+        )
+        out["active_futures_model_version"] = _component_text(
+            components.get("active_futures_model") if isinstance(components, dict) else "",
+            fallback="unknown",
+        )
+        out["db_schema_version"] = _component_text(
+            components.get("db_schema") if isinstance(components, dict) else "",
+            fallback="unknown",
+        )
+        out["active_config_profile"] = _component_text(
+            release.get("active_config_profile") if isinstance(release, dict) else "",
+            fallback="unknown",
+        )
+        loaded_dt = datetime.fromtimestamp(float(manifest_path.stat().st_mtime), tz=timezone.utc).astimezone()
+        out["loaded_at"] = loaded_dt.strftime("%Y-%m-%d %H:%M:%S")
+        out["manifest_status"] = "loaded"
+        return out
+    except Exception:
+        out["manifest_status"] = "failed"
+        return out
+
+
+def format_dashboard_release_panel(manifest: dict[str, str]) -> str:
+    return "\n".join(
+        [
+            f"Status: {manifest.get('manifest_status', 'missing')}",
+            f"Loaded At: {manifest.get('loaded_at', '-')}",
+            f"Dashboard Shell Version: {manifest.get('shell_version', 'unknown')}",
+            f"Shell Build SHA: {manifest.get('shell_build_sha', 'unknown')}",
+            f"Workspace Pack Version: {manifest.get('workspace_pack_version', 'unknown')}",
+            f"Spot Runtime Version: {manifest.get('spot_runtime_version', 'unknown')}",
+            f"Futures Training Engine Version: {manifest.get('futures_training_engine_version', 'unknown')}",
+            f"Telegram Bot Module Version: {manifest.get('telegram_bot_module_version', 'unknown')}",
+            f"Active Spot Model Version: {manifest.get('active_spot_model_version', 'unknown')}",
+            f"Active Futures Model Version: {manifest.get('active_futures_model_version', 'unknown')}",
+            f"DB Schema Version: {manifest.get('db_schema_version', 'unknown')}",
+            f"Active Config Profile: {manifest.get('active_config_profile', 'unknown')}",
+        ]
+    )
 
 
 def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
@@ -559,6 +670,7 @@ class BotikGui:
         self.dashboard_futures_training_status_var = tk.StringVar(value="Futures Training: n/a")
         self.dashboard_telegram_status_var = tk.StringVar(value="Telegram: n/a")
         self.dashboard_ops_status_var = tk.StringVar(value="Ops: n/a")
+        self.dashboard_release_panel_var = tk.StringVar(value="Loaded Components / Releases: not loaded")
         self.ml_model_id_var = tk.StringVar(value="bootstrap")
         self.ml_training_state_var = tk.StringVar(value="idle")
         self.ml_progress_text_var = tk.StringVar(value="0%")
@@ -932,10 +1044,16 @@ class BotikGui:
 
         components_card = ttk.Frame(home_root, style="Card.TFrame", padding=12)
         components_card.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(components_card, text="Loaded Components (preview)", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(components_card, text="Loaded Components / Releases", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             components_card,
-            text="Shell, runtime components and manifests are displayed in detail starting from the next stage.",
+            textvariable=self.dashboard_release_panel_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(
+            components_card,
+            text=f"Manifest source: {DASHBOARD_RELEASE_MANIFEST_PATH.name}",
             style="Body.TLabel",
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(6, 0))
@@ -1968,7 +2086,7 @@ class BotikGui:
         chat_id = (env_data.get("TELEGRAM_CHAT_ID") or "").strip() or None
         if not token:
             if not self._telegram_missing_token_reported:
-                self._enqueue_log("[telegram-gui] TELEGRAM_BOT_TOKEN not set; remote control disabled")
+                self._enqueue_log("[telegram-dashboard] TELEGRAM_BOT_TOKEN not set; remote control disabled")
                 self._telegram_missing_token_reported = True
             return
         self._telegram_missing_token_reported = False
@@ -1994,7 +2112,7 @@ class BotikGui:
             allowed_chat_id=chat_id,
             stop_event=self._telegram_stop_event,
         )
-        self._enqueue_log("[telegram-gui] control bot started")
+        self._enqueue_log("[telegram-dashboard] control bot started")
 
     def _git_short_head(self) -> str:
         proc = subprocess.run(
@@ -3240,6 +3358,8 @@ class BotikGui:
         pause_flag_path = self._resolve_training_pause_flag(raw_cfg)
         runtime_caps = runtime_capabilities_for_mode(mode)
         ops_status = load_runtime_ops_status_snapshot(db_path)
+        release_manifest = load_dashboard_release_manifest()
+        release_panel = format_dashboard_release_panel(release_manifest)
         batch_size = max(int((raw_cfg.get("ml") or {}).get("train_batch_size") or 50), 1)
         ml_metrics = self._read_ml_metrics(db_path)
         closed_count = int(ml_metrics.get("closed_count", 0))
@@ -3333,6 +3453,7 @@ class BotikGui:
             "runtime_capabilities_status": (
                 f"capabilities: recon={runtime_caps.get('reconciliation')} | protection={runtime_caps.get('protection')}"
             ),
+            "dashboard_release_panel": release_panel,
             "reconciliation_status_line": (
                 f"reconciliation: {ops_status.get('reconciliation_last_status')} @ {ops_status.get('reconciliation_last_timestamp')} "
                 f"({ops_status.get('reconciliation_last_trigger')})"
@@ -4518,6 +4639,9 @@ class BotikGui:
         self.api_status_var.set(str(snapshot.get("api_status", "n/a")))
         self.snapshot_time_var.set(str(snapshot.get("updated_at", "-")))
         self.runtime_capabilities_var.set(str(snapshot.get("runtime_capabilities_status", "capabilities: n/a")))
+        self.dashboard_release_panel_var.set(
+            str(snapshot.get("dashboard_release_panel", "Loaded Components / Releases: not loaded"))
+        )
         self.reconciliation_status_var.set(str(snapshot.get("reconciliation_status_line", "reconciliation: n/a")))
         self.panel_freshness_var.set(str(snapshot.get("panel_freshness_line", "freshness: n/a")))
         self.futures_protection_status_var.set(
