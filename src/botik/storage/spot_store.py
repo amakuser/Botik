@@ -292,6 +292,183 @@ def list_spot_holdings(conn: sqlite3.Connection, *, account_type: str | None = N
     return out
 
 
+def list_spot_orders(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str | None = None,
+    statuses: tuple[str, ...] | None = None,
+    limit: int = 400,
+) -> list[dict[str, Any]]:
+    params: list[Any] = []
+    where_parts: list[str] = []
+    if account_type:
+        where_parts.append("account_type=?")
+        params.append(str(account_type))
+    if statuses:
+        norm_statuses = tuple(str(s).strip() for s in statuses if str(s).strip())
+        if norm_statuses:
+            placeholders = ",".join("?" for _ in norm_statuses)
+            where_parts.append(f"LOWER(COALESCE(status, '')) IN ({placeholders})")
+            params.extend([s.lower() for s in norm_statuses])
+    where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    rows = conn.execute(
+        f"""
+        SELECT
+            account_type, symbol, side, order_id, order_link_id, order_type, time_in_force,
+            price, qty, filled_qty, status, strategy_owner, created_at_utc, updated_at_utc
+        FROM spot_orders
+        {where}
+        ORDER BY updated_at_utc DESC, id DESC
+        LIMIT ?
+        """,
+        (*params, max(int(limit), 1)),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "account_type": row[0],
+                "symbol": row[1],
+                "side": row[2],
+                "order_id": row[3],
+                "order_link_id": row[4],
+                "order_type": row[5],
+                "time_in_force": row[6],
+                "price": _safe_float(row[7]),
+                "qty": _safe_float(row[8]),
+                "filled_qty": _safe_float(row[9]),
+                "status": row[10],
+                "strategy_owner": row[11],
+                "created_at_utc": row[12],
+                "updated_at_utc": row[13],
+            }
+        )
+    return out
+
+
+def list_spot_fills(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str | None = None,
+    limit: int = 400,
+) -> list[dict[str, Any]]:
+    params: list[Any] = []
+    where = ""
+    if account_type:
+        where = "WHERE account_type=?"
+        params.append(str(account_type))
+    rows = conn.execute(
+        f"""
+        SELECT
+            account_type, symbol, side, exec_id, order_id, order_link_id, price, qty, fee, fee_currency,
+            is_maker, exec_time_ms, created_at_utc
+        FROM spot_fills
+        {where}
+        ORDER BY COALESCE(exec_time_ms, 0) DESC, id DESC
+        LIMIT ?
+        """,
+        (*params, max(int(limit), 1)),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "account_type": row[0],
+                "symbol": row[1],
+                "side": row[2],
+                "exec_id": row[3],
+                "order_id": row[4],
+                "order_link_id": row[5],
+                "price": _safe_float(row[6]),
+                "qty": _safe_float(row[7]),
+                "fee": (_safe_float(row[8]) if row[8] is not None else None),
+                "fee_currency": row[9],
+                "is_maker": (None if row[10] is None else bool(int(row[10] or 0))),
+                "exec_time_ms": (int(row[11]) if row[11] is not None else None),
+                "created_at_utc": row[12],
+            }
+        )
+    return out
+
+
+def list_spot_exit_decisions(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str | None = None,
+    limit: int = 400,
+) -> list[dict[str, Any]]:
+    params: list[Any] = []
+    where = ""
+    if account_type:
+        where = "WHERE account_type=?"
+        params.append(str(account_type))
+    rows = conn.execute(
+        f"""
+        SELECT
+            decision_id, account_type, symbol, decision_type, reason, policy_name, pnl_pct, pnl_quote,
+            payload_json, applied, created_at_utc
+        FROM spot_exit_decisions
+        {where}
+        ORDER BY created_at_utc DESC
+        LIMIT ?
+        """,
+        (*params, max(int(limit), 1)),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "decision_id": row[0],
+                "account_type": row[1],
+                "symbol": row[2],
+                "decision_type": row[3],
+                "reason": row[4],
+                "policy_name": row[5],
+                "pnl_pct": (_safe_float(row[6]) if row[6] is not None else None),
+                "pnl_quote": (_safe_float(row[7]) if row[7] is not None else None),
+                "payload_json": row[8],
+                "applied": bool(int(row[9] or 0)),
+                "created_at_utc": row[10],
+            }
+        )
+    return out
+
+
+def summarize_spot_holdings(
+    conn: sqlite3.Connection,
+    *,
+    account_type: str | None = None,
+) -> dict[str, int]:
+    holdings = list_spot_holdings(conn, account_type=account_type)
+    summary = {
+        "total": 0,
+        "recovered": 0,
+        "stale": 0,
+        "strategy_owned": 0,
+        "manual_imported": 0,
+        "dust": 0,
+        "unknown_other": 0,
+    }
+    for row in holdings:
+        summary["total"] += 1
+        hold_reason = str(row.get("hold_reason") or "").strip().lower()
+        recovered = bool(row.get("recovered_from_exchange"))
+        strategy_owner = str(row.get("strategy_owner") or "").strip()
+        if recovered:
+            summary["recovered"] += 1
+        if hold_reason == "stale_hold":
+            summary["stale"] += 1
+        if hold_reason == "manual_import":
+            summary["manual_imported"] += 1
+        if hold_reason == "dust":
+            summary["dust"] += 1
+        if hold_reason == "strategy_entry" or strategy_owner:
+            summary["strategy_owned"] += 1
+        if hold_reason not in SPOT_HOLD_REASONS:
+            summary["unknown_other"] += 1
+    return summary
+
+
 def upsert_spot_order(
     conn: sqlite3.Connection,
     *,

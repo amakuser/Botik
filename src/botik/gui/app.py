@@ -35,6 +35,14 @@ from src.botik.risk.position import apply_fill
 from src.botik.version import get_app_version_label, load_app_version, load_build_sha
 from src.botik.gui.theme import apply_dark_theme
 from src.botik.gui.ui_components import card, labeled_combobox, labeled_entry
+from src.botik.storage.spot_store import (
+    insert_spot_exit_decision,
+    list_spot_exit_decisions,
+    list_spot_fills,
+    list_spot_holdings,
+    list_spot_orders,
+    summarize_spot_holdings,
+)
 from src.botik.utils.runtime import runtime_root
 
 
@@ -489,6 +497,272 @@ def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
     return out
 
 
+SPOT_OPEN_ORDER_STATUSES: tuple[str, ...] = (
+    "new",
+    "partiallyfilled",
+    "partially_filled",
+    "untriggered",
+    "active",
+)
+
+
+def _fmt_workspace_float(value: Any, *, precision: int = 8, fallback: str = "0") -> str:
+    try:
+        if value is None:
+            return fallback
+        return f"{float(value):.{precision}f}"
+    except (TypeError, ValueError):
+        return fallback
+
+
+def classify_spot_holding_record(row: dict[str, Any]) -> dict[str, Any]:
+    hold_reason = str(row.get("hold_reason") or "").strip().lower()
+    strategy_owner = str(row.get("strategy_owner") or "").strip()
+    recovered = bool(row.get("recovered_from_exchange"))
+    auto_sell_allowed = bool(row.get("auto_sell_allowed"))
+    free_qty = float(row.get("free_qty") or 0.0)
+    locked_qty = float(row.get("locked_qty") or 0.0)
+    total_qty = max(free_qty, 0.0) + max(locked_qty, 0.0)
+
+    stale = hold_reason == "stale_hold"
+    if hold_reason == "dust" or total_qty <= 1e-9:
+        hold_class = "dust"
+    elif stale:
+        hold_class = "stale_hold"
+    elif recovered and hold_reason == "unknown_recovered_from_exchange":
+        hold_class = "recovered_unknown"
+    elif hold_reason == "manual_import":
+        hold_class = "manual_imported"
+    elif hold_reason == "strategy_entry" or bool(strategy_owner):
+        hold_class = "strategy_owned"
+    else:
+        hold_class = "unknown"
+
+    position_state = "flat"
+    if total_qty > 0 and locked_qty > 0 and free_qty > 0:
+        position_state = "partial_locked"
+    elif total_qty > 0 and locked_qty > 0:
+        position_state = "locked"
+    elif total_qty > 0:
+        position_state = "free"
+
+    sell_allowed = bool(auto_sell_allowed or hold_class == "strategy_owned")
+    if hold_class in {"recovered_unknown", "manual_imported", "dust"} and not auto_sell_allowed:
+        sell_allowed = False
+
+    if hold_class in {"recovered_unknown", "manual_imported"} and not sell_allowed:
+        exit_policy = "protected_by_policy"
+    elif hold_class == "dust":
+        exit_policy = "dust_protected"
+    elif stale and not sell_allowed:
+        exit_policy = "review_required"
+    elif sell_allowed:
+        exit_policy = "sell_allowed"
+    else:
+        exit_policy = "unknown"
+
+    return {
+        "hold_class": hold_class,
+        "position_state": position_state,
+        "stale": stale,
+        "sell_allowed": sell_allowed,
+        "exit_policy": exit_policy,
+    }
+
+
+def load_spot_workspace_read_model(
+    db_path: Path,
+    *,
+    account_type: str = "UNIFIED",
+    limit: int = 400,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "runtime_status": "unknown",
+        "holdings_count": 0,
+        "open_orders_count": 0,
+        "recovered_holdings_count": 0,
+        "stale_holdings_count": 0,
+        "manual_holdings_count": 0,
+        "strategy_owned_count": 0,
+        "last_reconcile": "-",
+        "last_error": "-",
+        "holdings_rows": [],
+        "open_orders_rows": [],
+        "fills_rows": [],
+        "exit_decisions_rows": [],
+    }
+    if not db_path.exists():
+        return out
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        holdings: list[dict[str, Any]] = []
+        if _table_exists_local(conn, "spot_holdings"):
+            holdings = list_spot_holdings(conn, account_type=account_type)
+            summary = summarize_spot_holdings(conn, account_type=account_type)
+            out["holdings_count"] = int(summary.get("total") or 0)
+            out["recovered_holdings_count"] = int(summary.get("recovered") or 0)
+            out["stale_holdings_count"] = int(summary.get("stale") or 0)
+            out["manual_holdings_count"] = int(summary.get("manual_imported") or 0)
+            out["strategy_owned_count"] = int(summary.get("strategy_owned") or 0)
+
+            rows: list[tuple[str, ...]] = []
+            for item in holdings[: max(int(limit), 1)]:
+                cls = classify_spot_holding_record(item)
+                hold_reason = str(item.get("hold_reason") or "").strip() or "unknown"
+                strategy_owner = str(item.get("strategy_owner") or "").strip() or "unknown"
+                rows.append(
+                    (
+                        "0",
+                        str(item.get("symbol") or ""),
+                        str(item.get("base_asset") or ""),
+                        _fmt_workspace_float(item.get("free_qty"), precision=8, fallback="0"),
+                        _fmt_workspace_float(item.get("locked_qty"), precision=8, fallback="0"),
+                        _fmt_workspace_float(item.get("avg_entry_price"), precision=8, fallback="unknown")
+                        if item.get("avg_entry_price") is not None
+                        else "unknown",
+                        hold_reason,
+                        "yes" if bool(item.get("recovered_from_exchange")) else "no",
+                        strategy_owner,
+                        str(cls["hold_class"]),
+                        str(cls["position_state"]),
+                        str(cls["exit_policy"]),
+                        str(item.get("updated_at_utc") or "unknown"),
+                        "yes" if bool(cls["stale"]) else "no",
+                    )
+                )
+            out["holdings_rows"] = rows
+
+        if _table_exists_local(conn, "spot_orders"):
+            orders = list_spot_orders(
+                conn,
+                account_type=account_type,
+                statuses=SPOT_OPEN_ORDER_STATUSES,
+                limit=limit,
+            )
+            out["open_orders_count"] = len(orders)
+            out["open_orders_rows"] = [
+                (
+                    "0",
+                    str(item.get("symbol") or ""),
+                    str(item.get("side") or ""),
+                    str(item.get("status") or ""),
+                    _fmt_workspace_float(item.get("price"), precision=8, fallback=""),
+                    _fmt_workspace_float(item.get("qty"), precision=8, fallback=""),
+                    _fmt_workspace_float(item.get("filled_qty"), precision=8, fallback=""),
+                    str(item.get("order_type") or "unknown"),
+                    str(item.get("strategy_owner") or "unknown"),
+                    str(item.get("updated_at_utc") or "-"),
+                )
+                for item in orders
+            ]
+
+        if _table_exists_local(conn, "spot_fills"):
+            fills = list_spot_fills(conn, account_type=account_type, limit=limit)
+            out["fills_rows"] = [
+                (
+                    "0",
+                    str(item.get("created_at_utc") or "-"),
+                    str(item.get("symbol") or ""),
+                    str(item.get("side") or ""),
+                    _fmt_workspace_float(item.get("price"), precision=8, fallback=""),
+                    _fmt_workspace_float(item.get("qty"), precision=8, fallback=""),
+                    (
+                        _fmt_workspace_float(item.get("fee"), precision=8, fallback="")
+                        if item.get("fee") is not None
+                        else ""
+                    ),
+                    str(item.get("fee_currency") or ""),
+                    (
+                        "maker"
+                        if item.get("is_maker") is True
+                        else "taker"
+                        if item.get("is_maker") is False
+                        else "unknown"
+                    ),
+                    str(item.get("exec_id") or ""),
+                )
+                for item in fills
+            ]
+
+        if _table_exists_local(conn, "spot_exit_decisions"):
+            decisions = list_spot_exit_decisions(conn, account_type=account_type, limit=limit)
+            out["exit_decisions_rows"] = [
+                (
+                    "0",
+                    str(item.get("created_at_utc") or "-"),
+                    str(item.get("symbol") or ""),
+                    str(item.get("decision_type") or ""),
+                    str(item.get("reason") or ""),
+                    str(item.get("policy_name") or "unknown"),
+                    (
+                        _fmt_workspace_float(item.get("pnl_pct"), precision=4, fallback="")
+                        if item.get("pnl_pct") is not None
+                        else ""
+                    ),
+                    (
+                        _fmt_workspace_float(item.get("pnl_quote"), precision=6, fallback="")
+                        if item.get("pnl_quote") is not None
+                        else ""
+                    ),
+                    "yes" if bool(item.get("applied")) else "no",
+                )
+                for item in decisions
+            ]
+
+        if _table_exists_local(conn, "reconciliation_runs"):
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(status, ''),
+                    COALESCE(finished_at_utc, started_at_utc, '')
+                FROM reconciliation_runs
+                ORDER BY COALESCE(finished_at_utc, started_at_utc) DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if row:
+                out["last_reconcile"] = str(row[1] or "-")
+                status = str(row[0] or "").strip().lower()
+                if status == "failed":
+                    out["last_error"] = "last_reconcile_failed"
+                out["runtime_status"] = "running" if status in {"success", "running"} else (status or "unknown")
+    except sqlite3.Error:
+        return out
+    finally:
+        conn.close()
+
+    out["holdings_rows"] = [
+        (
+            str(idx),
+            *tuple(row[1:]),
+        )
+        for idx, row in enumerate(out.get("holdings_rows") or [], start=1)
+    ]
+    out["open_orders_rows"] = [
+        (
+            str(idx),
+            *tuple(row[1:]),
+        )
+        for idx, row in enumerate(out.get("open_orders_rows") or [], start=1)
+    ]
+    out["fills_rows"] = [
+        (
+            str(idx),
+            *tuple(row[1:]),
+        )
+        for idx, row in enumerate(out.get("fills_rows") or [], start=1)
+    ]
+    out["exit_decisions_rows"] = [
+        (
+            str(idx),
+            *tuple(row[1:]),
+        )
+        for idx, row in enumerate(out.get("exit_decisions_rows") or [], start=1)
+    ]
+    return out
+
+
 class ManagedProcess:
     def __init__(self, name: str, on_output: Callable[[str], None]) -> None:
         self.name = name
@@ -671,6 +945,8 @@ class BotikGui:
         self.dashboard_telegram_status_var = tk.StringVar(value="Telegram: n/a")
         self.dashboard_ops_status_var = tk.StringVar(value="Ops: n/a")
         self.dashboard_release_panel_var = tk.StringVar(value="Loaded Components / Releases: not loaded")
+        self.spot_workspace_summary_var = tk.StringVar(value="Spot Summary: n/a")
+        self.spot_workspace_policy_var = tk.StringVar(value="Policy: n/a")
         self.ml_model_id_var = tk.StringVar(value="bootstrap")
         self.ml_training_state_var = tk.StringVar(value="idle")
         self.ml_progress_text_var = tk.StringVar(value="0%")
@@ -679,6 +955,9 @@ class BotikGui:
         self.ml_fill_rate_var = tk.StringVar(value="n/a")
         self.ml_fill_details_var = tk.StringVar(value="0/0 signals")
         self.ml_metrics_compact_var = tk.StringVar(value="edge=n/a | win=n/a | fill=n/a")
+        self.ml_progress: ttk.Progressbar | None = None
+        self.ml_progress_label: ttk.Label | None = None
+        self.ml_chart_canvas: tk.Canvas | None = None
         self.stats_orders_total_var = tk.StringVar(value="0")
         self.stats_outcomes_total_var = tk.StringVar(value="0")
         self.stats_positive_var = tk.StringVar(value="0")
@@ -702,6 +981,11 @@ class BotikGui:
         self.stats_futures_orders_tree: ttk.Treeview | None = None
         self.stats_reconciliation_issues_tree: ttk.Treeview | None = None
         self.models_tree: ttk.Treeview | None = None
+        self.order_history_tree: ttk.Treeview | None = None
+        self.spot_workspace_holdings_tree: ttk.Treeview | None = None
+        self.spot_workspace_orders_tree: ttk.Treeview | None = None
+        self.spot_workspace_fills_tree: ttk.Treeview | None = None
+        self.spot_workspace_exit_tree: ttk.Treeview | None = None
         self.log_text_full: tk.Text | None = None
         self.telegram_workspace_text: tk.Text | None = None
         self.log_level_filter_combo: ttk.Combobox | None = None
@@ -1085,6 +1369,42 @@ class BotikGui:
         ttk.Label(status, text="Metrics", style="Body.TLabel").grid(row=2, column=2, sticky=tk.W, pady=4)
         ttk.Label(status, textvariable=self.ml_metrics_compact_var, style="Body.TLabel").grid(row=2, column=3, sticky=tk.W, pady=4)
 
+        metrics_card = ttk.Frame(root, style="Card.TFrame", padding=12)
+        metrics_card.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(metrics_card, text="Training Progress", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=4, sticky=tk.W
+        )
+        ttk.Label(metrics_card, text="Progress", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=3)
+        self.ml_progress = ttk.Progressbar(metrics_card, mode="indeterminate", maximum=100)
+        self.ml_progress.grid(row=1, column=1, columnspan=2, sticky=tk.EW, pady=3, padx=(0, 8))
+        self.ml_progress_label = ttk.Label(
+            metrics_card,
+            textvariable=self.ml_progress_text_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        )
+        self.ml_progress_label.grid(row=1, column=3, sticky=tk.W, pady=3)
+        self.ml_progress_label.configure(wraplength=260)
+        ttk.Label(metrics_card, text="Metrics", style="Body.TLabel").grid(row=2, column=0, sticky=tk.NW, pady=(2, 0))
+        ml_metrics_label = ttk.Label(
+            metrics_card,
+            textvariable=self.ml_metrics_compact_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        )
+        ml_metrics_label.grid(row=2, column=1, columnspan=3, sticky=tk.EW, pady=(2, 0))
+        ml_metrics_label.configure(wraplength=420)
+        self.ml_chart_canvas = tk.Canvas(
+            metrics_card,
+            height=48,
+            bg=self._ui_colors.get("bg_soft", "#111D33"),
+            highlightthickness=1,
+            highlightbackground=self._ui_colors.get("line", "#2A4063"),
+        )
+        self.ml_chart_canvas.grid(row=3, column=0, columnspan=4, sticky=tk.EW, pady=(6, 0))
+        for i in range(4):
+            metrics_card.columnconfigure(i, weight=1)
+
         actions = ttk.Frame(root, style="Card.TFrame", padding=12)
         actions.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(actions, text="Training Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
@@ -1166,6 +1486,27 @@ class BotikGui:
         split.add(left, weight=4)
         split.add(right, weight=2)
 
+        summary_card = ttk.Frame(left, style="Card.TFrame", padding=10)
+        summary_card.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(summary_card, text="Spot Status Summary", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky=tk.W
+        )
+        ttk.Label(
+            summary_card,
+            textvariable=self.spot_workspace_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=760,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(
+            summary_card,
+            textvariable=self.spot_workspace_policy_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=760,
+        ).grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
+        summary_card.columnconfigure(0, weight=1)
+
         path_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         path_card.pack(fill=tk.X)
         ttk.Label(path_card, text="Spot Runtime", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W, columnspan=4)
@@ -1178,25 +1519,39 @@ class BotikGui:
         action_card.pack(fill=tk.X, pady=8)
         ttk.Label(action_card, text="Spot Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
 
-        ttk.Button(action_card, text="Старт торгов", command=self.start_trading, style="Start.TButton").grid(
+        ttk.Button(action_card, text="Start Spot", command=self.start_trading, style="Start.TButton").grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=3
         )
-        ttk.Button(action_card, text="Остановить торги", command=self.stop_trading, style="Stop.TButton").grid(
+        ttk.Button(action_card, text="Stop Spot", command=self.stop_trading, style="Stop.TButton").grid(
             row=1, column=1, sticky=tk.EW, padx=4, pady=3
         )
-        ttk.Button(action_card, text="Pause Training", command=self.pause_training).grid(
+        ttk.Button(action_card, text="Refresh", command=self.refresh_runtime_snapshot).grid(
             row=1, column=2, sticky=tk.EW, padx=4, pady=3
         )
 
-        ttk.Button(action_card, text="Run Preflight", command=self.run_preflight, style="Accent.TButton").grid(
+        ttk.Button(action_card, text="Run Spot Reconcile", command=self.run_spot_reconcile).grid(
             row=2, column=0, sticky=tk.EW, padx=4, pady=3
         )
-        ttk.Button(action_card, text="Clear Log", command=self.clear_log).grid(row=2, column=1, sticky=tk.EW, padx=4, pady=3)
-        ttk.Button(action_card, text="Copy Chart", command=self.copy_ml_chart).grid(row=2, column=2, sticky=tk.EW, padx=4, pady=3)
-        ttk.Button(action_card, text="Copy Selected", command=self.copy_selected_log).grid(row=3, column=0, sticky=tk.EW, padx=4, pady=3)
-        ttk.Button(action_card, text="Copy All", command=self.copy_all_log).grid(row=3, column=1, sticky=tk.EW, padx=4, pady=3)
-        ttk.Button(action_card, text="Help", command=self.show_help).grid(row=3, column=2, sticky=tk.EW, padx=4, pady=3)
-        ttk.Label(action_card, text="Tip: right click in log for copy menu", style="Body.TLabel").grid(
+        ttk.Button(action_card, text="Sell Selected", command=self.sell_selected_spot_holding).grid(
+            row=2, column=1, sticky=tk.EW, padx=4, pady=3
+        )
+        ttk.Button(action_card, text="Close Stale Holds", command=self.close_stale_spot_holds).grid(
+            row=2, column=2, sticky=tk.EW, padx=4, pady=3
+        )
+        ttk.Button(action_card, text="Open Details", command=self.inspect_selected_spot_holding).grid(
+            row=3, column=0, sticky=tk.EW, padx=4, pady=3
+        )
+        ttk.Button(action_card, text="Copy Selected", command=self.copy_selected_spot_holding).grid(
+            row=3, column=1, sticky=tk.EW, padx=4, pady=3
+        )
+        ttk.Button(action_card, text="Run Preflight", command=self.run_preflight, style="Accent.TButton").grid(
+            row=3, column=2, sticky=tk.EW, padx=4, pady=3
+        )
+        ttk.Label(
+            action_card,
+            text="Sell actions respect hold policy: recovered/manual/dust are protected unless policy allows.",
+            style="Body.TLabel",
+        ).grid(
             row=4, column=0, columnspan=3, sticky=tk.W, padx=4, pady=(4, 2)
         )
 
@@ -1247,21 +1602,23 @@ class BotikGui:
         ttk.Button(account_card, text="Обновить данные", command=self.refresh_runtime_snapshot).grid(
             row=1, column=6, rowspan=1, sticky=tk.E, padx=(14, 0), pady=2
         )
-        ttk.Button(account_card, text="Закрыть выбранную позицию", command=self.manual_close_selected_position).grid(
+        ttk.Button(account_card, text="Inspect Holding", command=self.inspect_selected_spot_holding).grid(
             row=2, column=6, sticky=tk.E, padx=(14, 0), pady=2
         )
         account_card.columnconfigure(6, weight=1)
         account_card.rowconfigure(3, weight=1)
+        account_card.rowconfigure(4, weight=1)
 
         orders_grid = ttk.Frame(account_card, style="Card.TFrame")
         orders_grid.grid(row=3, column=0, columnspan=7, sticky=tk.NSEW, pady=(8, 0))
         orders_grid.columnconfigure(0, weight=1, uniform="orders")
         orders_grid.columnconfigure(1, weight=1, uniform="orders")
         orders_grid.rowconfigure(0, weight=1)
+        orders_grid.rowconfigure(1, weight=1)
 
         open_card = ttk.Frame(orders_grid, style="Card.TFrame")
         open_card.grid(row=0, column=0, sticky=tk.NSEW, padx=(0, 6))
-        ttk.Label(open_card, text="Открытые ордера / HOLD позиции", style="Body.TLabel").pack(anchor=tk.W)
+        ttk.Label(open_card, text="Spot Open Orders (domain)", style="Body.TLabel").pack(anchor=tk.W)
         open_table_wrap = ttk.Frame(open_card, style="Card.TFrame")
         open_table_wrap.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
         open_table_wrap.columnconfigure(0, weight=1)
@@ -1271,19 +1628,14 @@ class BotikGui:
             columns=(
                 "n",
                 "symbol",
-                "market",
-                "strategy",
                 "side",
-                "price",
-                "now",
-                "qty",
-                "usd",
-                "entry",
-                "target",
-                "pnl",
-                "pnl_usdt",
-                "heat",
                 "status",
+                "type",
+                "price",
+                "qty",
+                "filled",
+                "strategy",
+                "updated",
             ),
             show="headings",
             height=11,
@@ -1291,23 +1643,18 @@ class BotikGui:
         for col, title, width in [
             ("n", "№", 44),
             ("symbol", "Symbol", 96),
-            ("market", "Mkt", 54),
-            ("strategy", "Strategy", 98),
             ("side", "Side", 58),
-            ("price", "Order", 90),
-            ("now", "Now", 90),
+            ("status", "Status", 100),
+            ("type", "Type", 72),
+            ("price", "Price", 90),
             ("qty", "Qty", 80),
-            ("usd", "USD", 80),
-            ("entry", "Entry", 90),
-            ("target", "Target", 90),
-            ("pnl", "PnL%", 70),
-            ("pnl_usdt", "PnL USDT", 88),
-            ("heat", "Exit", 78),
-            ("status", "Status", 150),
+            ("filled", "Filled", 86),
+            ("strategy", "Strategy", 110),
+            ("updated", "Updated", 145),
         ]:
             self.open_orders_tree.heading(col, text=title)
             self.open_orders_tree.column(col, width=width, anchor=tk.W, stretch=False)
-        self.open_orders_tree.column("status", stretch=True)
+        self.open_orders_tree.column("updated", stretch=True)
         self.open_orders_tree.tag_configure("pnl_pos", foreground="#5FE08C")
         self.open_orders_tree.tag_configure("pnl_neg", foreground="#FF7F7F")
         self.open_orders_tree.tag_configure("pnl_neutral", foreground="#A0B6D8")
@@ -1323,38 +1670,133 @@ class BotikGui:
 
         history_card = ttk.Frame(orders_grid, style="Card.TFrame")
         history_card.grid(row=0, column=1, sticky=tk.NSEW, padx=(6, 0))
-        ttk.Label(history_card, text="История ордеров (локальная БД)", style="Body.TLabel").pack(anchor=tk.W)
+        ttk.Label(history_card, text="Spot Holdings Lifecycle", style="Body.TLabel").pack(anchor=tk.W)
         history_table_wrap = ttk.Frame(history_card, style="Card.TFrame")
         history_table_wrap.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
         history_table_wrap.columnconfigure(0, weight=1)
         history_table_wrap.rowconfigure(0, weight=1)
-        self.order_history_tree = ttk.Treeview(
+        self.spot_workspace_holdings_tree = ttk.Treeview(
             history_table_wrap,
-            columns=("n", "date", "time", "symbol", "side", "status", "price", "qty", "entry", "exit"),
+            columns=(
+                "n",
+                "symbol",
+                "base",
+                "free",
+                "locked",
+                "entry",
+                "reason",
+                "recovered",
+                "owner",
+                "class",
+                "state",
+                "policy",
+                "last_seen",
+                "stale",
+            ),
             show="headings",
             height=11,
         )
         for col, title, width in [
             ("n", "№", 44),
-            ("date", "Дата", 95),
-            ("time", "Время", 95),
             ("symbol", "Symbol", 90),
-            ("side", "Side", 60),
-            ("status", "Status", 90),
-            ("price", "Price", 90),
-            ("qty", "Qty", 90),
-            ("entry", "Entry", 90),
-            ("exit", "Exit", 90),
+            ("base", "Base", 64),
+            ("free", "Free", 90),
+            ("locked", "Locked", 90),
+            ("entry", "AvgEntry", 90),
+            ("reason", "HoldReason", 145),
+            ("recovered", "Recovered", 88),
+            ("owner", "StrategyOwner", 120),
+            ("class", "Class", 120),
+            ("state", "State", 90),
+            ("policy", "ExitPolicy", 120),
+            ("last_seen", "LastSeen", 145),
+            ("stale", "Stale", 66),
         ]:
-            self.order_history_tree.heading(col, text=title)
-            self.order_history_tree.column(col, width=width, anchor=tk.W, stretch=False)
-        self.order_history_tree.column("status", stretch=True)
-        history_scroll_y = ttk.Scrollbar(history_table_wrap, orient=tk.VERTICAL, command=self.order_history_tree.yview)
-        history_scroll_x = ttk.Scrollbar(history_table_wrap, orient=tk.HORIZONTAL, command=self.order_history_tree.xview)
-        self.order_history_tree.configure(yscrollcommand=history_scroll_y.set, xscrollcommand=history_scroll_x.set)
-        self.order_history_tree.grid(row=0, column=0, sticky=tk.NSEW)
+            self.spot_workspace_holdings_tree.heading(col, text=title)
+            self.spot_workspace_holdings_tree.column(col, width=width, anchor=tk.W, stretch=False)
+        self.spot_workspace_holdings_tree.column("last_seen", stretch=True)
+        history_scroll_y = ttk.Scrollbar(
+            history_table_wrap, orient=tk.VERTICAL, command=self.spot_workspace_holdings_tree.yview
+        )
+        history_scroll_x = ttk.Scrollbar(
+            history_table_wrap, orient=tk.HORIZONTAL, command=self.spot_workspace_holdings_tree.xview
+        )
+        self.spot_workspace_holdings_tree.configure(
+            yscrollcommand=history_scroll_y.set,
+            xscrollcommand=history_scroll_x.set,
+        )
+        self.spot_workspace_holdings_tree.grid(row=0, column=0, sticky=tk.NSEW)
         history_scroll_y.grid(row=0, column=1, sticky=tk.NS)
         history_scroll_x.grid(row=1, column=0, sticky=tk.EW)
+
+        fills_card = ttk.Frame(orders_grid, style="Card.TFrame")
+        fills_card.grid(row=1, column=0, sticky=tk.NSEW, padx=(0, 6), pady=(8, 0))
+        ttk.Label(fills_card, text="Spot Fills / Executions", style="Body.TLabel").pack(anchor=tk.W)
+        fills_wrap = ttk.Frame(fills_card, style="Card.TFrame")
+        fills_wrap.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+        fills_wrap.columnconfigure(0, weight=1)
+        fills_wrap.rowconfigure(0, weight=1)
+        self.spot_workspace_fills_tree = ttk.Treeview(
+            fills_wrap,
+            columns=("n", "ts", "symbol", "side", "price", "qty", "fee", "fee_ccy", "maker", "exec_id"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("ts", "Time", 145),
+            ("symbol", "Symbol", 90),
+            ("side", "Side", 60),
+            ("price", "Price", 90),
+            ("qty", "Qty", 90),
+            ("fee", "Fee", 85),
+            ("fee_ccy", "FeeCCY", 80),
+            ("maker", "Maker", 68),
+            ("exec_id", "ExecID", 120),
+        ]:
+            self.spot_workspace_fills_tree.heading(col, text=title)
+            self.spot_workspace_fills_tree.column(col, width=width, anchor=tk.W, stretch=False)
+        self.spot_workspace_fills_tree.column("exec_id", stretch=True)
+        fills_scroll_y = ttk.Scrollbar(fills_wrap, orient=tk.VERTICAL, command=self.spot_workspace_fills_tree.yview)
+        fills_scroll_x = ttk.Scrollbar(fills_wrap, orient=tk.HORIZONTAL, command=self.spot_workspace_fills_tree.xview)
+        self.spot_workspace_fills_tree.configure(yscrollcommand=fills_scroll_y.set, xscrollcommand=fills_scroll_x.set)
+        self.spot_workspace_fills_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        fills_scroll_y.grid(row=0, column=1, sticky=tk.NS)
+        fills_scroll_x.grid(row=1, column=0, sticky=tk.EW)
+
+        exit_card = ttk.Frame(orders_grid, style="Card.TFrame")
+        exit_card.grid(row=1, column=1, sticky=tk.NSEW, padx=(6, 0), pady=(8, 0))
+        ttk.Label(exit_card, text="Spot Exit Decisions / Inventory Actions", style="Body.TLabel").pack(anchor=tk.W)
+        exit_wrap = ttk.Frame(exit_card, style="Card.TFrame")
+        exit_wrap.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+        exit_wrap.columnconfigure(0, weight=1)
+        exit_wrap.rowconfigure(0, weight=1)
+        self.spot_workspace_exit_tree = ttk.Treeview(
+            exit_wrap,
+            columns=("n", "ts", "symbol", "type", "reason", "policy", "pnl_pct", "pnl_quote", "applied"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("ts", "Time", 145),
+            ("symbol", "Symbol", 90),
+            ("type", "Type", 100),
+            ("reason", "Reason", 170),
+            ("policy", "Policy", 110),
+            ("pnl_pct", "PnL %", 80),
+            ("pnl_quote", "PnL Quote", 95),
+            ("applied", "Applied", 72),
+        ]:
+            self.spot_workspace_exit_tree.heading(col, text=title)
+            self.spot_workspace_exit_tree.column(col, width=width, anchor=tk.W, stretch=False)
+        self.spot_workspace_exit_tree.column("reason", stretch=True)
+        exit_scroll_y = ttk.Scrollbar(exit_wrap, orient=tk.VERTICAL, command=self.spot_workspace_exit_tree.yview)
+        exit_scroll_x = ttk.Scrollbar(exit_wrap, orient=tk.HORIZONTAL, command=self.spot_workspace_exit_tree.xview)
+        self.spot_workspace_exit_tree.configure(yscrollcommand=exit_scroll_y.set, xscrollcommand=exit_scroll_x.set)
+        self.spot_workspace_exit_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        exit_scroll_y.grid(row=0, column=1, sticky=tk.NS)
+        exit_scroll_x.grid(row=1, column=0, sticky=tk.EW)
 
         status_card = ttk.Frame(right, style="Card.TFrame", padding=10)
         status_card.pack(fill=tk.X)
@@ -1397,55 +1839,21 @@ class BotikGui:
         ttk.Label(status_card, textvariable=self.panel_freshness_var, style="Body.TLabel", justify=tk.LEFT).pack(
             anchor=tk.W, pady=2
         )
+        training_redirect = ttk.Frame(right, style="Card.TFrame", padding=10)
+        training_redirect.pack(fill=tk.X, pady=8)
+        ttk.Label(training_redirect, text="Futures Training", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
-            status_card,
-            textvariable=self.futures_protection_status_var,
+            training_redirect,
+            text="Futures training/research controls are separated in Futures Training Workspace.",
             style="Body.TLabel",
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, pady=2)
-
-        ml_card = ttk.Frame(right, style="Card.TFrame", padding=10)
-        ml_card.pack(fill=tk.X, pady=8)
-        ttk.Label(ml_card, text="ML Panel", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
-        ttk.Button(ml_card, text="Copy Chart", command=self.copy_ml_chart).grid(row=0, column=3, sticky=tk.E)
-
-        ttk.Label(ml_card, text="Model", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=3)
-        ttk.Label(ml_card, textvariable=self.ml_model_id_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=3)
-        ttk.Label(ml_card, text="State", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=3, padx=(12, 0))
-        ttk.Label(ml_card, textvariable=self.ml_training_state_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=3)
-
-        ttk.Label(ml_card, text="Progress", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=3)
-        self.ml_progress = ttk.Progressbar(ml_card, mode="indeterminate", maximum=100)
-        self.ml_progress.grid(row=2, column=1, columnspan=2, sticky=tk.EW, pady=3, padx=(0, 8))
-        self.ml_progress_label = ttk.Label(
-            ml_card,
-            textvariable=self.ml_progress_text_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-        )
-        self.ml_progress_label.grid(row=2, column=3, sticky=tk.W, pady=3)
-        self.ml_progress_label.configure(wraplength=210)
-
-        ttk.Label(ml_card, text="Metrics", style="Body.TLabel").grid(row=3, column=0, sticky=tk.NW, pady=(2, 0))
-        ml_metrics_label = ttk.Label(
-            ml_card,
-            textvariable=self.ml_metrics_compact_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-        )
-        ml_metrics_label.grid(row=3, column=1, columnspan=3, sticky=tk.EW, pady=(2, 0))
-        ml_metrics_label.configure(wraplength=300)
-
-        self.ml_chart_canvas = tk.Canvas(
-            ml_card,
-            height=48,
-            bg=self._ui_colors.get("bg_soft", "#111D33"),
-            highlightthickness=1,
-            highlightbackground=self._ui_colors.get("line", "#2A4063"),
-        )
-        self.ml_chart_canvas.grid(row=4, column=0, columnspan=4, sticky=tk.EW, pady=(6, 0))
-        for i in range(4):
-            ml_card.columnconfigure(i, weight=1)
+            wraplength=320,
+        ).pack(anchor=tk.W, pady=(6, 4))
+        ttk.Button(
+            training_redirect,
+            text="Open Futures Training Workspace",
+            command=lambda: self._open_workspace(self.futures_training_tab),
+        ).pack(anchor=tk.W)
 
         hint = ttk.Frame(right, style="Card.TFrame", padding=10)
         hint.pack(fill=tk.X, pady=8)
@@ -2328,6 +2736,186 @@ class BotikGui:
         row = list(values or [])
         return row if row else None
 
+    def _selected_spot_holding_row(self) -> list[Any] | None:
+        tree = self.spot_workspace_holdings_tree
+        selected = tree.selection() if tree is not None else ()
+        if not selected:
+            return None
+        item_id = selected[0]
+        values = tree.item(item_id, "values") if tree is not None else ()
+        row = list(values or [])
+        return row if row else None
+
+    @staticmethod
+    def _spot_holding_from_row(row: list[Any]) -> dict[str, Any]:
+        # Row format is defined in _build_control_tab Spot Holdings Lifecycle table.
+        def _f(value: Any) -> float:
+            try:
+                return float(str(value or "0").strip() or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        return {
+            "symbol": str(row[1] or "").strip().upper() if len(row) > 1 else "",
+            "base_asset": str(row[2] or "").strip().upper() if len(row) > 2 else "",
+            "free_qty": _f(row[3]) if len(row) > 3 else 0.0,
+            "locked_qty": _f(row[4]) if len(row) > 4 else 0.0,
+            "avg_entry_price": str(row[5] or "").strip() if len(row) > 5 else "",
+            "hold_reason": str(row[6] or "").strip() if len(row) > 6 else "unknown",
+            "recovered": str(row[7] or "").strip().lower() == "yes" if len(row) > 7 else False,
+            "strategy_owner": str(row[8] or "").strip() if len(row) > 8 else "unknown",
+            "hold_class": str(row[9] or "").strip() if len(row) > 9 else "unknown",
+            "position_state": str(row[10] or "").strip() if len(row) > 10 else "unknown",
+            "exit_policy": str(row[11] or "").strip() if len(row) > 11 else "unknown",
+            "last_seen": str(row[12] or "").strip() if len(row) > 12 else "-",
+            "stale": str(row[13] or "").strip().lower() == "yes" if len(row) > 13 else False,
+        }
+
+    @staticmethod
+    def _spot_policy_allows_sell(policy: str) -> bool:
+        return str(policy or "").strip().lower() == "sell_allowed"
+
+    def run_spot_reconcile(self) -> None:
+        self._enqueue_log(
+            "[spot-workspace] run spot reconcile requested; refreshing snapshot. "
+            "Runtime reconciliation is executed by runtime startup/scheduler."
+        )
+        self.refresh_runtime_snapshot()
+
+    def inspect_selected_spot_holding(self) -> None:
+        row = self._selected_spot_holding_row()
+        if not row:
+            messagebox.showwarning("Spot Workspace", "Select a holding in Spot Holdings Lifecycle.")
+            return
+        data = self._spot_holding_from_row(row)
+        text = (
+            f"Symbol: {data['symbol']}\n"
+            f"Base Asset: {data['base_asset']}\n"
+            f"Free Qty: {data['free_qty']:.8f}\n"
+            f"Locked Qty: {data['locked_qty']:.8f}\n"
+            f"Avg Entry: {data['avg_entry_price'] or 'unknown'}\n"
+            f"Hold Reason: {data['hold_reason']}\n"
+            f"Class: {data['hold_class']}\n"
+            f"Position State: {data['position_state']}\n"
+            f"Exit Policy: {data['exit_policy']}\n"
+            f"Recovered: {'yes' if data['recovered'] else 'no'}\n"
+            f"Stale: {'yes' if data['stale'] else 'no'}\n"
+            f"Strategy Owner: {data['strategy_owner']}\n"
+            f"Last Seen: {data['last_seen']}"
+        )
+        messagebox.showinfo("Spot Workspace - Holding Details", text)
+
+    def copy_selected_spot_holding(self) -> None:
+        row = self._selected_spot_holding_row()
+        if not row:
+            messagebox.showwarning("Spot Workspace", "Select a holding to copy.")
+            return
+        payload = "\t".join(str(x or "") for x in row)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(payload)
+        self._enqueue_log("[spot-workspace] copied selected holding row")
+
+    def _record_spot_exit_request(self, *, holding: dict[str, Any], decision_type: str, reason: str) -> str:
+        raw_cfg = self._load_yaml()
+        db_path = self._resolve_db_path(raw_cfg)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            decision_id = insert_spot_exit_decision(
+                conn,
+                account_type="UNIFIED",
+                symbol=str(holding.get("symbol") or ""),
+                decision_type=str(decision_type),
+                reason=str(reason),
+                policy_name=str(holding.get("exit_policy") or "unknown"),
+                pnl_pct=None,
+                pnl_quote=None,
+                payload_json=json.dumps(
+                    {
+                        "source": "dashboard_spot_workspace",
+                        "holding_class": holding.get("hold_class"),
+                        "hold_reason": holding.get("hold_reason"),
+                        "recovered": bool(holding.get("recovered")),
+                        "stale": bool(holding.get("stale")),
+                    },
+                    ensure_ascii=False,
+                ),
+                applied=False,
+            )
+            return decision_id
+        finally:
+            conn.close()
+
+    def sell_selected_spot_holding(self) -> None:
+        row = self._selected_spot_holding_row()
+        if not row:
+            messagebox.showwarning("Spot Workspace", "Select a holding in Spot Holdings Lifecycle.")
+            return
+        holding = self._spot_holding_from_row(row)
+        if not holding.get("symbol"):
+            messagebox.showwarning("Spot Workspace", "Selected holding does not have a valid symbol.")
+            return
+        if not self._spot_policy_allows_sell(str(holding.get("exit_policy") or "")):
+            messagebox.showwarning(
+                "Spot Workspace",
+                "Sell is blocked by policy for this holding. "
+                "Recovered/manual/dust holdings require explicit policy override.",
+            )
+            return
+        if not messagebox.askyesno(
+            "Spot Workspace",
+            f"Create manual sell request for {holding['symbol']}?\n"
+            f"class={holding['hold_class']} policy={holding['exit_policy']}",
+        ):
+            return
+        decision_id = self._record_spot_exit_request(
+            holding=holding,
+            decision_type="manual_sell_request",
+            reason="operator_sell_selected",
+        )
+        self._enqueue_log(
+            f"[spot-workspace] manual sell request recorded: symbol={holding['symbol']} decision_id={decision_id}"
+        )
+        self.refresh_runtime_snapshot()
+
+    def close_stale_spot_holds(self) -> None:
+        tree = self.spot_workspace_holdings_tree
+        if tree is None:
+            return
+        stale_candidates: list[dict[str, Any]] = []
+        skipped = 0
+        for item_id in tree.get_children():
+            row = list(tree.item(item_id, "values") or [])
+            if not row:
+                continue
+            holding = self._spot_holding_from_row(row)
+            if not bool(holding.get("stale")):
+                continue
+            if not self._spot_policy_allows_sell(str(holding.get("exit_policy") or "")):
+                skipped += 1
+                continue
+            stale_candidates.append(holding)
+        if not stale_candidates:
+            messagebox.showinfo(
+                "Spot Workspace",
+                f"No stale holdings eligible for close request (protected/none). skipped={skipped}",
+            )
+            return
+        if not messagebox.askyesno(
+            "Spot Workspace",
+            f"Create close requests for stale holdings?\neligible={len(stale_candidates)} skipped={skipped}",
+        ):
+            return
+        for holding in stale_candidates:
+            decision_id = self._record_spot_exit_request(
+                holding=holding,
+                decision_type="stale_close_request",
+                reason="operator_close_stale_holds",
+            )
+            self._enqueue_log(
+                f"[spot-workspace] stale close request recorded: symbol={holding['symbol']} decision_id={decision_id}"
+            )
+        self.refresh_runtime_snapshot()
+
     def manual_close_selected_position(self) -> None:
         row = self._selected_open_order_row()
         if not row:
@@ -2480,7 +3068,7 @@ class BotikGui:
     def telegram_orders_text(self) -> str:
         snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
         rows = list(snapshot.get("open_orders_rows") or [])
-        lines = [f"Активные ордера: {snapshot.get('open_orders_count', 0)}"]
+        lines = [f"Активные ордера: {len(rows)}"]
         for row in rows[:12]:
             row_list = list(row)
             if len(row_list) >= 15:
@@ -2780,11 +3368,11 @@ class BotikGui:
                 self.ml_training_state_var.set("predict")
             else:
                 self.ml_training_state_var.set("training")
-            if not self._ml_progress_running:
+            if not self._ml_progress_running and self.ml_progress is not None:
                 self.ml_progress.start(9)
                 self._ml_progress_running = True
         else:
-            if self._ml_progress_running:
+            if self._ml_progress_running and self.ml_progress is not None:
                 self.ml_progress.stop()
                 self._ml_progress_running = False
             if self.ml.running and self.ml_training_paused:
@@ -3360,6 +3948,7 @@ class BotikGui:
         ops_status = load_runtime_ops_status_snapshot(db_path)
         release_manifest = load_dashboard_release_manifest()
         release_panel = format_dashboard_release_panel(release_manifest)
+        spot_workspace = load_spot_workspace_read_model(db_path, account_type="UNIFIED", limit=400)
         batch_size = max(int((raw_cfg.get("ml") or {}).get("train_batch_size") or 50), 1)
         ml_metrics = self._read_ml_metrics(db_path)
         closed_count = int(ml_metrics.get("closed_count", 0))
@@ -3427,8 +4016,33 @@ class BotikGui:
             "balance_total": "n/a",
             "balance_available": "n/a",
             "balance_wallet": "n/a",
-            "open_orders_count": 0,
+            "open_orders_count": int(spot_workspace.get("open_orders_count") or 0),
             "open_orders_rows": [],
+            "spot_workspace_open_orders_rows": list(spot_workspace.get("open_orders_rows") or []),
+            "spot_workspace_holdings_rows": list(spot_workspace.get("holdings_rows") or []),
+            "spot_workspace_fills_rows": list(spot_workspace.get("fills_rows") or []),
+            "spot_workspace_exit_rows": list(spot_workspace.get("exit_decisions_rows") or []),
+            "spot_workspace_summary_line": (
+                "Spot runtime={runtime} | holdings={holdings} (recovered={recovered}, stale={stale}) | "
+                "open_orders={orders} | last_reconcile={reconcile} | last_error={error}"
+            ).format(
+                runtime=str(spot_workspace.get("runtime_status") or "unknown"),
+                holdings=int(spot_workspace.get("holdings_count") or 0),
+                recovered=int(spot_workspace.get("recovered_holdings_count") or 0),
+                stale=int(spot_workspace.get("stale_holdings_count") or 0),
+                orders=int(spot_workspace.get("open_orders_count") or 0),
+                reconcile=str(spot_workspace.get("last_reconcile") or "-"),
+                error=str(spot_workspace.get("last_error") or "-"),
+            ),
+            "spot_workspace_policy_line": (
+                "Policy classes: strategy-owned={strategy} | manual/imported={manual} | recovered={recovered} | "
+                "stale={stale}. Protected holdings are not sold automatically."
+            ).format(
+                strategy=int(spot_workspace.get("strategy_owned_count") or 0),
+                manual=int(spot_workspace.get("manual_holdings_count") or 0),
+                recovered=int(spot_workspace.get("recovered_holdings_count") or 0),
+                stale=int(spot_workspace.get("stale_holdings_count") or 0),
+            ),
             "history_rows": history_rows_main,
             "history_rows_full": history_rows_full,
             "stats_orders_total": int(history_total),
@@ -3508,7 +4122,7 @@ class BotikGui:
             )
             merged = self._annotate_open_rows([*local_open, *hold_rows], latest_price, dust_blocked_symbols)
             snapshot["open_orders_rows"] = merged
-            snapshot["open_orders_count"] = len(merged)
+            snapshot["open_orders_count"] = int(spot_workspace.get("open_orders_count") or 0)
             return snapshot
 
         api_key = env_data.get("BYBIT_API_KEY") or os.environ.get("BYBIT_API_KEY")
@@ -3530,7 +4144,7 @@ class BotikGui:
             )
             merged = self._annotate_open_rows([*local_open, *hold_rows], latest_price, dust_blocked_symbols)
             snapshot["open_orders_rows"] = merged
-            snapshot["open_orders_count"] = len(merged)
+            snapshot["open_orders_count"] = int(spot_workspace.get("open_orders_count") or 0)
             return snapshot
         if not api_secret and not rsa_key_path:
             snapshot["api_status"] = "нет секрета API (HMAC/RSA)"
@@ -3541,7 +4155,7 @@ class BotikGui:
             )
             merged = self._annotate_open_rows([*local_open, *hold_rows], latest_price, dust_blocked_symbols)
             snapshot["open_orders_rows"] = merged
-            snapshot["open_orders_count"] = len(merged)
+            snapshot["open_orders_count"] = int(spot_workspace.get("open_orders_count") or 0)
             return snapshot
 
         category_plan: list[tuple[str, str]] = []
@@ -3587,7 +4201,7 @@ class BotikGui:
             latest_price,
             dust_blocked_symbols,
         )
-        live_data["open_orders_count"] = len(live_data["open_orders_rows"])
+        live_data["open_orders_count"] = int(spot_workspace.get("open_orders_count") or 0)
         snapshot.update(live_data)
         return snapshot
 
@@ -4647,8 +5261,17 @@ class BotikGui:
         self.futures_protection_status_var.set(
             str(snapshot.get("futures_protection_status_line", "protection: n/a"))
         )
-        self._set_tree_rows(self.open_orders_tree, list(snapshot.get("open_orders_rows") or []))
-        self._set_tree_rows(self.order_history_tree, list(snapshot.get("history_rows") or []))
+        self.spot_workspace_summary_var.set(str(snapshot.get("spot_workspace_summary_line") or "Spot Summary: n/a"))
+        self.spot_workspace_policy_var.set(str(snapshot.get("spot_workspace_policy_line") or "Policy: n/a"))
+        self._set_tree_rows(self.open_orders_tree, list(snapshot.get("spot_workspace_open_orders_rows") or []))
+        if self.spot_workspace_holdings_tree is not None:
+            self._set_tree_rows(self.spot_workspace_holdings_tree, list(snapshot.get("spot_workspace_holdings_rows") or []))
+        if self.spot_workspace_fills_tree is not None:
+            self._set_tree_rows(self.spot_workspace_fills_tree, list(snapshot.get("spot_workspace_fills_rows") or []))
+        if self.spot_workspace_exit_tree is not None:
+            self._set_tree_rows(self.spot_workspace_exit_tree, list(snapshot.get("spot_workspace_exit_rows") or []))
+        if self.order_history_tree is not None:
+            self._set_tree_rows(self.order_history_tree, list(snapshot.get("history_rows") or []))
         if self.stats_history_tree is not None and active_tab == "stats":
             self._set_tree_rows(self.stats_history_tree, list(snapshot.get("history_rows_full") or []))
         if self.stats_balance_tree is not None and active_tab == "stats":
@@ -4744,6 +5367,8 @@ class BotikGui:
 
     def _draw_ml_chart(self) -> None:
         canvas = self.ml_chart_canvas
+        if canvas is None:
+            return
         canvas.delete("all")
         points = list(self._ml_chart_points)
         if len(points) < 2:

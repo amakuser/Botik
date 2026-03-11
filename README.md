@@ -13,6 +13,11 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
 - Futures protection lifecycle с verify-from-exchange.
 - Legacy write-path сохранён для обратной совместимости.
 - Windows single-exe запуск через `src/botik/windows_entry.py`.
+- Отдельный Spot Workspace для операторской работы с inventory lifecycle:
+  - Spot Holdings (class/policy/stale/recovered visibility),
+  - Spot Open Orders (domain `spot_orders`),
+  - Spot Fills (`spot_fills`),
+  - Spot Exit Decisions / inventory actions (`spot_exit_decisions`).
 
 ## Архитектура доменов
 
@@ -71,6 +76,16 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
 
 5. Domain writes:
 - runtime пишет и в legacy таблицы (`orders`, `fills`), и параллельно в domain-таблицы.
+
+## Dashboard Workspaces (актуально)
+
+- Dashboard Home: статусы, quick actions, блок Loaded Components / Releases.
+- Spot Workspace: inventory-aware контроль holdings/orders/fills/exit decisions, safe policy labels.
+- Futures Training Workspace: только training/research (не trading terminal).
+- Telegram Workspace: модуль Telegram и его operational status.
+- Logs Workspace: фильтруемые runtime логи.
+- Ops Workspace: reconciliation/issues/audit/health.
+- Settings Workspace: profile/paths/runtime settings.
 
 ## Reconciliation
 
