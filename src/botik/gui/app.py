@@ -87,6 +87,27 @@ DASHBOARD_WORKSPACE_TABS: tuple[tuple[str, str], ...] = (
     ("settings", "Settings Workspace"),
 )
 
+TELEGRAM_WORKSPACE_AVAILABLE_COMMANDS: tuple[str, ...] = (
+    "/status",
+    "/balance",
+    "/orders",
+    "/starttrading",
+    "/stoptrading",
+    "/pull",
+    "/restartsoft",
+    "/restarthard",
+    "/help",
+)
+
+TELEGRAM_WORKSPACE_ACTIONS: tuple[str, ...] = (
+    "Refresh",
+    "Test Send",
+    "Reload Telegram Status",
+    "Open Telegram Logs",
+    "Open Telegram Settings/Profile",
+    "Copy Chat Summary",
+)
+
 
 def dashboard_workspace_labels() -> list[str]:
     return [label for _, label in DASHBOARD_WORKSPACE_TABS]
@@ -524,6 +545,199 @@ def _fmt_workspace_ts_from_ms(value: Any) -> str:
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except (TypeError, ValueError, OSError, OverflowError):
         return "-"
+
+
+def _split_telegram_chat_ids(raw_value: Any) -> list[str]:
+    text = str(raw_value or "").strip()
+    if not text:
+        return []
+    return [part for part in re.split(r"[,\s;]+", text) if part]
+
+
+def _mask_telegram_chat_id(chat_id: Any) -> str:
+    raw = str(chat_id or "").strip()
+    if not raw:
+        return ""
+    if len(raw) <= 4:
+        return f"{raw[:1]}***"
+    return f"{raw[:2]}***{raw[-2:]}"
+
+
+def _normalize_telegram_recent_rows(
+    items: list[dict[str, Any]] | None,
+    *,
+    default_source: str,
+    default_status: str = "ok",
+    value_key: str = "command",
+) -> list[tuple[str, str, str, str]]:
+    rows: list[tuple[str, str, str, str]] = []
+    for idx, item in enumerate(list(items or []), start=1):
+        ts = str(item.get("ts") or "-")
+        value = str(item.get(value_key) or item.get("message") or "unknown")
+        source = str(item.get("source") or default_source)
+        status = str(item.get("status") or default_status)
+        rows.append((str(idx), ts, value, source, status))
+    return rows
+
+
+def load_telegram_workspace_read_model(
+    *,
+    raw_cfg: dict[str, Any] | None = None,
+    env_data: dict[str, str] | None = None,
+    release_manifest: dict[str, Any] | None = None,
+    thread_running: bool = False,
+    missing_token_reported: bool = False,
+    runtime_capabilities: dict[str, str] | None = None,
+    recent_commands: list[dict[str, Any]] | None = None,
+    recent_alerts: list[dict[str, Any]] | None = None,
+    recent_errors: list[dict[str, Any]] | None = None,
+    log_lines: list[str] | None = None,
+) -> dict[str, Any]:
+    cfg = raw_cfg or {}
+    env = env_data or {}
+    manifest = release_manifest or {}
+    capabilities = runtime_capabilities or {}
+    tg_cfg = cfg.get("telegram") if isinstance(cfg.get("telegram"), dict) else {}
+
+    token_env_name = str((tg_cfg.get("token_env") if isinstance(tg_cfg, dict) else "") or "TELEGRAM_BOT_TOKEN")
+    chat_env_name = str((tg_cfg.get("chat_id_env") if isinstance(tg_cfg, dict) else "") or "TELEGRAM_CHAT_ID")
+    bot_profile = str((tg_cfg.get("profile") if isinstance(tg_cfg, dict) else "") or "default")
+    token = str(env.get(token_env_name) or "").strip()
+    chat_ids_raw = str(env.get(chat_env_name) or "").strip()
+    chat_ids = _split_telegram_chat_ids(chat_ids_raw)
+    masked_chats = [_mask_telegram_chat_id(chat_id) for chat_id in chat_ids]
+
+    token_configured = bool(token)
+    disable_internal = str(env.get("BOTIK_DISABLE_INTERNAL_TELEGRAM") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_internal:
+        bot_connected = "disabled_by_env"
+    elif token_configured and thread_running:
+        bot_connected = "connected"
+    elif token_configured:
+        bot_connected = "disconnected"
+    elif missing_token_reported:
+        bot_connected = "disabled"
+    else:
+        bot_connected = "unknown"
+    telegram_enabled = "yes" if token_configured and not disable_internal else "no"
+
+    module_version = str(manifest.get("telegram_bot_module_version") or "unknown")
+    if not module_version.strip():
+        module_version = "unknown"
+    supported_commands = list(TELEGRAM_WORKSPACE_AVAILABLE_COMMANDS)
+    commands_line = ", ".join(supported_commands)
+
+    command_rows = _normalize_telegram_recent_rows(
+        recent_commands,
+        default_source="telegram_bot",
+        value_key="command",
+    )
+    alert_rows = _normalize_telegram_recent_rows(
+        recent_alerts,
+        default_source="telegram_module",
+        value_key="message",
+    )
+    error_rows = _normalize_telegram_recent_rows(
+        recent_errors,
+        default_source="telegram_module",
+        default_status="error",
+        value_key="error",
+    )
+    if not error_rows:
+        # Fallback to recent log lines when explicit Telegram error events are absent.
+        for raw in reversed(list(log_lines or [])[-120:]):
+            line = str(raw or "").strip()
+            if "telegram" not in line.lower():
+                continue
+            if "error" not in line.lower() and "warning" not in line.lower():
+                continue
+            error_rows.append(
+                (
+                    str(len(error_rows) + 1),
+                    "-",
+                    line[-180:],
+                    "log",
+                    "error" if "error" in line.lower() else "warning",
+                )
+            )
+            if len(error_rows) >= 12:
+                break
+
+    last_successful_send = "-"
+    if alert_rows:
+        last_successful_send = str(alert_rows[0][1] or "-")
+    last_error = "not available"
+    if error_rows:
+        last_error = str(error_rows[0][2] or "not available")
+    elif not token_configured:
+        last_error = "configuration_missing_token"
+
+    cap_reconcile = str(capabilities.get("reconciliation") or "unknown")
+    cap_protection = str(capabilities.get("protection") or "unknown")
+    capability_line = f"runtime_caps: reconciliation={cap_reconcile} | protection={cap_protection}"
+
+    out: dict[str, Any] = {
+        "telegram_enabled": telegram_enabled,
+        "bot_connected": bot_connected,
+        "bot_profile": bot_profile,
+        "token_profile_name": token_env_name,
+        "token_configured": "yes" if token_configured else "no",
+        "allowed_chat_env": chat_env_name,
+        "allowed_chat_count": len(chat_ids),
+        "allowed_chats_masked": ", ".join(masked_chats) if masked_chats else "not configured",
+        "commands_count": len(supported_commands),
+        "available_commands": supported_commands,
+        "module_version": module_version,
+        "recent_commands_count": len(command_rows),
+        "recent_alerts_count": len(alert_rows),
+        "recent_errors_count": len(error_rows),
+        "last_successful_send": last_successful_send,
+        "last_error": last_error,
+        "startup_status": "started" if thread_running else ("disabled" if not token_configured else "stopped"),
+        "capability_line": capability_line,
+        "actions": list(TELEGRAM_WORKSPACE_ACTIONS),
+        "summary_line": (
+            "enabled={enabled} | connected={connected} | profile={profile} | "
+            "allowed_chats={chats} | recent_commands={commands} | recent_alerts={alerts} | module={module_version}"
+        ).format(
+            enabled=telegram_enabled,
+            connected=bot_connected,
+            profile=bot_profile,
+            chats=len(chat_ids),
+            commands=len(command_rows),
+            alerts=len(alert_rows),
+            module_version=module_version,
+        ),
+        "profile_connection_line": (
+            "token_profile={token_profile} | token_configured={token_configured} | "
+            "connection_status={connection_status} | startup={startup} | last_successful_send={last_send}"
+        ).format(
+            token_profile=token_env_name,
+            token_configured="yes" if token_configured else "no",
+            connection_status=bot_connected,
+            startup="started" if thread_running else "not running",
+            last_send=last_successful_send,
+        ),
+        "access_line": (
+            "allowed_chat_env={chat_env} | allowed_chats={allowed_chats} | "
+            "commands_restricted={restricted}"
+        ).format(
+            chat_env=chat_env_name,
+            allowed_chats=", ".join(masked_chats) if masked_chats else "not configured",
+            restricted="yes" if len(chat_ids) > 0 else "no",
+        ),
+        "commands_line": commands_line,
+        "health_line": f"last_error={last_error} | {capability_line}",
+        "recent_commands_rows": command_rows[:30],
+        "recent_alerts_rows": alert_rows[:30],
+        "recent_errors_rows": error_rows[:30],
+    }
+    return out
 
 
 def classify_spot_holding_record(row: dict[str, Any]) -> dict[str, Any]:
@@ -1248,6 +1462,12 @@ class BotikGui:
         self.futures_run_progress_var = tk.StringVar(value="Training Run Progress: n/a")
         self.futures_eval_summary_var = tk.StringVar(value="Evaluation Summary: n/a")
         self.futures_checkpoints_summary_var = tk.StringVar(value="Checkpoints: n/a")
+        self.telegram_workspace_summary_var = tk.StringVar(value="Telegram Status Summary: n/a")
+        self.telegram_workspace_profile_var = tk.StringVar(value="Bot Profile / Connection: n/a")
+        self.telegram_workspace_access_var = tk.StringVar(value="Allowed Chats / Access: n/a")
+        self.telegram_workspace_commands_var = tk.StringVar(value="Available Commands: n/a")
+        self.telegram_workspace_health_var = tk.StringVar(value="Telegram Errors / Health: n/a")
+        self.telegram_workspace_capabilities_var = tk.StringVar(value="Capabilities: n/a")
         self.ml_model_id_var = tk.StringVar(value="bootstrap")
         self.ml_training_state_var = tk.StringVar(value="idle")
         self.ml_progress_text_var = tk.StringVar(value="0%")
@@ -1290,6 +1510,9 @@ class BotikGui:
         self.futures_training_checkpoints_tree: ttk.Treeview | None = None
         self.log_text_full: tk.Text | None = None
         self.telegram_workspace_text: tk.Text | None = None
+        self.telegram_workspace_commands_tree: ttk.Treeview | None = None
+        self.telegram_workspace_alerts_tree: ttk.Treeview | None = None
+        self.telegram_workspace_errors_tree: ttk.Treeview | None = None
         self.log_level_filter_combo: ttk.Combobox | None = None
         self.log_pair_filter_combo: ttk.Combobox | None = None
         self.log_jump_main: ttk.Button | None = None
@@ -1346,6 +1569,9 @@ class BotikGui:
         self._autosave_cfg_after_id: str | None = None
         self._runtime_refresh_lock = threading.Lock()
         self._runtime_refresh_inflight = False
+        self._telegram_recent_commands: deque[dict[str, str]] = deque(maxlen=80)
+        self._telegram_recent_alerts: deque[dict[str, str]] = deque(maxlen=80)
+        self._telegram_recent_errors: deque[dict[str, str]] = deque(maxlen=80)
         self._telegram_thread: threading.Thread | None = None
         self._telegram_stop_event: threading.Event | None = None
         self._telegram_missing_token_reported = False
@@ -1822,23 +2048,18 @@ class BotikGui:
             actions.columnconfigure(idx, weight=1)
 
     def _refresh_telegram_workspace_text(self) -> None:
+        # Legacy text panel compatibility; current Telegram Workspace uses structured cards/tables.
         if self.telegram_workspace_text is None:
             return
+        lines = [
+            self.telegram_workspace_summary_var.get(),
+            self.telegram_workspace_profile_var.get(),
+            self.telegram_workspace_access_var.get(),
+            self.telegram_workspace_commands_var.get(),
+            self.telegram_workspace_health_var.get(),
+            self.telegram_workspace_capabilities_var.get(),
+        ]
         try:
-            token_var = self.env_vars.get("TELEGRAM_BOT_TOKEN")
-            chat_var = self.env_vars.get("TELEGRAM_CHAT_ID")
-            token = (token_var.get() if token_var is not None else "").strip()
-            chat_id = (chat_var.get() if chat_var is not None else "").strip()
-            thread_running = bool(self._telegram_thread is not None and self._telegram_thread.is_alive())
-            lines = [
-                f"module: {'RUNNING' if thread_running else 'STOPPED'}",
-                f"profile: {'default' if token else 'missing-token'}",
-                f"allowed_chat: {chat_id or '-'}",
-                "commands: /status /balance /orders /start /stop /pull /restart_soft /restart_hard",
-                "",
-                "Recent status snapshot:",
-                self._telegram_status_text_ui(),
-            ]
             self.telegram_workspace_text.configure(state=tk.NORMAL)
             self.telegram_workspace_text.delete("1.0", tk.END)
             self.telegram_workspace_text.insert(tk.END, "\n".join(lines))
@@ -1846,35 +2067,204 @@ class BotikGui:
         except Exception:
             return
 
+    def _telegram_workspace_test_send(self) -> None:
+        token = str(self.env_vars.get("TELEGRAM_BOT_TOKEN").get() if self.env_vars.get("TELEGRAM_BOT_TOKEN") else "").strip()
+        if not token:
+            self._record_telegram_error(source="test_send", error="configuration_missing_token")
+            self._enqueue_log("[telegram-workspace] test send skipped: token is not configured")
+            messagebox.showwarning("Telegram Workspace", "TELEGRAM_BOT_TOKEN не задан. Test Send недоступен.")
+            self.refresh_runtime_snapshot()
+            return
+        self._record_telegram_command(command="/status", source="workspace_test_send", status="intent")
+        self._record_telegram_alert(
+            source="test_send",
+            message="Test send intent recorded (network send is not executed from Dashboard Workspace).",
+            status="ok",
+        )
+        self._enqueue_log("[telegram-workspace] test send intent recorded")
+        self.refresh_runtime_snapshot()
+
+    def _reload_telegram_workspace_status(self) -> None:
+        try:
+            self._start_telegram_control_if_configured()
+            self._record_telegram_alert(source="workspace", message="Telegram status reloaded", status="ok")
+        except Exception as exc:
+            self._record_telegram_error(source="reload_status", error=str(exc))
+            self._enqueue_log(f"[telegram-workspace] reload failed: {exc}")
+        self.refresh_runtime_snapshot()
+
+    def copy_telegram_chat_summary(self) -> None:
+        payload = (
+            f"{self.telegram_workspace_access_var.get()}\n"
+            f"{self.telegram_workspace_profile_var.get()}\n"
+            f"{self.telegram_workspace_health_var.get()}"
+        )
+        self.root.clipboard_clear()
+        self.root.clipboard_append(payload)
+        self._enqueue_log("[telegram-workspace] copied chat summary")
+
     def _build_telegram_workspace_tab(self) -> None:
         root = ttk.Frame(self.telegram_tab, style="Root.TFrame")
         root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        top = ttk.Frame(root, style="Card.TFrame", padding=12)
-        top.pack(fill=tk.X)
-        ttk.Label(top, text="Telegram Workspace", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
-        ttk.Button(top, text="Refresh Telegram", command=self._refresh_telegram_workspace_text).grid(row=0, column=1, sticky=tk.E)
-        ttk.Button(top, text="Open Settings", command=lambda: self._open_workspace(self.settings_tab)).grid(
-            row=0, column=2, sticky=tk.E, padx=(6, 0)
-        )
-        top.columnconfigure(0, weight=1)
+        summary = ttk.Frame(root, style="Card.TFrame", padding=12)
+        summary.pack(fill=tk.X)
+        ttk.Label(summary, text="Telegram Workspace", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            summary,
+            text="Operational visibility for Telegram bot module. Token values are never shown in plain text.",
+            style="Body.TLabel",
+        ).grid(row=1, column=0, sticky=tk.W, pady=(4, 0))
+        ttk.Label(
+            summary,
+            textvariable=self.telegram_workspace_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1060,
+        ).grid(row=2, column=0, sticky=tk.W, pady=(8, 2))
+        ttk.Label(
+            summary,
+            textvariable=self.telegram_workspace_capabilities_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1060,
+        ).grid(row=3, column=0, sticky=tk.W)
+        summary.columnconfigure(0, weight=1)
 
-        panel = ttk.Frame(root, style="Card.TFrame", padding=12)
-        panel.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-        self.telegram_workspace_text = tk.Text(
-            panel,
-            wrap=tk.WORD,
-            bg=self._ui_colors.get("log_bg", "#0F1A2B"),
-            fg=self._ui_colors.get("log_fg", "#D8E8FF"),
-            insertbackground=self._ui_colors.get("log_fg", "#D8E8FF"),
-            relief=tk.FLAT,
-            font=("Consolas", 10),
+        details = ttk.Frame(root, style="Card.TFrame", padding=12)
+        details.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(details, text="Bot Profile / Connection", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            details,
+            textvariable=self.telegram_workspace_profile_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1060,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(details, text="Allowed Chats / Access", style="Section.TLabel").grid(row=2, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Label(
+            details,
+            textvariable=self.telegram_workspace_access_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1060,
+        ).grid(row=3, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(details, text="Available Commands", style="Section.TLabel").grid(row=4, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Label(
+            details,
+            textvariable=self.telegram_workspace_commands_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1060,
+        ).grid(row=5, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(details, text="Telegram Errors / Health", style="Section.TLabel").grid(
+            row=6, column=0, sticky=tk.W, pady=(8, 0)
         )
-        scroll = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=self.telegram_workspace_text.yview)
-        self.telegram_workspace_text.configure(yscrollcommand=scroll.set, state=tk.DISABLED)
-        self.telegram_workspace_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self._refresh_telegram_workspace_text()
+        ttk.Label(
+            details,
+            textvariable=self.telegram_workspace_health_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1060,
+        ).grid(row=7, column=0, sticky=tk.W, pady=(6, 0))
+        details.columnconfigure(0, weight=1)
+
+        activity = ttk.Frame(root, style="Card.TFrame", padding=12)
+        activity.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        ttk.Label(activity, text="Recent Incoming Commands / Alerts / Errors", style="Section.TLabel").pack(anchor=tk.W)
+        activity_notebook = ttk.Notebook(activity)
+        activity_notebook.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+
+        commands_tab = ttk.Frame(activity_notebook, style="Root.TFrame")
+        alerts_tab = ttk.Frame(activity_notebook, style="Root.TFrame")
+        errors_tab = ttk.Frame(activity_notebook, style="Root.TFrame")
+        activity_notebook.add(commands_tab, text="Recent Incoming Commands")
+        activity_notebook.add(alerts_tab, text="Recent Alerts / Notifications")
+        activity_notebook.add(errors_tab, text="Telegram Errors / Health")
+
+        self.telegram_workspace_commands_tree = ttk.Treeview(
+            commands_tab,
+            columns=("n", "ts", "command", "source", "status"),
+            show="headings",
+            height=7,
+        )
+        for col, title, width in [
+            ("n", "N", 50),
+            ("ts", "Time", 180),
+            ("command", "Command", 240),
+            ("source", "Source", 160),
+            ("status", "Status", 120),
+        ]:
+            self.telegram_workspace_commands_tree.heading(col, text=title)
+            self.telegram_workspace_commands_tree.column(col, width=width, anchor=tk.W, stretch=(col == "command"))
+        cmd_scroll = ttk.Scrollbar(commands_tab, orient=tk.VERTICAL, command=self.telegram_workspace_commands_tree.yview)
+        self.telegram_workspace_commands_tree.configure(yscrollcommand=cmd_scroll.set)
+        self.telegram_workspace_commands_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        cmd_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.telegram_workspace_alerts_tree = ttk.Treeview(
+            alerts_tab,
+            columns=("n", "ts", "message", "source", "status"),
+            show="headings",
+            height=7,
+        )
+        for col, title, width in [
+            ("n", "N", 50),
+            ("ts", "Time", 180),
+            ("message", "Alert / Notification", 520),
+            ("source", "Source", 160),
+            ("status", "Status", 120),
+        ]:
+            self.telegram_workspace_alerts_tree.heading(col, text=title)
+            self.telegram_workspace_alerts_tree.column(col, width=width, anchor=tk.W, stretch=(col == "message"))
+        alert_scroll = ttk.Scrollbar(alerts_tab, orient=tk.VERTICAL, command=self.telegram_workspace_alerts_tree.yview)
+        self.telegram_workspace_alerts_tree.configure(yscrollcommand=alert_scroll.set)
+        self.telegram_workspace_alerts_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        alert_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.telegram_workspace_errors_tree = ttk.Treeview(
+            errors_tab,
+            columns=("n", "ts", "error", "source", "status"),
+            show="headings",
+            height=7,
+        )
+        for col, title, width in [
+            ("n", "N", 50),
+            ("ts", "Time", 180),
+            ("error", "Error", 520),
+            ("source", "Source", 160),
+            ("status", "Status", 120),
+        ]:
+            self.telegram_workspace_errors_tree.heading(col, text=title)
+            self.telegram_workspace_errors_tree.column(col, width=width, anchor=tk.W, stretch=(col == "error"))
+        error_scroll = ttk.Scrollbar(errors_tab, orient=tk.VERTICAL, command=self.telegram_workspace_errors_tree.yview)
+        self.telegram_workspace_errors_tree.configure(yscrollcommand=error_scroll.set)
+        self.telegram_workspace_errors_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        error_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        actions = ttk.Frame(root, style="Card.TFrame", padding=12)
+        actions.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(actions, text="Telegram Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=6, sticky=tk.W)
+        ttk.Button(actions, text="Refresh", command=self.refresh_runtime_snapshot).grid(
+            row=1, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Test Send", command=self._telegram_workspace_test_send).grid(
+            row=1, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Reload Telegram Status", command=self._reload_telegram_workspace_status).grid(
+            row=1, column=2, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Telegram Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+            row=1, column=3, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Settings/Profile", command=lambda: self._open_workspace(self.settings_tab)).grid(
+            row=1, column=4, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Copy Chat Summary", command=self.copy_telegram_chat_summary).grid(
+            row=1, column=5, sticky=tk.EW, padx=4, pady=4
+        )
+        for idx in range(6):
+            actions.columnconfigure(idx, weight=1)
 
     def _build_control_tab(self) -> None:
         split = ttk.Panedwindow(self.control_tab, orient=tk.HORIZONTAL)
@@ -2864,6 +3254,40 @@ class BotikGui:
         except OSError:
             pass
 
+    @staticmethod
+    def _telegram_now_ts() -> str:
+        return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _record_telegram_command(self, *, command: str, source: str = "telegram_bot", status: str = "ok") -> None:
+        self._telegram_recent_commands.appendleft(
+            {
+                "ts": self._telegram_now_ts(),
+                "command": str(command or "unknown"),
+                "source": str(source or "telegram_bot"),
+                "status": str(status or "ok"),
+            }
+        )
+
+    def _record_telegram_alert(self, *, source: str, message: str, status: str = "ok") -> None:
+        self._telegram_recent_alerts.appendleft(
+            {
+                "ts": self._telegram_now_ts(),
+                "message": str(message or ""),
+                "source": str(source or "telegram_module"),
+                "status": str(status or "ok"),
+            }
+        )
+
+    def _record_telegram_error(self, *, source: str, error: str, status: str = "error") -> None:
+        self._telegram_recent_errors.appendleft(
+            {
+                "ts": self._telegram_now_ts(),
+                "error": str(error or "unknown"),
+                "source": str(source or "telegram_module"),
+                "status": str(status or "error"),
+            }
+        )
+
     def _invoke_on_ui_thread(self, fn: Callable[[], Any], timeout_sec: float = 45.0) -> Any:
         if threading.current_thread() is threading.main_thread():
             return fn()
@@ -2893,32 +3317,43 @@ class BotikGui:
         if not token:
             if not self._telegram_missing_token_reported:
                 self._enqueue_log("[telegram-dashboard] TELEGRAM_BOT_TOKEN not set; remote control disabled")
+                self._record_telegram_error(source="startup", error="configuration_missing_token")
                 self._telegram_missing_token_reported = True
             return
         self._telegram_missing_token_reported = False
         if self._telegram_thread is not None and self._telegram_thread.is_alive():
             return
 
-        from src.botik.control.telegram_gui import GuiTelegramActions, start_gui_telegram_bot_in_thread
+        try:
+            from src.botik.control.telegram_gui import GuiTelegramActions, start_gui_telegram_bot_in_thread
+        except Exception as exc:
+            self._record_telegram_error(source="startup_import", error=str(exc))
+            self._enqueue_log(f"[telegram-dashboard] failed to import telegram module: {exc}")
+            return
 
-        self._telegram_stop_event = threading.Event()
-        actions = GuiTelegramActions(
-            status=self.telegram_status_text,
-            balance=self.telegram_balance_text,
-            orders=self.telegram_orders_text,
-            start_trading=self.telegram_start_trading,
-            stop_trading=self.telegram_stop_trading,
-            pull_updates=self.telegram_pull_updates,
-            restart_soft=self.telegram_restart_soft,
-            restart_hard=self.telegram_restart_hard,
-        )
-        self._telegram_thread = start_gui_telegram_bot_in_thread(
-            token=token,
-            actions=actions,
-            allowed_chat_id=chat_id,
-            stop_event=self._telegram_stop_event,
-        )
-        self._enqueue_log("[telegram-dashboard] control bot started")
+        try:
+            self._telegram_stop_event = threading.Event()
+            actions = GuiTelegramActions(
+                status=self.telegram_status_text,
+                balance=self.telegram_balance_text,
+                orders=self.telegram_orders_text,
+                start_trading=self.telegram_start_trading,
+                stop_trading=self.telegram_stop_trading,
+                pull_updates=self.telegram_pull_updates,
+                restart_soft=self.telegram_restart_soft,
+                restart_hard=self.telegram_restart_hard,
+            )
+            self._telegram_thread = start_gui_telegram_bot_in_thread(
+                token=token,
+                actions=actions,
+                allowed_chat_id=chat_id,
+                stop_event=self._telegram_stop_event,
+            )
+            self._record_telegram_alert(source="startup", message="telegram control bot started", status="ok")
+            self._enqueue_log("[telegram-dashboard] control bot started")
+        except Exception as exc:
+            self._record_telegram_error(source="startup_run", error=str(exc))
+            self._enqueue_log(f"[telegram-dashboard] failed to start control bot: {exc}")
 
     def _git_short_head(self) -> str:
         proc = subprocess.run(
@@ -3450,9 +3885,11 @@ class BotikGui:
         self._enqueue_log(f"[ui] app.version updated -> {self.app_version}")
 
     def telegram_status_text(self) -> str:
+        self._record_telegram_command(command="/status", source="telegram_bot")
         return str(self._invoke_on_ui_thread(self._telegram_status_text_ui))
 
     def telegram_balance_text(self) -> str:
+        self._record_telegram_command(command="/balance", source="telegram_bot")
         snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
         return (
             "Средства:\n"
@@ -3464,6 +3901,7 @@ class BotikGui:
         )
 
     def telegram_orders_text(self) -> str:
+        self._record_telegram_command(command="/orders", source="telegram_bot")
         snapshot = self._invoke_on_ui_thread(self._load_runtime_snapshot)
         rows = list(snapshot.get("open_orders_rows") or [])
         lines = [f"Активные ордера: {len(rows)}"]
@@ -3503,18 +3941,31 @@ class BotikGui:
         return "\n".join(lines)
 
     def telegram_start_trading(self) -> str:
-        return str(self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False)))
+        self._record_telegram_command(command="/starttrading", source="telegram_bot")
+        result = str(self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False)))
+        self._record_telegram_alert(source="telegram_bot", message="start trading requested", status="ok")
+        return result
 
     def telegram_stop_trading(self) -> str:
-        return str(self._invoke_on_ui_thread(self._stop_trading_impl))
+        self._record_telegram_command(command="/stoptrading", source="telegram_bot")
+        result = str(self._invoke_on_ui_thread(self._stop_trading_impl))
+        self._record_telegram_alert(source="telegram_bot", message="stop trading requested", status="ok")
+        return result
 
     def telegram_pull_updates(self) -> str:
+        self._record_telegram_command(command="/pull", source="telegram_bot")
         ok, msg = self._git_pull_ff_only()
         if self._running_trading_modes():
             msg += "\nTrading уже запущен на старой версии. Нужен рестарт для применения обновлений."
-        return msg if ok else f"Ошибка обновления:\n{msg}"
+        if ok:
+            self._record_telegram_alert(source="telegram_bot", message="pull completed", status="ok")
+            return msg
+        err = f"Ошибка обновления:\n{msg}"
+        self._record_telegram_error(source="telegram_bot", error=err)
+        return err
 
     def telegram_restart_soft(self) -> str:
+        self._record_telegram_command(command="/restartsoft", source="telegram_bot")
         lines: list[str] = []
         ok_cancel_before, msg_cancel_before = self._cancel_open_orders_best_effort()
         lines.append(f"[1/4] cancel before stop: {msg_cancel_before}")
@@ -3524,9 +3975,15 @@ class BotikGui:
         lines.append(f"[4/4] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
         if not ok_cancel_before or not ok_cancel_after:
             lines.append("Внимание: cancel_all не полностью успешен, проверьте open orders.")
-        return "\n".join(lines)
+        result = "\n".join(lines)
+        if not ok_cancel_before or not ok_cancel_after:
+            self._record_telegram_error(source="telegram_bot", error="restart_soft_cancel_not_fully_successful")
+        else:
+            self._record_telegram_alert(source="telegram_bot", message="restart soft completed", status="ok")
+        return result
 
     def telegram_restart_hard(self) -> str:
+        self._record_telegram_command(command="/restarthard", source="telegram_bot")
         lines: list[str] = []
         ok_pull, pull_msg = self._git_pull_ff_only()
         lines.append(f"[1/3] update: {pull_msg}")
@@ -3534,6 +3991,9 @@ class BotikGui:
         lines.append(f"[3/3] {self._invoke_on_ui_thread(lambda: self._start_trading_impl(interactive=False))}")
         if not ok_pull:
             lines.append("Обновление не применилось, запущена текущая локальная версия.")
+            self._record_telegram_error(source="telegram_bot", error="restarthard_update_failed")
+        else:
+            self._record_telegram_alert(source="telegram_bot", message="restart hard completed", status="ok")
         return "\n".join(lines)
 
     @staticmethod
@@ -4356,6 +4816,22 @@ class BotikGui:
             ml_process_state=str(self.ml.state),
             training_mode=ml_mode,
         )
+        try:
+            recent_log_lines = list(self._log_messages)[-240:]
+        except RuntimeError:
+            recent_log_lines = []
+        telegram_workspace = load_telegram_workspace_read_model(
+            raw_cfg=raw_cfg,
+            env_data=env_data,
+            release_manifest=release_manifest,
+            thread_running=bool(self._telegram_thread is not None and self._telegram_thread.is_alive()),
+            missing_token_reported=bool(self._telegram_missing_token_reported),
+            runtime_capabilities=runtime_caps,
+            recent_commands=list(self._telegram_recent_commands),
+            recent_alerts=list(self._telegram_recent_alerts),
+            recent_errors=list(self._telegram_recent_errors),
+            log_lines=recent_log_lines,
+        )
         batch_size = max(int((raw_cfg.get("ml") or {}).get("train_batch_size") or 50), 1)
         ml_metrics = self._read_ml_metrics(db_path)
         closed_count = int(ml_metrics.get("closed_count", 0))
@@ -4517,6 +4993,44 @@ class BotikGui:
                 active_model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
             ),
             "futures_training_checkpoints_rows": list(futures_training_workspace.get("checkpoints_rows") or []),
+            "telegram_workspace_summary_line": (
+                "Telegram Status Summary: {line}"
+            ).format(
+                line=str(telegram_workspace.get("summary_line") or "n/a"),
+            ),
+            "telegram_workspace_profile_line": (
+                "Bot Profile / Connection: {line}"
+            ).format(
+                line=str(telegram_workspace.get("profile_connection_line") or "n/a"),
+            ),
+            "telegram_workspace_access_line": (
+                "Allowed Chats / Access: {line}"
+            ).format(
+                line=str(telegram_workspace.get("access_line") or "n/a"),
+            ),
+            "telegram_workspace_commands_line": (
+                "Available Commands ({count}): {line}"
+            ).format(
+                count=int(telegram_workspace.get("commands_count") or 0),
+                line=str(telegram_workspace.get("commands_line") or "not available"),
+            ),
+            "telegram_workspace_health_line": (
+                "Telegram Errors / Health: last_error={last_error} | recent_errors={errors} | recent_alerts={alerts}"
+            ).format(
+                last_error=str(telegram_workspace.get("last_error") or "not available"),
+                errors=int(telegram_workspace.get("recent_errors_count") or 0),
+                alerts=int(telegram_workspace.get("recent_alerts_count") or 0),
+            ),
+            "telegram_workspace_capabilities_line": (
+                "module_version={module_version} | startup={startup} | {caps}"
+            ).format(
+                module_version=str(telegram_workspace.get("module_version") or "unknown"),
+                startup=str(telegram_workspace.get("startup_status") or "unknown"),
+                caps=str(telegram_workspace.get("capability_line") or "capabilities: unknown"),
+            ),
+            "telegram_workspace_recent_commands_rows": list(telegram_workspace.get("recent_commands_rows") or []),
+            "telegram_workspace_recent_alerts_rows": list(telegram_workspace.get("recent_alerts_rows") or []),
+            "telegram_workspace_recent_errors_rows": list(telegram_workspace.get("recent_errors_rows") or []),
             "history_rows": history_rows_main,
             "history_rows_full": history_rows_full,
             "stats_orders_total": int(history_total),
@@ -5755,6 +6269,24 @@ class BotikGui:
         self.futures_checkpoints_summary_var.set(
             str(snapshot.get("futures_checkpoints_summary_line") or "Checkpoints: n/a")
         )
+        self.telegram_workspace_summary_var.set(
+            str(snapshot.get("telegram_workspace_summary_line") or "Telegram Status Summary: n/a")
+        )
+        self.telegram_workspace_profile_var.set(
+            str(snapshot.get("telegram_workspace_profile_line") or "Bot Profile / Connection: n/a")
+        )
+        self.telegram_workspace_access_var.set(
+            str(snapshot.get("telegram_workspace_access_line") or "Allowed Chats / Access: n/a")
+        )
+        self.telegram_workspace_commands_var.set(
+            str(snapshot.get("telegram_workspace_commands_line") or "Available Commands: n/a")
+        )
+        self.telegram_workspace_health_var.set(
+            str(snapshot.get("telegram_workspace_health_line") or "Telegram Errors / Health: n/a")
+        )
+        self.telegram_workspace_capabilities_var.set(
+            str(snapshot.get("telegram_workspace_capabilities_line") or "Capabilities: n/a")
+        )
         self._set_tree_rows(self.open_orders_tree, list(snapshot.get("spot_workspace_open_orders_rows") or []))
         if self.spot_workspace_holdings_tree is not None:
             self._set_tree_rows(self.spot_workspace_holdings_tree, list(snapshot.get("spot_workspace_holdings_rows") or []))
@@ -5766,6 +6298,21 @@ class BotikGui:
             self._set_tree_rows(
                 self.futures_training_checkpoints_tree,
                 list(snapshot.get("futures_training_checkpoints_rows") or []),
+            )
+        if self.telegram_workspace_commands_tree is not None:
+            self._set_tree_rows(
+                self.telegram_workspace_commands_tree,
+                list(snapshot.get("telegram_workspace_recent_commands_rows") or []),
+            )
+        if self.telegram_workspace_alerts_tree is not None:
+            self._set_tree_rows(
+                self.telegram_workspace_alerts_tree,
+                list(snapshot.get("telegram_workspace_recent_alerts_rows") or []),
+            )
+        if self.telegram_workspace_errors_tree is not None:
+            self._set_tree_rows(
+                self.telegram_workspace_errors_tree,
+                list(snapshot.get("telegram_workspace_recent_errors_rows") or []),
             )
         if self.order_history_tree is not None:
             self._set_tree_rows(self.order_history_tree, list(snapshot.get("history_rows") or []))

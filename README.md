@@ -88,7 +88,14 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - Training Run Progress,
   - Evaluation / Metrics Summary,
   - Checkpoints / Active Futures Model.
-- Telegram Workspace: модуль Telegram и его operational status.
+- Telegram Workspace: отдельный operational module Dashboard (не buried toggle в Settings):
+  - Telegram Status Summary (enabled/connected/profile/module version),
+  - Bot Profile / Connection (token configured yes/no, startup status),
+  - Allowed Chats / Access (masked IDs, restrictions),
+  - Available Commands (только реально поддерживаемые),
+  - Recent Incoming Commands / Recent Alerts / Telegram Errors,
+  - Telegram Actions: Refresh, Test Send (intent only), Reload Telegram Status, Open Logs, Open Settings/Profile.
+- Если `TELEGRAM_BOT_TOKEN` не задан, Telegram Workspace показывает `disabled / configuration_missing_token` и не имитирует активный модуль.
 - Logs Workspace: фильтруемые runtime логи.
 - Ops Workspace: reconciliation/issues/audit/health.
 - Settings Workspace: profile/paths/runtime settings.
