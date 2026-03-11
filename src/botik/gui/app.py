@@ -1,11 +1,11 @@
 ﻿"""
-Desktop GUI launcher for local operation (Windows/Linux desktop).
+Desktop Dashboard Shell for local operation (Windows/Linux desktop).
 
 Features:
-- Start/stop trading and ML processes.
-- Live logs inside the app.
+- Start/stop runtime and training processes.
+- Live logs inside the application.
 - Preflight run button.
-- Settings tab to edit .env and config.yaml directly.
+- Settings workspace to edit .env and config.yaml directly.
 """
 from __future__ import annotations
 
@@ -67,6 +67,20 @@ RECONCILIATION_ENTRY_LOCK_ISSUES: tuple[str, ...] = (
     "local_position_missing_on_exchange",
     "local_order_missing_on_exchange",
 )
+
+DASHBOARD_WORKSPACE_TABS: tuple[tuple[str, str], ...] = (
+    ("home", "Dashboard Home"),
+    ("spot", "Spot Workspace"),
+    ("futures_training", "Futures Training Workspace"),
+    ("telegram", "Telegram Workspace"),
+    ("logs", "Logs Workspace"),
+    ("ops", "Ops Workspace"),
+    ("settings", "Settings Workspace"),
+)
+
+
+def dashboard_workspace_labels() -> list[str]:
+    return [label for _, label in DASHBOARD_WORKSPACE_TABS]
 
 
 # Windows sleep control flags (SetThreadExecutionState).
@@ -424,7 +438,7 @@ class ManagedProcess:
 
 class SleepBlocker:
     """
-    Keeps Windows system awake while GUI is running.
+    Keeps Windows system awake while Dashboard Shell is running.
     """
 
     def __init__(self, on_output: Callable[[str], None]) -> None:
@@ -471,7 +485,7 @@ class BotikGui:
     def __init__(self) -> None:
         self.app_version = get_app_version_label()
         self.root = tk.Tk()
-        self.root.title(f"Botik Desktop {self.app_version}")
+        self.root.title(f"Botik Dashboard {self.app_version}")
         self.root.geometry("1180x790")
         self.root.minsize(1020, 700)
         if os.name == "nt":
@@ -541,6 +555,10 @@ class BotikGui:
         self.reconciliation_status_var = tk.StringVar(value="reconciliation: n/a")
         self.panel_freshness_var = tk.StringVar(value="freshness: n/a")
         self.futures_protection_status_var = tk.StringVar(value="protection: n/a")
+        self.dashboard_spot_status_var = tk.StringVar(value="Spot: n/a")
+        self.dashboard_futures_training_status_var = tk.StringVar(value="Futures Training: n/a")
+        self.dashboard_telegram_status_var = tk.StringVar(value="Telegram: n/a")
+        self.dashboard_ops_status_var = tk.StringVar(value="Ops: n/a")
         self.ml_model_id_var = tk.StringVar(value="bootstrap")
         self.ml_training_state_var = tk.StringVar(value="idle")
         self.ml_progress_text_var = tk.StringVar(value="0%")
@@ -573,6 +591,7 @@ class BotikGui:
         self.stats_reconciliation_issues_tree: ttk.Treeview | None = None
         self.models_tree: ttk.Treeview | None = None
         self.log_text_full: tk.Text | None = None
+        self.telegram_workspace_text: tk.Text | None = None
         self.log_level_filter_combo: ttk.Combobox | None = None
         self.log_pair_filter_combo: ttk.Combobox | None = None
         self.log_jump_main: ttk.Button | None = None
@@ -760,13 +779,13 @@ class BotikGui:
 
         self.title_label = ttk.Label(
             root_frame,
-            text=f"Botik Control Console {self.app_version}",
+            text=f"Botik Dashboard Shell {self.app_version}",
             style="Title.TLabel",
         )
         self.title_label.pack(anchor=tk.W)
         ttk.Label(
             root_frame,
-            text="Desktop mode for local monitoring and settings. Server mode stays CLI/systemd.",
+            text="Single-window Dashboard Shell for runtime, workspaces and operations.",
             style="Subtitle.TLabel",
         ).pack(anchor=tk.W, pady=(0, 10))
 
@@ -774,14 +793,20 @@ class BotikGui:
         notebook.pack(fill=tk.BOTH, expand=True)
         self.notebook = notebook
 
+        self.home_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.control_tab = ttk.Frame(notebook, style="Root.TFrame")
+        self.futures_training_tab = ttk.Frame(notebook, style="Root.TFrame")
+        self.telegram_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.logs_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.settings_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.statistics_tab = ttk.Frame(notebook, style="Root.TFrame")
-        notebook.add(self.control_tab, text="Главная")
-        notebook.add(self.logs_tab, text="Логи")
-        notebook.add(self.settings_tab, text="Настройки")
-        notebook.add(self.statistics_tab, text="Статистика")
+        notebook.add(self.home_tab, text="Dashboard Home")
+        notebook.add(self.control_tab, text="Spot Workspace")
+        notebook.add(self.futures_training_tab, text="Futures Training Workspace")
+        notebook.add(self.telegram_tab, text="Telegram Workspace")
+        notebook.add(self.logs_tab, text="Logs Workspace")
+        notebook.add(self.statistics_tab, text="Ops Workspace")
+        notebook.add(self.settings_tab, text="Settings Workspace")
 
         settings_shell = ttk.Frame(self.settings_tab, style="Root.TFrame")
         settings_shell.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -789,8 +814,8 @@ class BotikGui:
         self.settings_notebook.pack(fill=tk.BOTH, expand=True)
         self.settings_main_tab = ttk.Frame(self.settings_notebook, style="Root.TFrame")
         self.spike_tab = ttk.Frame(self.settings_notebook, style="Root.TFrame")
-        self.settings_notebook.add(self.settings_main_tab, text="Параметры")
-        self.settings_notebook.add(self.spike_tab, text="Стратегии")
+        self.settings_notebook.add(self.settings_main_tab, text="Runtime Settings")
+        self.settings_notebook.add(self.spike_tab, text="Strategy Presets")
 
         statistics_shell = ttk.Frame(self.statistics_tab, style="Root.TFrame")
         statistics_shell.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -798,10 +823,13 @@ class BotikGui:
         self.statistics_notebook.pack(fill=tk.BOTH, expand=True)
         self.stats_tab = ttk.Frame(self.statistics_notebook, style="Root.TFrame")
         self.models_tab = ttk.Frame(self.statistics_notebook, style="Root.TFrame")
-        self.statistics_notebook.add(self.stats_tab, text="Сделки")
-        self.statistics_notebook.add(self.models_tab, text="Модели")
+        self.statistics_notebook.add(self.stats_tab, text="Ops Snapshot")
+        self.statistics_notebook.add(self.models_tab, text="Model Registry")
 
+        self._build_dashboard_home_tab()
         self._build_control_tab()
+        self._build_futures_training_tab()
+        self._build_telegram_workspace_tab()
         self._build_logs_tab()
         self._build_settings_tab()
         self._build_spike_tab()
@@ -847,6 +875,171 @@ class BotikGui:
             widget.event_generate("<<SelectAll>>")
         return "break" if event is not None else None
 
+    def _open_workspace(self, workspace: ttk.Frame | None) -> None:
+        if self.notebook is None or workspace is None:
+            return
+        try:
+            self.notebook.select(workspace)
+        except Exception:
+            return
+
+    def _build_dashboard_home_tab(self) -> None:
+        home_root = ttk.Frame(self.home_tab, style="Root.TFrame")
+        home_root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        top_row = ttk.Frame(home_root, style="Root.TFrame")
+        top_row.pack(fill=tk.X)
+        left = ttk.Frame(top_row, style="Card.TFrame", padding=12)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right = ttk.Frame(top_row, style="Card.TFrame", padding=12)
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        ttk.Label(left, text="Dashboard Home", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(left, textvariable=self.dashboard_spot_status_var, style="Body.TLabel").pack(anchor=tk.W, pady=(8, 2))
+        ttk.Label(left, textvariable=self.dashboard_futures_training_status_var, style="Body.TLabel").pack(anchor=tk.W, pady=2)
+        ttk.Label(left, textvariable=self.dashboard_telegram_status_var, style="Body.TLabel").pack(anchor=tk.W, pady=2)
+        ttk.Label(left, textvariable=self.dashboard_ops_status_var, style="Body.TLabel", wraplength=500, justify=tk.LEFT).pack(
+            anchor=tk.W, pady=2
+        )
+        ttk.Label(
+            left,
+            text="Futures workspace in this release is training/research only.",
+            style="Body.TLabel",
+            foreground=self._ui_colors.get("warning", "#F0B23A"),
+        ).pack(anchor=tk.W, pady=(8, 0))
+
+        ttk.Label(right, text="Quick Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=2, sticky=tk.W)
+        ttk.Button(right, text="Start Spot", command=self.start_trading, style="Start.TButton").grid(
+            row=1, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(right, text="Stop Spot", command=self.stop_trading, style="Stop.TButton").grid(
+            row=1, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(right, text="Start Futures Training", command=self.start_ml).grid(
+            row=2, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(right, text="Pause Training", command=self.pause_training).grid(
+            row=2, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(right, text="Run Reconcile", command=self.refresh_runtime_snapshot).grid(
+            row=3, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(right, text="Open Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+            row=3, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        for idx in range(2):
+            right.columnconfigure(idx, weight=1)
+
+        components_card = ttk.Frame(home_root, style="Card.TFrame", padding=12)
+        components_card.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(components_card, text="Loaded Components (preview)", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            components_card,
+            text="Shell, runtime components and manifests are displayed in detail starting from the next stage.",
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(6, 0))
+
+    def _build_futures_training_tab(self) -> None:
+        root = ttk.Frame(self.futures_training_tab, style="Root.TFrame")
+        root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        head = ttk.Frame(root, style="Card.TFrame", padding=12)
+        head.pack(fill=tk.X)
+        ttk.Label(head, text="Futures Training Workspace", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            head,
+            text="Training and research only. Trading terminal UX is intentionally disabled at this stage.",
+            style="Body.TLabel",
+            foreground=self._ui_colors.get("warning", "#F0B23A"),
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(6, 0))
+
+        status = ttk.Frame(root, style="Card.TFrame", padding=12)
+        status.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(status, text="Training Status", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
+        ttk.Label(status, text="Model", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Label(status, textvariable=self.ml_model_id_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=4)
+        ttk.Label(status, text="State", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=4)
+        ttk.Label(status, textvariable=self.ml_training_state_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=4)
+        ttk.Label(status, text="Progress", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
+        ttk.Label(status, textvariable=self.ml_progress_text_var, style="Body.TLabel").grid(row=2, column=1, sticky=tk.W, pady=4)
+        ttk.Label(status, text="Metrics", style="Body.TLabel").grid(row=2, column=2, sticky=tk.W, pady=4)
+        ttk.Label(status, textvariable=self.ml_metrics_compact_var, style="Body.TLabel").grid(row=2, column=3, sticky=tk.W, pady=4)
+
+        actions = ttk.Frame(root, style="Card.TFrame", padding=12)
+        actions.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(actions, text="Training Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        ttk.Button(actions, text="Start Training", command=self.start_ml, style="Start.TButton").grid(
+            row=1, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Stop Training", command=self.stop_ml, style="Stop.TButton").grid(
+            row=1, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Pause Training", command=self.pause_training).grid(
+            row=1, column=2, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Ops Workspace", command=lambda: self._open_workspace(self.statistics_tab)).grid(
+            row=1, column=3, sticky=tk.EW, padx=4, pady=4
+        )
+        for idx in range(4):
+            actions.columnconfigure(idx, weight=1)
+
+    def _refresh_telegram_workspace_text(self) -> None:
+        if self.telegram_workspace_text is None:
+            return
+        try:
+            token_var = self.env_vars.get("TELEGRAM_BOT_TOKEN")
+            chat_var = self.env_vars.get("TELEGRAM_CHAT_ID")
+            token = (token_var.get() if token_var is not None else "").strip()
+            chat_id = (chat_var.get() if chat_var is not None else "").strip()
+            thread_running = bool(self._telegram_thread is not None and self._telegram_thread.is_alive())
+            lines = [
+                f"module: {'RUNNING' if thread_running else 'STOPPED'}",
+                f"profile: {'default' if token else 'missing-token'}",
+                f"allowed_chat: {chat_id or '-'}",
+                "commands: /status /balance /orders /start /stop /pull /restart_soft /restart_hard",
+                "",
+                "Recent status snapshot:",
+                self._telegram_status_text_ui(),
+            ]
+            self.telegram_workspace_text.configure(state=tk.NORMAL)
+            self.telegram_workspace_text.delete("1.0", tk.END)
+            self.telegram_workspace_text.insert(tk.END, "\n".join(lines))
+            self.telegram_workspace_text.configure(state=tk.DISABLED)
+        except Exception:
+            return
+
+    def _build_telegram_workspace_tab(self) -> None:
+        root = ttk.Frame(self.telegram_tab, style="Root.TFrame")
+        root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        top = ttk.Frame(root, style="Card.TFrame", padding=12)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="Telegram Workspace", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Button(top, text="Refresh Telegram", command=self._refresh_telegram_workspace_text).grid(row=0, column=1, sticky=tk.E)
+        ttk.Button(top, text="Open Settings", command=lambda: self._open_workspace(self.settings_tab)).grid(
+            row=0, column=2, sticky=tk.E, padx=(6, 0)
+        )
+        top.columnconfigure(0, weight=1)
+
+        panel = ttk.Frame(root, style="Card.TFrame", padding=12)
+        panel.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        self.telegram_workspace_text = tk.Text(
+            panel,
+            wrap=tk.WORD,
+            bg=self._ui_colors.get("log_bg", "#0F1A2B"),
+            fg=self._ui_colors.get("log_fg", "#D8E8FF"),
+            insertbackground=self._ui_colors.get("log_fg", "#D8E8FF"),
+            relief=tk.FLAT,
+            font=("Consolas", 10),
+        )
+        scroll = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=self.telegram_workspace_text.yview)
+        self.telegram_workspace_text.configure(yscrollcommand=scroll.set, state=tk.DISABLED)
+        self.telegram_workspace_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self._refresh_telegram_workspace_text()
+
     def _build_control_tab(self) -> None:
         split = ttk.Panedwindow(self.control_tab, orient=tk.HORIZONTAL)
         split.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -857,7 +1050,7 @@ class BotikGui:
 
         path_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         path_card.pack(fill=tk.X)
-        ttk.Label(path_card, text="Runtime", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W, columnspan=4)
+        ttk.Label(path_card, text="Spot Runtime", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W, columnspan=4)
         ttk.Label(path_card, text="Python", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=6)
         ttk.Label(path_card, textvariable=self.runtime_python_name_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=6)
         ttk.Label(path_card, text="Config", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=6, padx=(18, 0))
@@ -865,7 +1058,7 @@ class BotikGui:
 
         action_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         action_card.pack(fill=tk.X, pady=8)
-        ttk.Label(action_card, text="Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
+        ttk.Label(action_card, text="Spot Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
 
         ttk.Button(action_card, text="Старт торгов", command=self.start_trading, style="Start.TButton").grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=3
@@ -894,7 +1087,7 @@ class BotikGui:
 
         strategy_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         strategy_card.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(strategy_card, text="Стратегии (мульти-выбор)", style="Section.TLabel").grid(
+        ttk.Label(strategy_card, text="Strategy Selection", style="Section.TLabel").grid(
             row=0, column=0, columnspan=4, sticky=tk.W
         )
         ttk.Checkbutton(strategy_card, text="Spot Spread (Maker)", variable=self.enable_spot_spread_var).grid(
@@ -910,14 +1103,14 @@ class BotikGui:
         ).grid(row=1, column=2, sticky=tk.W, pady=4, padx=(12, 0))
         ttk.Label(
             strategy_card,
-            text="Start (Trade+ML) запускает все отмеченные стратегии одновременно.",
+            text="Start Spot launches enabled spot presets; Futures training is managed in its own workspace.",
             style="Body.TLabel",
         ).grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=(2, 0))
         strategy_card.columnconfigure(3, weight=1)
 
         account_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         account_card.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
-        ttk.Label(account_card, text="Счет и ордера", style="Section.TLabel").grid(
+        ttk.Label(account_card, text="Spot Inventory and Orders", style="Section.TLabel").grid(
             row=0, column=0, columnspan=6, sticky=tk.W
         )
         ttk.Label(account_card, text="Баланс USDT", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
@@ -1141,7 +1334,7 @@ class BotikGui:
         ttk.Label(hint, text="Hint", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             hint,
-            text="Use Start (Trade+ML) for unified runtime.\nPause Training keeps trading active and pauses ML updates.",
+            text="Use Dashboard Home quick actions for runtime control.\nPause Training keeps spot runtime active and pauses model updates.",
             style="Body.TLabel",
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=6)
@@ -1543,7 +1736,7 @@ class BotikGui:
         ttk.Label(
             info_card,
             text=(
-                "Выберите режим торговли и запускайте его прямо из GUI.\n"
+                "Выберите режим и запускайте его из Dashboard Shell.\n"
                 "Для каждого пресета автоматически обновляются config-поля рынка и стратегии."
             ),
             style="Body.TLabel",
@@ -1600,7 +1793,7 @@ class BotikGui:
         ttk.Button(actions_card, text="Apply Spike Params Only", command=self.apply_spike_preset).pack(side=tk.LEFT, padx=6)
         ttk.Label(
             actions_card,
-            text="Запуск/остановка торговли выполняются только с вкладки Control.",
+            text="Запуск/остановка Spot Runtime выполняются через Dashboard Home или Spot Workspace.",
             style="Body.TLabel",
         ).pack(side=tk.LEFT, padx=10)
 
@@ -2131,7 +2324,7 @@ class BotikGui:
         running_modes = self._running_trading_modes()
         running_txt = ",".join(running_modes) if running_modes else "none"
         return (
-            "GUI supervisor:\n"
+            "Dashboard shell supervisor:\n"
             f"version={current_version}\n"
             f"trading={self._trading_group_state().upper()} ({running_txt})\n"
             f"ml={self._status_text(self.ml)}\n"
@@ -2147,8 +2340,8 @@ class BotikGui:
         if latest == self.app_version:
             return
         self.app_version = latest
-        self.root.title(f"Botik Desktop {self.app_version}")
-        self.title_label.config(text=f"Botik Control Console {self.app_version}")
+        self.root.title(f"Botik Dashboard {self.app_version}")
+        self.title_label.config(text=f"Botik Dashboard Shell {self.app_version}")
         self.version_label.config(text=f"app.version: {self.app_version}")
         self._enqueue_log(f"[ui] app.version updated -> {self.app_version}")
 
@@ -2440,8 +2633,8 @@ class BotikGui:
 
     def _update_status(self) -> None:
         self._refresh_app_version()
-        mode = self._load_execution_mode()
-        self.mode_label.config(text=f"execution.mode: {mode}")
+        exec_mode = self._load_execution_mode()
+        self.mode_label.config(text=f"execution.mode: {exec_mode}")
         running_modes = self._running_trading_modes()
         trading_state = self._trading_group_state()
         if running_modes:
@@ -2460,12 +2653,12 @@ class BotikGui:
         self._set_led(self.trading_led, trading_color)
         self._set_led(self.ml_led, self._status_color(self.ml))
         if self.ml.running and not self.ml_training_paused:
-            mode = str(self.ml_runtime_mode or "bootstrap").strip().lower()
-            if mode == "bootstrap":
+            ml_mode = str(self.ml_runtime_mode or "bootstrap").strip().lower()
+            if ml_mode == "bootstrap":
                 self.ml_training_state_var.set("bootstrap")
-            elif mode == "online":
+            elif ml_mode == "online":
                 self.ml_training_state_var.set("online")
-            elif mode == "predict":
+            elif ml_mode == "predict":
                 self.ml_training_state_var.set("predict")
             else:
                 self.ml_training_state_var.set("training")
@@ -2482,6 +2675,17 @@ class BotikGui:
                 self.ml_training_state_var.set("error")
             else:
                 self.ml_training_state_var.set("stopped")
+        telegram_running = bool(self._telegram_thread is not None and self._telegram_thread.is_alive())
+        telegram_state = "RUNNING" if telegram_running else ("DISABLED (no token)" if self._telegram_missing_token_reported else "STOPPED")
+        self.dashboard_spot_status_var.set(
+            f"Spot: {trading_state.upper()} | modes={','.join(running_modes) if running_modes else '-'} | mode={exec_mode}"
+        )
+        self.dashboard_futures_training_status_var.set(
+            f"Futures Training: {self._status_text(self.ml)} | state={self.ml_training_state_var.get()}"
+        )
+        self.dashboard_telegram_status_var.set(f"Telegram: {telegram_state}")
+        self.dashboard_ops_status_var.set(str(self.reconciliation_status_var.get()))
+        self._refresh_telegram_workspace_text()
         self.root.after(500, self._update_status)
 
     def _cmd(self, *parts: str) -> list[str]:
@@ -3056,7 +3260,7 @@ class BotikGui:
         try:
             active_tab = str(self._invoke_on_ui_thread(self._active_tab_key, timeout_sec=1.5))
         except Exception:
-            active_tab = "control"
+            active_tab = "home"
         now_mono = time.monotonic()
         heavy_due = (now_mono - float(self._last_heavy_refresh_ts)) >= float(self._heavy_refresh_min_interval_sec)
         need_heavy_refresh = heavy_due or active_tab in {"stats", "models"}
@@ -4225,14 +4429,20 @@ class BotikGui:
 
     def _active_tab_key(self) -> str:
         if self.notebook is None:
-            return "control"
+            return "home"
         try:
             selected = self.notebook.select()
             widget = self.notebook.nametowidget(selected)
         except Exception:
-            return "control"
+            return "home"
+        if widget is self.home_tab:
+            return "home"
         if widget is self.control_tab:
-            return "control"
+            return "spot"
+        if widget is self.futures_training_tab:
+            return "futures_training"
+        if widget is self.telegram_tab:
+            return "telegram"
         if widget is self.logs_tab:
             return "logs"
         if widget is self.settings_tab:
@@ -4253,7 +4463,7 @@ class BotikGui:
                 except Exception:
                     pass
             return "stats"
-        return "control"
+        return "home"
 
     @staticmethod
     def _parse_pct_cell(value: Any) -> float | None:
@@ -4857,7 +5067,7 @@ class BotikGui:
         self._enqueue_log(f"[strategy] {msg}")
         if not ok:
             return
-        self._enqueue_log("[strategy] preset applied. Use Start (Trade+ML) on Control tab.")
+        self._enqueue_log("[strategy] preset applied. Use Dashboard Home quick actions to start runtime.")
 
     def start_spike_trading(self) -> None:
         self.strategy_mode_var.set(STRATEGY_PRESET_MODES["spot_spike"])
@@ -5085,8 +5295,8 @@ class BotikGui:
             "- Показывает статистику по model_registry: outcomes, plus/minus, net PnL.\n"
             "- Можно вручную активировать выбранную модель.\n\n"
             "5) Strategies tab\n"
-            "- Здесь настраиваются пресеты; запуск/стоп делаются на вкладке Control.\n"
-            "- На Control можно включить сразу несколько стратегий чекбоксами.\n"
+            "- Здесь настраиваются пресеты; запуск Spot Runtime делается из Dashboard Home.\n"
+            "- Для Spot Workspace доступны чекбоксы мульти-режима.\n"
         )
         messagebox.showinfo("Help", text)
 
