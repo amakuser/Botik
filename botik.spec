@@ -7,6 +7,12 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
+if not (PROJECT_ROOT / "src" / "botik").exists():
+    candidate = PROJECT_ROOT / "Botik"
+    if (candidate / "src" / "botik").exists():
+        PROJECT_ROOT = candidate
+if not (PROJECT_ROOT / "src" / "botik").exists():
+    PROJECT_ROOT = Path.cwd().resolve()
 
 hiddenimports = []
 hiddenimports += collect_submodules("src.botik")
