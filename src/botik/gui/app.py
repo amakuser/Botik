@@ -515,6 +515,17 @@ def _fmt_workspace_float(value: Any, *, precision: int = 8, fallback: str = "0")
         return fallback
 
 
+def _fmt_workspace_ts_from_ms(value: Any) -> str:
+    try:
+        ms = int(value)
+        if ms <= 0:
+            return "-"
+        dt = datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).astimezone()
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "-"
+
+
 def classify_spot_holding_record(row: dict[str, Any]) -> dict[str, Any]:
     hold_reason = str(row.get("hold_reason") or "").strip().lower()
     strategy_owner = str(row.get("strategy_owner") or "").strip()
@@ -763,6 +774,290 @@ def load_spot_workspace_read_model(
     return out
 
 
+def _safe_metrics_json(value: Any) -> dict[str, Any]:
+    text = str(value or "").strip()
+    if not text:
+        return {}
+    try:
+        raw = json.loads(text)
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _metric_or_unknown(metrics: dict[str, Any], key: str, *, precision: int = 6) -> str:
+    if key not in metrics:
+        return "not available"
+    try:
+        return f"{float(metrics.get(key)):.{precision}f}"
+    except (TypeError, ValueError):
+        return "not available"
+
+
+def load_futures_training_workspace_read_model(
+    db_path: Path,
+    *,
+    raw_cfg: dict[str, Any] | None = None,
+    release_manifest: dict[str, Any] | None = None,
+    ml_running: bool = False,
+    ml_paused: bool = False,
+    ml_process_state: str = "stopped",
+    training_mode: str = "bootstrap",
+) -> dict[str, Any]:
+    cfg = raw_cfg or {}
+    manifest = release_manifest or {}
+    symbols = cfg.get("symbols") if isinstance(cfg.get("symbols"), list) else []
+    first_symbol = str(symbols[0]).upper() if symbols else "unknown"
+    candles_source = str(((cfg.get("bybit") or {}).get("ws_public_host") or "unknown")).strip() or "unknown"
+    active_profile = str(manifest.get("active_config_profile") or "unknown")
+    active_futures_model = str(manifest.get("active_futures_model_version") or "unknown")
+    training_engine_version = str(manifest.get("futures_training_engine_version") or "unknown")
+    timeframe_hint = str(((cfg.get("strategy") or {}).get("scanner_interval_sec") or "")).strip()
+    timeframe = f"{timeframe_hint}s" if timeframe_hint else "not available"
+
+    runtime_status = "idle"
+    state = str(ml_process_state or "").strip().lower()
+    if ml_running and ml_paused:
+        runtime_status = "paused"
+    elif ml_running:
+        runtime_status = "running"
+    elif state == "error":
+        runtime_status = "failed"
+    elif state == "stopped":
+        runtime_status = "idle"
+    elif state:
+        runtime_status = state
+
+    out: dict[str, Any] = {
+        "training_runtime_status": runtime_status,
+        "active_symbol": first_symbol,
+        "active_timeframe": timeframe,
+        "active_dataset_range": "not available",
+        "candles_source": candles_source,
+        "dataset_prepared": "no",
+        "dataset_rows": 0,
+        "dataset_windows_count": 0,
+        "candidate_events_count": 0,
+        "outcomes_count": 0,
+        "features_prepared": "no",
+        "labels_prepared": "no",
+        "active_recipe": f"runtime={str(((cfg.get('strategy') or {}).get('runtime_strategy') or 'unknown'))}; ml={training_mode}",
+        "pipeline_last_prepared_at": "-",
+        "pipeline_last_failure": "not available",
+        "run_epoch": "not available",
+        "run_step": "not available",
+        "run_status": runtime_status,
+        "run_started_at": "-",
+        "run_updated_at": "-",
+        "run_duration": "not available",
+        "train_loss": "not available",
+        "val_loss": "not available",
+        "best_checkpoint": "not available",
+        "latest_checkpoint": "not available",
+        "active_futures_model_version": active_futures_model,
+        "training_engine_version": training_engine_version,
+        "evaluation_summary": "not available",
+        "best_metric": "not available",
+        "last_evaluation_ts": "-",
+        "last_completed_run": "-",
+        "last_error": "not available",
+        "checkpoints_rows": [],
+        "actions": [
+            "Refresh",
+            "Prepare Dataset",
+            "Build Features / Labels",
+            "Start Training",
+            "Pause Training",
+            "Run Evaluation",
+            "Open Checkpoints",
+            "Open Logs",
+        ],
+    }
+    if not db_path.exists():
+        return out
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        latest_signal_symbol = ""
+        ts_min = 0
+        ts_max = 0
+        if _table_exists_local(conn, "signals"):
+            sig_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*),
+                    MIN(COALESCE(ts_signal_ms, 0)),
+                    MAX(COALESCE(ts_signal_ms, 0))
+                FROM signals
+                """
+            ).fetchone()
+            if sig_row:
+                signals_count = int(sig_row[0] or 0)
+                ts_min = int(sig_row[1] or 0)
+                ts_max = int(sig_row[2] or 0)
+                out["dataset_rows"] = signals_count
+                out["dataset_windows_count"] = signals_count
+                out["candidate_events_count"] = signals_count
+                if signals_count > 0:
+                    out["dataset_prepared"] = "yes"
+                    out["features_prepared"] = "yes"
+            latest_signal = conn.execute(
+                """
+                SELECT COALESCE(symbol, ''), COALESCE(created_at_utc, '')
+                FROM signals
+                ORDER BY COALESCE(ts_signal_ms, 0) DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if latest_signal:
+                latest_signal_symbol = str(latest_signal[0] or "").strip().upper()
+                if latest_signal_symbol:
+                    out["active_symbol"] = latest_signal_symbol
+                out["pipeline_last_prepared_at"] = str(latest_signal[1] or "-")
+
+        if ts_min > 0 and ts_max > 0:
+            out["active_dataset_range"] = f"{_fmt_workspace_ts_from_ms(ts_min)} -> {_fmt_workspace_ts_from_ms(ts_max)}"
+
+        if _table_exists_local(conn, "outcomes"):
+            outcomes_row = conn.execute(
+                "SELECT COUNT(*), COALESCE(MAX(closed_at_utc), '') FROM outcomes"
+            ).fetchone()
+            outcomes_count = int(outcomes_row[0] or 0) if outcomes_row else 0
+            out["outcomes_count"] = outcomes_count
+            if outcomes_count > 0:
+                out["labels_prepared"] = "yes"
+                out["last_completed_run"] = str((outcomes_row[1] if outcomes_row else "") or "-")
+
+        checkpoints: list[dict[str, Any]] = []
+        best_checkpoint_id = "not available"
+        best_metric_name = "quality_score"
+        best_metric_value = float("-inf")
+        latest_checkpoint_id = "not available"
+        latest_checkpoint_ts = "-"
+        if _table_exists_local(conn, "model_registry"):
+            rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(model_id, ''),
+                    COALESCE(created_at_utc, ''),
+                    COALESCE(is_active, 0),
+                    COALESCE(metrics_json, ''),
+                    COALESCE(path_or_payload, '')
+                FROM model_registry
+                ORDER BY created_at_utc DESC, id DESC
+                LIMIT 200
+                """
+            ).fetchall()
+            if rows:
+                latest_checkpoint_id = str(rows[0][0] or "not available")
+                latest_checkpoint_ts = str(rows[0][1] or "-")
+            for model_id, created_at, is_active, metrics_json, path in rows:
+                metrics = _safe_metrics_json(metrics_json)
+                quality = float(metrics.get("quality_score", metrics.get("open_accuracy", -9999.0)) or -9999.0)
+                train_loss_text = _metric_or_unknown(metrics, "training_loss", precision=6)
+                val_loss_text = _metric_or_unknown(metrics, "val_loss", precision=6)
+                open_acc_text = _metric_or_unknown(metrics, "open_accuracy", precision=6)
+                checkpoints.append(
+                    {
+                        "model_id": str(model_id or ""),
+                        "created_at": str(created_at or "-"),
+                        "is_active": bool(int(is_active or 0)),
+                        "quality_score": quality,
+                        "open_accuracy": open_acc_text,
+                        "train_loss": train_loss_text,
+                        "val_loss": val_loss_text,
+                        "path": str(path or ""),
+                        "metrics": metrics,
+                    }
+                )
+                if quality > best_metric_value:
+                    best_metric_value = quality
+                    best_checkpoint_id = str(model_id or "not available")
+
+        out["latest_checkpoint"] = latest_checkpoint_id
+        out["best_checkpoint"] = best_checkpoint_id
+        out["checkpoints_rows"] = [
+            (
+                str(idx),
+                str(item.get("model_id") or ""),
+                str(item.get("created_at") or "-"),
+                "yes" if bool(item.get("is_active")) else "no",
+                (
+                    "not available"
+                    if float(item.get("quality_score", -9999.0)) <= -9999.0
+                    else f"{float(item.get('quality_score')):.4f}"
+                ),
+                str(item.get("open_accuracy") or "not available"),
+                str(item.get("train_loss") or "not available"),
+                str(item.get("val_loss") or "not available"),
+                str(item.get("path") or ""),
+            )
+            for idx, item in enumerate(checkpoints, start=1)
+        ]
+
+        active_checkpoint = next((cp for cp in checkpoints if bool(cp.get("is_active"))), None)
+        active_metrics = dict(active_checkpoint.get("metrics") or {}) if active_checkpoint else {}
+        if active_metrics:
+            out["train_loss"] = _metric_or_unknown(active_metrics, "training_loss", precision=6)
+            out["val_loss"] = _metric_or_unknown(active_metrics, "val_loss", precision=6)
+            open_acc = _metric_or_unknown(active_metrics, "open_accuracy", precision=4)
+            edge_mae = _metric_or_unknown(active_metrics, "edge_mae", precision=4)
+            out["evaluation_summary"] = f"open_accuracy={open_acc} | edge_mae={edge_mae}"
+            out["best_metric"] = (
+                _metric_or_unknown(active_metrics, "quality_score", precision=6)
+                if "quality_score" in active_metrics
+                else _metric_or_unknown(active_metrics, "open_accuracy", precision=6)
+            )
+
+        if _table_exists_local(conn, "model_stats"):
+            m_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*),
+                    COALESCE(MAX(ts_ms), 0)
+                FROM model_stats
+                """
+            ).fetchone()
+            if m_row:
+                stats_count = int(m_row[0] or 0)
+                max_ts = int(m_row[1] or 0)
+                if stats_count > 0:
+                    out["run_step"] = str(stats_count)
+                    out["run_updated_at"] = _fmt_workspace_ts_from_ms(max_ts)
+                    out["last_evaluation_ts"] = _fmt_workspace_ts_from_ms(max_ts)
+            r_row = conn.execute(
+                """
+                SELECT COALESCE(MIN(ts_ms), 0), COALESCE(MAX(ts_ms), 0)
+                FROM model_stats
+                """
+            ).fetchone()
+            if r_row:
+                min_ts = int(r_row[0] or 0)
+                max_ts = int(r_row[1] or 0)
+                if min_ts > 0:
+                    out["run_started_at"] = _fmt_workspace_ts_from_ms(min_ts)
+                if min_ts > 0 and max_ts >= min_ts:
+                    duration_sec = max((max_ts - min_ts) // 1000, 0)
+                    out["run_duration"] = f"{duration_sec}s"
+
+        out["last_error"] = "not available" if runtime_status not in {"failed"} else "training_runtime_failed"
+        if runtime_status == "running":
+            out["run_status"] = "running"
+        elif runtime_status == "paused":
+            out["run_status"] = "paused"
+        elif runtime_status == "failed":
+            out["run_status"] = "failed"
+        elif out["last_completed_run"] != "-":
+            out["run_status"] = "completed"
+        else:
+            out["run_status"] = "idle"
+    except sqlite3.Error:
+        return out
+    finally:
+        conn.close()
+    return out
+
+
 class ManagedProcess:
     def __init__(self, name: str, on_output: Callable[[str], None]) -> None:
         self.name = name
@@ -947,6 +1242,12 @@ class BotikGui:
         self.dashboard_release_panel_var = tk.StringVar(value="Loaded Components / Releases: not loaded")
         self.spot_workspace_summary_var = tk.StringVar(value="Spot Summary: n/a")
         self.spot_workspace_policy_var = tk.StringVar(value="Policy: n/a")
+        self.futures_training_summary_var = tk.StringVar(value="Training Summary: n/a")
+        self.futures_dataset_summary_var = tk.StringVar(value="Dataset/Candles: n/a")
+        self.futures_pipeline_summary_var = tk.StringVar(value="Features/Labels Pipeline: n/a")
+        self.futures_run_progress_var = tk.StringVar(value="Training Run Progress: n/a")
+        self.futures_eval_summary_var = tk.StringVar(value="Evaluation Summary: n/a")
+        self.futures_checkpoints_summary_var = tk.StringVar(value="Checkpoints: n/a")
         self.ml_model_id_var = tk.StringVar(value="bootstrap")
         self.ml_training_state_var = tk.StringVar(value="idle")
         self.ml_progress_text_var = tk.StringVar(value="0%")
@@ -986,6 +1287,7 @@ class BotikGui:
         self.spot_workspace_orders_tree: ttk.Treeview | None = None
         self.spot_workspace_fills_tree: ttk.Treeview | None = None
         self.spot_workspace_exit_tree: ttk.Treeview | None = None
+        self.futures_training_checkpoints_tree: ttk.Treeview | None = None
         self.log_text_full: tk.Text | None = None
         self.telegram_workspace_text: tk.Text | None = None
         self.log_level_filter_combo: ttk.Combobox | None = None
@@ -1351,49 +1653,92 @@ class BotikGui:
         ttk.Label(head, text="Futures Training Workspace", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             head,
-            text="Training and research only. Trading terminal UX is intentionally disabled at this stage.",
+            text="Research and training only. This workspace is not a futures trading terminal.",
             style="Body.TLabel",
             foreground=self._ui_colors.get("warning", "#F0B23A"),
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(6, 0))
 
-        status = ttk.Frame(root, style="Card.TFrame", padding=12)
-        status.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(status, text="Training Status", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
-        ttk.Label(status, text="Model", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
-        ttk.Label(status, textvariable=self.ml_model_id_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=4)
-        ttk.Label(status, text="State", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=4)
-        ttk.Label(status, textvariable=self.ml_training_state_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=4)
-        ttk.Label(status, text="Progress", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
-        ttk.Label(status, textvariable=self.ml_progress_text_var, style="Body.TLabel").grid(row=2, column=1, sticky=tk.W, pady=4)
-        ttk.Label(status, text="Metrics", style="Body.TLabel").grid(row=2, column=2, sticky=tk.W, pady=4)
-        ttk.Label(status, textvariable=self.ml_metrics_compact_var, style="Body.TLabel").grid(row=2, column=3, sticky=tk.W, pady=4)
+        summary = ttk.Frame(root, style="Card.TFrame", padding=12)
+        summary.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(summary, text="Training Status Summary", style="Section.TLabel").grid(
+            row=0, column=0, sticky=tk.W
+        )
+        ttk.Label(
+            summary,
+            textvariable=self.futures_training_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(
+            summary,
+            textvariable=self.futures_run_progress_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
+        summary.columnconfigure(0, weight=1)
 
-        metrics_card = ttk.Frame(root, style="Card.TFrame", padding=12)
-        metrics_card.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(metrics_card, text="Training Progress", style="Section.TLabel").grid(
+        pipelines = ttk.Frame(root, style="Root.TFrame")
+        pipelines.pack(fill=tk.X, pady=(8, 0))
+        dataset_card = ttk.Frame(pipelines, style="Card.TFrame", padding=12)
+        dataset_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        pipeline_card = ttk.Frame(pipelines, style="Card.TFrame", padding=12)
+        pipeline_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        ttk.Label(dataset_card, text="Dataset / Candles", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            dataset_card,
+            textvariable=self.futures_dataset_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=530,
+        ).pack(anchor=tk.W, pady=(6, 0))
+
+        ttk.Label(pipeline_card, text="Feature & Label Pipeline", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            pipeline_card,
+            textvariable=self.futures_pipeline_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=530,
+        ).pack(anchor=tk.W, pady=(6, 0))
+
+        eval_row = ttk.Frame(root, style="Root.TFrame")
+        eval_row.pack(fill=tk.X, pady=(8, 0))
+        eval_card = ttk.Frame(eval_row, style="Card.TFrame", padding=12)
+        eval_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        metrics_card = ttk.Frame(eval_row, style="Card.TFrame", padding=12)
+        metrics_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        ttk.Label(eval_card, text="Evaluation / Metrics Summary", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            eval_card,
+            textvariable=self.futures_eval_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=530,
+        ).pack(anchor=tk.W, pady=(6, 0))
+
+        ttk.Label(metrics_card, text="Training Run Progress", style="Section.TLabel").grid(
             row=0, column=0, columnspan=4, sticky=tk.W
         )
-        ttk.Label(metrics_card, text="Progress", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=3)
+        ttk.Label(metrics_card, text="Model", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=3)
+        ttk.Label(metrics_card, textvariable=self.ml_model_id_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=3)
+        ttk.Label(metrics_card, text="State", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=3, padx=(12, 0))
+        ttk.Label(metrics_card, textvariable=self.ml_training_state_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=3)
+        ttk.Label(metrics_card, text="Progress", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=3)
         self.ml_progress = ttk.Progressbar(metrics_card, mode="indeterminate", maximum=100)
-        self.ml_progress.grid(row=1, column=1, columnspan=2, sticky=tk.EW, pady=3, padx=(0, 8))
+        self.ml_progress.grid(row=2, column=1, columnspan=2, sticky=tk.EW, pady=3, padx=(0, 8))
         self.ml_progress_label = ttk.Label(
             metrics_card,
             textvariable=self.ml_progress_text_var,
             style="Body.TLabel",
             justify=tk.LEFT,
         )
-        self.ml_progress_label.grid(row=1, column=3, sticky=tk.W, pady=3)
-        self.ml_progress_label.configure(wraplength=260)
-        ttk.Label(metrics_card, text="Metrics", style="Body.TLabel").grid(row=2, column=0, sticky=tk.NW, pady=(2, 0))
-        ml_metrics_label = ttk.Label(
-            metrics_card,
-            textvariable=self.ml_metrics_compact_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-        )
-        ml_metrics_label.grid(row=2, column=1, columnspan=3, sticky=tk.EW, pady=(2, 0))
-        ml_metrics_label.configure(wraplength=420)
+        self.ml_progress_label.grid(row=2, column=3, sticky=tk.W, pady=3)
+        self.ml_progress_label.configure(wraplength=220)
         self.ml_chart_canvas = tk.Canvas(
             metrics_card,
             height=48,
@@ -1405,20 +1750,73 @@ class BotikGui:
         for i in range(4):
             metrics_card.columnconfigure(i, weight=1)
 
+        checkpoints_card = ttk.Frame(root, style="Card.TFrame", padding=12)
+        checkpoints_card.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        ttk.Label(checkpoints_card, text="Checkpoints / Active Futures Model", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            checkpoints_card,
+            textvariable=self.futures_checkpoints_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).pack(anchor=tk.W, pady=(6, 6))
+        cp_wrap = ttk.Frame(checkpoints_card, style="Card.TFrame")
+        cp_wrap.pack(fill=tk.BOTH, expand=True)
+        cp_wrap.columnconfigure(0, weight=1)
+        cp_wrap.rowconfigure(0, weight=1)
+        self.futures_training_checkpoints_tree = ttk.Treeview(
+            cp_wrap,
+            columns=("n", "model", "created", "active", "quality", "open_acc", "train_loss", "val_loss", "path"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("model", "Model", 200),
+            ("created", "Created", 150),
+            ("active", "Active", 60),
+            ("quality", "BestMetric", 90),
+            ("open_acc", "OpenAcc", 90),
+            ("train_loss", "TrainLoss", 92),
+            ("val_loss", "ValLoss", 92),
+            ("path", "Checkpoint Path", 260),
+        ]:
+            self.futures_training_checkpoints_tree.heading(col, text=title)
+            self.futures_training_checkpoints_tree.column(col, width=width, anchor=tk.W, stretch=False)
+        self.futures_training_checkpoints_tree.column("path", stretch=True)
+        cp_scroll_y = ttk.Scrollbar(cp_wrap, orient=tk.VERTICAL, command=self.futures_training_checkpoints_tree.yview)
+        cp_scroll_x = ttk.Scrollbar(cp_wrap, orient=tk.HORIZONTAL, command=self.futures_training_checkpoints_tree.xview)
+        self.futures_training_checkpoints_tree.configure(yscrollcommand=cp_scroll_y.set, xscrollcommand=cp_scroll_x.set)
+        self.futures_training_checkpoints_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        cp_scroll_y.grid(row=0, column=1, sticky=tk.NS)
+        cp_scroll_x.grid(row=1, column=0, sticky=tk.EW)
+
         actions = ttk.Frame(root, style="Card.TFrame", padding=12)
         actions.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(actions, text="Training Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
-        ttk.Button(actions, text="Start Training", command=self.start_ml, style="Start.TButton").grid(
+        ttk.Button(actions, text="Refresh", command=self.refresh_runtime_snapshot).grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Stop Training", command=self.stop_ml, style="Stop.TButton").grid(
+        ttk.Button(actions, text="Prepare Dataset", command=self.prepare_futures_training_dataset).grid(
             row=1, column=1, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Pause Training", command=self.pause_training).grid(
+        ttk.Button(actions, text="Build Features / Labels", command=self.build_futures_features_labels).grid(
             row=1, column=2, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Open Ops Workspace", command=lambda: self._open_workspace(self.statistics_tab)).grid(
+        ttk.Button(actions, text="Start Training", command=self.start_training, style="Start.TButton").grid(
             row=1, column=3, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Pause Training", command=self.pause_training).grid(
+            row=2, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Run Evaluation", command=self.run_futures_training_evaluation).grid(
+            row=2, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Checkpoints", command=self.open_futures_checkpoints_dir).grid(
+            row=2, column=2, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+            row=2, column=3, sticky=tk.EW, padx=4, pady=4
         )
         for idx in range(4):
             actions.columnconfigure(idx, weight=1)
@@ -3949,6 +4347,15 @@ class BotikGui:
         release_manifest = load_dashboard_release_manifest()
         release_panel = format_dashboard_release_panel(release_manifest)
         spot_workspace = load_spot_workspace_read_model(db_path, account_type="UNIFIED", limit=400)
+        futures_training_workspace = load_futures_training_workspace_read_model(
+            db_path,
+            raw_cfg=raw_cfg,
+            release_manifest=release_manifest,
+            ml_running=bool(self.ml.running),
+            ml_paused=bool(self.ml_training_paused),
+            ml_process_state=str(self.ml.state),
+            training_mode=ml_mode,
+        )
         batch_size = max(int((raw_cfg.get("ml") or {}).get("train_batch_size") or 50), 1)
         ml_metrics = self._read_ml_metrics(db_path)
         closed_count = int(ml_metrics.get("closed_count", 0))
@@ -4043,6 +4450,73 @@ class BotikGui:
                 recovered=int(spot_workspace.get("recovered_holdings_count") or 0),
                 stale=int(spot_workspace.get("stale_holdings_count") or 0),
             ),
+            "futures_training_summary_line": (
+                "status={status} | symbol={symbol} timeframe={timeframe} | dataset_range={dataset_range} | "
+                "best_checkpoint={best_cp} | latest_checkpoint={latest_cp} | last_error={last_error}"
+            ).format(
+                status=str(futures_training_workspace.get("training_runtime_status") or "unknown"),
+                symbol=str(futures_training_workspace.get("active_symbol") or "unknown"),
+                timeframe=str(futures_training_workspace.get("active_timeframe") or "not available"),
+                dataset_range=str(futures_training_workspace.get("active_dataset_range") or "not available"),
+                best_cp=str(futures_training_workspace.get("best_checkpoint") or "not available"),
+                latest_cp=str(futures_training_workspace.get("latest_checkpoint") or "not available"),
+                last_error=str(futures_training_workspace.get("last_error") or "not available"),
+            ),
+            "futures_dataset_summary_line": (
+                "candles_source={source} | dataset_prepared={prepared} | rows={rows} windows={windows} | "
+                "candidate_events={events} outcomes={outcomes}"
+            ).format(
+                source=str(futures_training_workspace.get("candles_source") or "unknown"),
+                prepared=str(futures_training_workspace.get("dataset_prepared") or "no"),
+                rows=int(futures_training_workspace.get("dataset_rows") or 0),
+                windows=int(futures_training_workspace.get("dataset_windows_count") or 0),
+                events=int(futures_training_workspace.get("candidate_events_count") or 0),
+                outcomes=int(futures_training_workspace.get("outcomes_count") or 0),
+            ),
+            "futures_pipeline_summary_line": (
+                "features={features} labels={labels} | recipe={recipe} | last_prepared={prepared_at} | "
+                "last_failure={failure}"
+            ).format(
+                features=str(futures_training_workspace.get("features_prepared") or "no"),
+                labels=str(futures_training_workspace.get("labels_prepared") or "no"),
+                recipe=str(futures_training_workspace.get("active_recipe") or "unknown"),
+                prepared_at=str(futures_training_workspace.get("pipeline_last_prepared_at") or "-"),
+                failure=str(futures_training_workspace.get("pipeline_last_failure") or "not available"),
+            ),
+            "futures_run_progress_line": (
+                "run_status={run_status} | epoch={epoch} step={step} | train_loss={train_loss} val_loss={val_loss} | "
+                "started={started} updated={updated} duration={duration}"
+            ).format(
+                run_status=str(futures_training_workspace.get("run_status") or "unknown"),
+                epoch=str(futures_training_workspace.get("run_epoch") or "not available"),
+                step=str(futures_training_workspace.get("run_step") or "not available"),
+                train_loss=str(futures_training_workspace.get("train_loss") or "not available"),
+                val_loss=str(futures_training_workspace.get("val_loss") or "not available"),
+                started=str(futures_training_workspace.get("run_started_at") or "-"),
+                updated=str(futures_training_workspace.get("run_updated_at") or "-"),
+                duration=str(futures_training_workspace.get("run_duration") or "not available"),
+            ),
+            "futures_eval_summary_line": (
+                "evaluation={evaluation} | best_metric={best_metric} @ {last_eval} | "
+                "active_futures_model={active_model} | engine={engine} | profile={profile}"
+            ).format(
+                evaluation=str(futures_training_workspace.get("evaluation_summary") or "not available"),
+                best_metric=str(futures_training_workspace.get("best_metric") or "not available"),
+                last_eval=str(futures_training_workspace.get("last_evaluation_ts") or "-"),
+                active_model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
+                engine=str(futures_training_workspace.get("training_engine_version") or "unknown"),
+                profile=str(release_manifest.get("active_config_profile") or "unknown"),
+            ),
+            "futures_checkpoints_summary_line": (
+                "checkpoints={count} | best={best_cp} | latest={latest_cp} | "
+                "active_futures_model={active_model}"
+            ).format(
+                count=len(list(futures_training_workspace.get("checkpoints_rows") or [])),
+                best_cp=str(futures_training_workspace.get("best_checkpoint") or "not available"),
+                latest_cp=str(futures_training_workspace.get("latest_checkpoint") or "not available"),
+                active_model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
+            ),
+            "futures_training_checkpoints_rows": list(futures_training_workspace.get("checkpoints_rows") or []),
             "history_rows": history_rows_main,
             "history_rows_full": history_rows_full,
             "stats_orders_total": int(history_total),
@@ -5263,6 +5737,24 @@ class BotikGui:
         )
         self.spot_workspace_summary_var.set(str(snapshot.get("spot_workspace_summary_line") or "Spot Summary: n/a"))
         self.spot_workspace_policy_var.set(str(snapshot.get("spot_workspace_policy_line") or "Policy: n/a"))
+        self.futures_training_summary_var.set(
+            str(snapshot.get("futures_training_summary_line") or "Training Summary: n/a")
+        )
+        self.futures_dataset_summary_var.set(
+            str(snapshot.get("futures_dataset_summary_line") or "Dataset/Candles: n/a")
+        )
+        self.futures_pipeline_summary_var.set(
+            str(snapshot.get("futures_pipeline_summary_line") or "Features/Labels Pipeline: n/a")
+        )
+        self.futures_run_progress_var.set(
+            str(snapshot.get("futures_run_progress_line") or "Training Run Progress: n/a")
+        )
+        self.futures_eval_summary_var.set(
+            str(snapshot.get("futures_eval_summary_line") or "Evaluation Summary: n/a")
+        )
+        self.futures_checkpoints_summary_var.set(
+            str(snapshot.get("futures_checkpoints_summary_line") or "Checkpoints: n/a")
+        )
         self._set_tree_rows(self.open_orders_tree, list(snapshot.get("spot_workspace_open_orders_rows") or []))
         if self.spot_workspace_holdings_tree is not None:
             self._set_tree_rows(self.spot_workspace_holdings_tree, list(snapshot.get("spot_workspace_holdings_rows") or []))
@@ -5270,6 +5762,11 @@ class BotikGui:
             self._set_tree_rows(self.spot_workspace_fills_tree, list(snapshot.get("spot_workspace_fills_rows") or []))
         if self.spot_workspace_exit_tree is not None:
             self._set_tree_rows(self.spot_workspace_exit_tree, list(snapshot.get("spot_workspace_exit_rows") or []))
+        if self.futures_training_checkpoints_tree is not None:
+            self._set_tree_rows(
+                self.futures_training_checkpoints_tree,
+                list(snapshot.get("futures_training_checkpoints_rows") or []),
+            )
         if self.order_history_tree is not None:
             self._set_tree_rows(self.order_history_tree, list(snapshot.get("history_rows") or []))
         if self.stats_history_tree is not None and active_tab == "stats":
@@ -6008,6 +6505,83 @@ class BotikGui:
                 return
             self._enqueue_log("[ui] training paused")
         self.refresh_runtime_snapshot()
+
+    def _run_training_workspace_task(self, *, label: str, cmd: list[str]) -> None:
+        if self.launcher_mode == "packaged":
+            self._enqueue_log(
+                f"[futures-training] {label}: not available in packaged Dashboard Shell one-shot mode. "
+                "Use source mode or run background training process."
+            )
+            return
+        threading.Thread(target=self._run_one_shot, args=(cmd,), daemon=True).start()
+
+    def prepare_futures_training_dataset(self) -> None:
+        self._flush_autosave()
+        raw_cfg = self._load_yaml()
+        db_path = self._resolve_db_path(raw_cfg)
+        out_csv = ROOT_DIR / "data" / "ml" / "trades_dataset.csv"
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            self.python_var.get(),
+            "tools/export_trade_dataset.py",
+            "--config",
+            self.config_var.get(),
+            "--db-path",
+            str(db_path),
+            "--out-csv",
+            str(out_csv),
+            "--out-parquet",
+            "",
+        ]
+        self._enqueue_log("[futures-training] prepare dataset requested")
+        self._run_training_workspace_task(label="prepare_dataset", cmd=cmd)
+
+    def build_futures_features_labels(self) -> None:
+        self._flush_autosave()
+        cmd = [
+            self.python_var.get(),
+            "-m",
+            "ml_service.run_loop",
+            "--config",
+            self.config_var.get(),
+            "--mode",
+            "bootstrap",
+            "--train-once",
+        ]
+        self._enqueue_log("[futures-training] build features/labels requested")
+        self._run_training_workspace_task(label="build_features_labels", cmd=cmd)
+
+    def run_futures_training_evaluation(self) -> None:
+        self._flush_autosave()
+        cmd = [
+            self.python_var.get(),
+            "-m",
+            "ml_service.run_loop",
+            "--config",
+            self.config_var.get(),
+            "--mode",
+            "predict",
+            "--predict-once",
+        ]
+        self._enqueue_log("[futures-training] evaluation run requested")
+        self._run_training_workspace_task(label="run_evaluation", cmd=cmd)
+
+    def open_futures_checkpoints_dir(self) -> None:
+        raw_cfg = self._load_yaml()
+        model_dir = Path(str((raw_cfg.get("ml") or {}).get("model_dir") or "data/models"))
+        if not model_dir.is_absolute():
+            model_dir = ROOT_DIR / model_dir
+        model_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            if os.name == "nt":
+                os.startfile(str(model_dir))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(model_dir)], cwd=str(ROOT_DIR))
+            else:
+                subprocess.Popen(["xdg-open", str(model_dir)], cwd=str(ROOT_DIR))
+            self._enqueue_log(f"[futures-training] opened checkpoints dir: {model_dir}")
+        except Exception as exc:
+            self._enqueue_log(f"[futures-training] open checkpoints dir failed: {exc}")
 
     def run_preflight(self) -> None:
         self._flush_autosave()

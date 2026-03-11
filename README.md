@@ -81,7 +81,13 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
 
 - Dashboard Home: статусы, quick actions, блок Loaded Components / Releases.
 - Spot Workspace: inventory-aware контроль holdings/orders/fills/exit decisions, safe policy labels.
-- Futures Training Workspace: только training/research (не trading terminal).
+- Futures Training Workspace: только training/research (не trading terminal), отдельные блоки:
+  - Training Status Summary,
+  - Dataset / Candles,
+  - Feature & Label Pipeline,
+  - Training Run Progress,
+  - Evaluation / Metrics Summary,
+  - Checkpoints / Active Futures Model.
 - Telegram Workspace: модуль Telegram и его operational status.
 - Logs Workspace: фильтруемые runtime логи.
 - Ops Workspace: reconciliation/issues/audit/health.
