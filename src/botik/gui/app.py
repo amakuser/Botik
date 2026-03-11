@@ -51,6 +51,8 @@ ENV_PATH = ROOT_DIR / ".env"
 DEFAULT_CONFIG_PATH = ROOT_DIR / "config.yaml"
 GUI_LOG_PATH = ROOT_DIR / "logs" / "gui.log"
 DASHBOARD_RELEASE_MANIFEST_PATH = ROOT_DIR / "dashboard_release_manifest.yaml"
+DASHBOARD_WORKSPACE_MANIFEST_PATH = ROOT_DIR / "dashboard_workspace_manifest.yaml"
+ACTIVE_MODELS_MANIFEST_PATH = ROOT_DIR / "active_models.yaml"
 
 STRATEGY_PRESET_LABELS: dict[str, str] = {
     "Spot Spread (Maker)": "spot_spread",
@@ -111,6 +113,150 @@ TELEGRAM_WORKSPACE_ACTIONS: tuple[str, ...] = (
 
 def dashboard_workspace_labels() -> list[str]:
     return [label for _, label in DASHBOARD_WORKSPACE_TABS]
+
+
+def _default_workspace_manifest_tabs() -> list[dict[str, Any]]:
+    return [
+        {
+            "key": key,
+            "label": label,
+            "enabled": True,
+            "visible": True,
+            "order": idx,
+        }
+        for idx, (key, label) in enumerate(DASHBOARD_WORKSPACE_TABS, start=1)
+    ]
+
+
+def resolve_dashboard_workspace_tabs(manifest_data: dict[str, Any] | None = None) -> list[tuple[str, str]]:
+    defaults_map = {key: label for key, label in DASHBOARD_WORKSPACE_TABS}
+    entries: list[dict[str, Any]] = []
+    raw_entries = manifest_data.get("workspaces") if isinstance(manifest_data, dict) else None
+    if isinstance(raw_entries, list):
+        for idx, item in enumerate(raw_entries, start=1):
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key") or "").strip()
+            if key not in defaults_map:
+                continue
+            label = str(item.get("label") or defaults_map[key]).strip() or defaults_map[key]
+            enabled = bool(item.get("enabled", True))
+            visible = bool(item.get("visible", True))
+            order_raw = item.get("order", idx)
+            try:
+                order = int(order_raw)
+            except (TypeError, ValueError):
+                order = idx
+            entries.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "enabled": enabled,
+                    "visible": visible,
+                    "order": order,
+                    "idx": idx,
+                }
+            )
+
+    if not entries:
+        entries = [
+            {
+                "key": key,
+                "label": label,
+                "enabled": True,
+                "visible": True,
+                "order": idx,
+                "idx": idx,
+            }
+            for idx, (key, label) in enumerate(DASHBOARD_WORKSPACE_TABS, start=1)
+        ]
+
+    enabled_entries = [item for item in entries if bool(item.get("enabled")) and bool(item.get("visible"))]
+    if not enabled_entries:
+        enabled_entries = [
+            {
+                "key": key,
+                "label": label,
+                "enabled": True,
+                "visible": True,
+                "order": idx,
+                "idx": idx,
+            }
+            for idx, (key, label) in enumerate(DASHBOARD_WORKSPACE_TABS, start=1)
+        ]
+    enabled_entries.sort(key=lambda x: (int(x.get("order") or 0), int(x.get("idx") or 0)))
+    seen: set[str] = set()
+    out: list[tuple[str, str]] = []
+    for item in enabled_entries:
+        key = str(item.get("key") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append((key, str(item.get("label") or defaults_map.get(key, key))))
+    if "home" not in seen:
+        out.insert(0, ("home", defaults_map["home"]))
+    return out
+
+
+def load_dashboard_workspace_manifest(path: Path | None = None) -> dict[str, Any]:
+    manifest_path = path or DASHBOARD_WORKSPACE_MANIFEST_PATH
+    out: dict[str, Any] = {
+        "manifest_status": "missing",
+        "manifest_path": str(manifest_path),
+        "loaded_at": "-",
+        "workspaces": _default_workspace_manifest_tabs(),
+    }
+    if not manifest_path.exists():
+        out["manifest_status"] = "defaulted"
+        return out
+    try:
+        raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(raw, dict):
+            out["manifest_status"] = "failed"
+            return out
+        resolved = resolve_dashboard_workspace_tabs(raw)
+        out["workspaces"] = [
+            {"key": key, "label": label, "enabled": True, "visible": True, "order": idx}
+            for idx, (key, label) in enumerate(resolved, start=1)
+        ]
+        loaded_dt = datetime.fromtimestamp(float(manifest_path.stat().st_mtime), tz=timezone.utc).astimezone()
+        out["loaded_at"] = loaded_dt.strftime("%Y-%m-%d %H:%M:%S")
+        out["manifest_status"] = "loaded"
+        return out
+    except Exception:
+        out["manifest_status"] = "failed"
+        return out
+
+
+def load_active_models_pointer(path: Path | None = None) -> dict[str, str]:
+    pointer_path = path or ACTIVE_MODELS_MANIFEST_PATH
+    out: dict[str, str] = {
+        "manifest_status": "missing",
+        "manifest_path": str(pointer_path),
+        "loaded_at": "-",
+        "active_spot_model": "unknown",
+        "active_futures_model": "unknown",
+        "spot_checkpoint_path": "",
+        "futures_checkpoint_path": "",
+    }
+    if not pointer_path.exists():
+        return out
+    try:
+        raw = yaml.safe_load(pointer_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(raw, dict):
+            out["manifest_status"] = "failed"
+            return out
+        out["active_spot_model"] = _component_text(raw.get("active_spot_model"), fallback="unknown")
+        out["active_futures_model"] = _component_text(raw.get("active_futures_model"), fallback="unknown")
+        out["spot_checkpoint_path"] = str(raw.get("spot_checkpoint_path") or "")
+        out["futures_checkpoint_path"] = str(raw.get("futures_checkpoint_path") or "")
+        loaded_dt = datetime.fromtimestamp(float(pointer_path.stat().st_mtime), tz=timezone.utc).astimezone()
+        out["loaded_at"] = loaded_dt.strftime("%Y-%m-%d %H:%M:%S")
+        out["manifest_status"] = "loaded"
+        return out
+    except Exception:
+        out["manifest_status"] = "failed"
+        return out
 
 
 # Windows sleep control flags (SetThreadExecutionState).
@@ -283,8 +429,15 @@ def load_shell_build_sha() -> str:
     return _component_text(load_build_sha(), fallback="unknown")
 
 
-def load_dashboard_release_manifest(path: Path | None = None) -> dict[str, str]:
+def load_dashboard_release_manifest(
+    path: Path | None = None,
+    *,
+    workspace_manifest_path: Path | None = None,
+    active_models_path: Path | None = None,
+) -> dict[str, str]:
     version_data = load_app_version()
+    workspace_manifest = load_dashboard_workspace_manifest(workspace_manifest_path)
+    active_models_manifest = load_active_models_pointer(active_models_path)
     out: dict[str, str] = {
         "shell_version": _component_text(version_data.version, fallback="0.0.0"),
         "shell_build_sha": load_shell_build_sha(),
@@ -299,9 +452,25 @@ def load_dashboard_release_manifest(path: Path | None = None) -> dict[str, str]:
         "loaded_at": "-",
         "manifest_status": "missing",
         "manifest_path": str(path or DASHBOARD_RELEASE_MANIFEST_PATH),
+        "workspace_manifest_status": str(workspace_manifest.get("manifest_status") or "missing"),
+        "workspace_manifest_path": str(workspace_manifest.get("manifest_path") or DASHBOARD_WORKSPACE_MANIFEST_PATH),
+        "workspace_manifest_loaded_at": str(workspace_manifest.get("loaded_at") or "-"),
+        "workspace_order_line": " / ".join(
+            str(item.get("label") or item.get("key") or "")
+            for item in list(workspace_manifest.get("workspaces") or [])
+            if isinstance(item, dict)
+        )
+        or "unknown",
+        "active_models_manifest_status": str(active_models_manifest.get("manifest_status") or "missing"),
+        "active_models_manifest_path": str(active_models_manifest.get("manifest_path") or ACTIVE_MODELS_MANIFEST_PATH),
+        "active_models_manifest_loaded_at": str(active_models_manifest.get("loaded_at") or "-"),
     }
     manifest_path = path or DASHBOARD_RELEASE_MANIFEST_PATH
     if not manifest_path.exists():
+        if str(active_models_manifest.get("active_spot_model") or "").strip():
+            out["active_spot_model_version"] = _component_text(active_models_manifest.get("active_spot_model"))
+        if str(active_models_manifest.get("active_futures_model") or "").strip():
+            out["active_futures_model_version"] = _component_text(active_models_manifest.get("active_futures_model"))
         return out
     try:
         raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
@@ -345,17 +514,38 @@ def load_dashboard_release_manifest(path: Path | None = None) -> dict[str, str]:
         loaded_dt = datetime.fromtimestamp(float(manifest_path.stat().st_mtime), tz=timezone.utc).astimezone()
         out["loaded_at"] = loaded_dt.strftime("%Y-%m-%d %H:%M:%S")
         out["manifest_status"] = "loaded"
+        ext_spot = _component_text(active_models_manifest.get("active_spot_model"), fallback="unknown")
+        ext_fut = _component_text(active_models_manifest.get("active_futures_model"), fallback="unknown")
+        if ext_spot != "unknown":
+            out["active_spot_model_version"] = ext_spot
+        if ext_fut != "unknown":
+            out["active_futures_model_version"] = ext_fut
         return out
     except Exception:
         out["manifest_status"] = "failed"
+        ext_spot = _component_text(active_models_manifest.get("active_spot_model"), fallback="unknown")
+        ext_fut = _component_text(active_models_manifest.get("active_futures_model"), fallback="unknown")
+        if ext_spot != "unknown":
+            out["active_spot_model_version"] = ext_spot
+        if ext_fut != "unknown":
+            out["active_futures_model_version"] = ext_fut
         return out
 
 
 def format_dashboard_release_panel(manifest: dict[str, str]) -> str:
     return "\n".join(
         [
-            f"Status: {manifest.get('manifest_status', 'missing')}",
-            f"Loaded At: {manifest.get('loaded_at', '-')}",
+            f"Release Manifest Status: {manifest.get('manifest_status', 'missing')}",
+            f"Release Manifest Loaded At: {manifest.get('loaded_at', '-')}",
+            (
+                "Workspace Manifest: "
+                f"{manifest.get('workspace_manifest_status', 'missing')} @ {manifest.get('workspace_manifest_loaded_at', '-')}"
+            ),
+            f"Workspace Order: {manifest.get('workspace_order_line', 'unknown')}",
+            (
+                "Active Models Manifest: "
+                f"{manifest.get('active_models_manifest_status', 'missing')} @ {manifest.get('active_models_manifest_loaded_at', '-')}"
+            ),
             f"Dashboard Shell Version: {manifest.get('shell_version', 'unknown')}",
             f"Shell Build SHA: {manifest.get('shell_build_sha', 'unknown')}",
             f"Workspace Pack Version: {manifest.get('workspace_pack_version', 'unknown')}",
@@ -1724,13 +1914,6 @@ class BotikGui:
         self.logs_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.settings_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.statistics_tab = ttk.Frame(notebook, style="Root.TFrame")
-        notebook.add(self.home_tab, text="Dashboard Home")
-        notebook.add(self.control_tab, text="Spot Workspace")
-        notebook.add(self.futures_training_tab, text="Futures Training Workspace")
-        notebook.add(self.telegram_tab, text="Telegram Workspace")
-        notebook.add(self.logs_tab, text="Logs Workspace")
-        notebook.add(self.statistics_tab, text="Ops Workspace")
-        notebook.add(self.settings_tab, text="Settings Workspace")
 
         settings_shell = ttk.Frame(self.settings_tab, style="Root.TFrame")
         settings_shell.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -1759,7 +1942,35 @@ class BotikGui:
         self._build_spike_tab()
         self._build_stats_tab()
         self._build_models_tab()
+        self.dashboard_workspace_manifest = load_dashboard_workspace_manifest()
+        self._apply_workspace_manifest_to_notebook(self.dashboard_workspace_manifest)
         self._attach_context_menu_to_entries(self.root)
+
+    def _workspace_frame_map(self) -> dict[str, ttk.Frame]:
+        return {
+            "home": self.home_tab,
+            "spot": self.control_tab,
+            "futures_training": self.futures_training_tab,
+            "telegram": self.telegram_tab,
+            "logs": self.logs_tab,
+            "ops": self.statistics_tab,
+            "settings": self.settings_tab,
+        }
+
+    def _apply_workspace_manifest_to_notebook(self, manifest: dict[str, Any] | None) -> None:
+        if self.notebook is None:
+            return
+        try:
+            for tab_id in list(self.notebook.tabs()):
+                self.notebook.forget(tab_id)
+        except Exception:
+            pass
+        frame_map = self._workspace_frame_map()
+        for key, label in resolve_dashboard_workspace_tabs(manifest):
+            frame = frame_map.get(key)
+            if frame is None:
+                continue
+            self.notebook.add(frame, text=label)
 
     def _is_edit_widget(self, widget: tk.Widget | None) -> bool:
         return isinstance(widget, (tk.Entry, ttk.Entry, tk.Text))

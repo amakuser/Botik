@@ -1,0 +1,7 @@
+manifest_version: 1
+product: botik_dashboard
+active_spot_model: unknown
+active_futures_model: unknown
+spot_checkpoint_path: ""
+futures_checkpoint_path: ""
+source: external_active_models_pointer

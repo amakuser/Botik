@@ -7,7 +7,7 @@ shell:
   version_source: VERSION
   build_source: version.txt
 components:
-  workspace_pack: 0.0.5
+  workspace_pack: 0.0.6
   spot_runtime: 1.0.0
   futures_training_engine: 0.1.1
   telegram_bot_module: 1.1.0
@@ -17,3 +17,6 @@ components:
 release:
   active_config_profile: config.yaml
   source: external_manifest
+external_manifests:
+  workspace_manifest: dashboard_workspace_manifest.yaml
+  active_models_pointer: active_models.yaml

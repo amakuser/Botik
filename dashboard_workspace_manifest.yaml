@@ -1,0 +1,38 @@
+manifest_version: 1
+product: botik_dashboard
+workspaces:
+  - key: home
+    label: Dashboard Home
+    enabled: true
+    visible: true
+    order: 1
+  - key: spot
+    label: Spot Workspace
+    enabled: true
+    visible: true
+    order: 2
+  - key: futures_training
+    label: Futures Training Workspace
+    enabled: true
+    visible: true
+    order: 3
+  - key: telegram
+    label: Telegram Workspace
+    enabled: true
+    visible: true
+    order: 4
+  - key: logs
+    label: Logs Workspace
+    enabled: true
+    visible: true
+    order: 5
+  - key: ops
+    label: Ops Workspace
+    enabled: true
+    visible: true
+    order: 6
+  - key: settings
+    label: Settings Workspace
+    enabled: true
+    visible: true
+    order: 7
