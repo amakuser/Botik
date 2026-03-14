@@ -430,6 +430,151 @@ def _component_text(value: Any, *, fallback: str = "unknown") -> str:
     return text or fallback
 
 
+def _parse_json_dict(raw_value: Any) -> dict[str, Any]:
+    try:
+        loaded = json.loads(str(raw_value or "{}"))
+    except Exception:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _infer_model_registry_instrument(
+    model_id: str,
+    metrics: dict[str, Any] | None = None,
+    release_manifest: dict[str, Any] | None = None,
+) -> str:
+    payload = metrics or {}
+    explicit = str(
+        payload.get("instrument")
+        or payload.get("domain")
+        or payload.get("market_category")
+        or payload.get("category")
+        or ""
+    ).strip().lower()
+    if explicit == "spot":
+        return "spot"
+    if explicit in {"linear", "futures", "future", "perp"}:
+        return "futures"
+    release = release_manifest or {}
+    if model_id and model_id == str(release.get("active_spot_model_version") or "").strip():
+        return "spot"
+    if model_id and model_id == str(release.get("active_futures_model_version") or "").strip():
+        return "futures"
+    lowered = model_id.lower()
+    if "spot" in lowered:
+        return "spot"
+    if "fut" in lowered or "future" in lowered or "perp" in lowered:
+        return "futures"
+    return "unknown"
+
+
+def _infer_model_registry_policy(metrics: dict[str, Any] | None = None) -> str:
+    payload = metrics or {}
+    explicit = str(
+        payload.get("policy")
+        or payload.get("decision_policy")
+        or payload.get("policy_mode")
+        or payload.get("execution_policy")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit
+    if payload.get("hard_rules") is True:
+        return "hard"
+    return "unknown"
+
+
+def _infer_model_registry_source(metrics: dict[str, Any] | None = None) -> str:
+    payload = metrics or {}
+    return _component_text(
+        payload.get("source_mode")
+        or payload.get("training_source_mode")
+        or payload.get("data_source")
+        or payload.get("source"),
+        fallback="unknown",
+    )
+
+
+def write_active_model_pointer(
+    model_id: str,
+    instrument: str,
+    *,
+    path: Path | None = None,
+) -> tuple[bool, str]:
+    instrument_key = str(instrument or "").strip().lower()
+    if instrument_key not in {"spot", "futures"}:
+        return False, f"unsupported instrument={instrument_key or 'unknown'}"
+    pointer_path = path or ACTIVE_MODELS_MANIFEST_PATH
+    raw: dict[str, Any] = {}
+    try:
+        if pointer_path.exists():
+            loaded = yaml.safe_load(pointer_path.read_text(encoding="utf-8")) or {}
+            if isinstance(loaded, dict):
+                raw = dict(loaded)
+    except Exception as exc:
+        return False, f"active_models load failed: {exc}"
+    raw["manifest_version"] = int(raw.get("manifest_version") or 1)
+    raw["product"] = str(raw.get("product") or "botik_dashboard")
+    raw["source"] = str(raw.get("source") or "external_active_models_pointer")
+    raw.setdefault("active_spot_model", "unknown")
+    raw.setdefault("active_futures_model", "unknown")
+    raw.setdefault("spot_checkpoint_path", "")
+    raw.setdefault("futures_checkpoint_path", "")
+    raw[f"active_{instrument_key}_model"] = str(model_id or "unknown")
+    try:
+        pointer_path.write_text(
+            yaml.safe_dump(raw, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        return False, f"active_models write failed: {exc}"
+    return True, f"active_{instrument_key}_model={model_id}"
+
+
+def promote_model_registry_model(
+    db_path: Path,
+    model_id: str,
+    instrument: str,
+) -> tuple[bool, str]:
+    instrument_key = str(instrument or "").strip().lower()
+    if instrument_key not in {"spot", "futures"}:
+        return False, f"unsupported instrument={instrument_key or 'unknown'}"
+    if not db_path.exists():
+        return False, f"db missing: {db_path}"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        if not _table_exists_local(conn, "model_registry"):
+            return False, "table model_registry not found"
+        rows = conn.execute(
+            "SELECT id, COALESCE(model_id, ''), COALESCE(metrics_json, '{}') FROM model_registry"
+        ).fetchall()
+        target_row_id: int | None = None
+        same_instrument_ids: list[int] = []
+        for row_id, row_model_id, metrics_json_raw in rows:
+            row_model = str(row_model_id or "").strip()
+            metrics = _parse_json_dict(metrics_json_raw)
+            row_instrument = _infer_model_registry_instrument(row_model, metrics)
+            if row_instrument == instrument_key:
+                same_instrument_ids.append(int(row_id))
+            if row_model == model_id:
+                target_row_id = int(row_id)
+        if target_row_id is None:
+            return False, f"model_id not found: {model_id}"
+        if not same_instrument_ids:
+            same_instrument_ids = [target_row_id]
+        for row_id in same_instrument_ids:
+            conn.execute(
+                "UPDATE model_registry SET is_active=? WHERE id=?",
+                (1 if row_id == target_row_id else 0, row_id),
+            )
+        conn.commit()
+        return True, f"legacy is_active updated for {instrument_key}"
+    except sqlite3.Error as exc:
+        return False, str(exc)
+    finally:
+        conn.close()
+
+
 def load_shell_build_sha() -> str:
     try:
         proc = subprocess.run(
@@ -638,6 +783,186 @@ def format_dashboard_release_panel(manifest: dict[str, str]) -> str:
             sections["workspace_line"],
         ]
     )
+
+
+def load_model_registry_workspace_read_model(
+    db_path: Path,
+    *,
+    release_manifest: dict[str, Any] | None = None,
+    limit: int = 300,
+) -> dict[str, Any]:
+    release = release_manifest or {}
+    active_spot_model = str(release.get("active_spot_model_version") or "unknown")
+    active_futures_model = str(release.get("active_futures_model_version") or "unknown")
+    out: dict[str, Any] = {
+        "summary_line": (
+            f"total=0 | spot=0 | futures=0 | champion_spot={active_spot_model} | champion_futures={active_futures_model}"
+        ),
+        "status_line": (
+            "selector=active_models.yaml | legacy_db_slot=compatibility_only | compare source=unavailable"
+        ),
+        "rows": [],
+        "actions": [
+            "Refresh",
+            "Promote Selected to Active",
+            "Compare Selected Models",
+            "Open Model Stats",
+            "Copy Artifact Path",
+        ],
+        "total_models": 0,
+        "spot_models": 0,
+        "futures_models": 0,
+        "unknown_models": 0,
+        "champion_spot": active_spot_model,
+        "champion_futures": active_futures_model,
+    }
+    if not db_path.exists():
+        return out
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        if not _table_exists_local(conn, "model_registry"):
+            return out
+
+        has_model_stats = _table_exists_local(conn, "model_stats")
+        has_outcomes = _table_exists_local(conn, "outcomes")
+        has_signals = _table_exists_local(conn, "signals")
+
+        latest_stats: dict[str, dict[str, float]] = {}
+        if has_model_stats:
+            for model_id_raw, edge, fill_rate, win_rate in conn.execute(
+                """
+                SELECT ms.model_id, ms.net_edge_mean, ms.fill_rate, ms.win_rate
+                FROM model_stats ms
+                JOIN (
+                    SELECT model_id, MAX(ts_ms) AS max_ts
+                    FROM model_stats
+                    GROUP BY model_id
+                ) x ON x.model_id = ms.model_id AND x.max_ts = ms.ts_ms
+                """
+            ).fetchall():
+                latest_stats[str(model_id_raw or "")] = {
+                    "edge": float(edge or 0.0),
+                    "fill_rate": float(fill_rate or 0.0),
+                    "win_rate": float(win_rate or 0.0),
+                }
+
+        outcomes_by_model: dict[str, dict[str, float]] = {}
+        if has_outcomes and has_signals:
+            for model_id_raw, outcomes_total, plus_count, net_pnl_quote in conn.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(s.active_model_id, ''), NULLIF(s.model_id, ''), 'bootstrap') AS model_id,
+                    COUNT(*) AS outcomes_total,
+                    SUM(CASE WHEN COALESCE(o.net_pnl_quote, 0.0) > 0 THEN 1 ELSE 0 END) AS plus_count,
+                    COALESCE(SUM(o.net_pnl_quote), 0.0) AS net_pnl_quote
+                FROM outcomes o
+                LEFT JOIN signals s ON s.signal_id = o.signal_id
+                GROUP BY COALESCE(NULLIF(s.active_model_id, ''), NULLIF(s.model_id, ''), 'bootstrap')
+                """
+            ).fetchall():
+                outcomes_by_model[str(model_id_raw or "")] = {
+                    "outcomes": float(outcomes_total or 0.0),
+                    "plus_count": float(plus_count or 0.0),
+                    "net_pnl": float(net_pnl_quote or 0.0),
+                }
+
+        rows = conn.execute(
+            """
+            SELECT
+                COALESCE(model_id, ''),
+                COALESCE(path_or_payload, ''),
+                COALESCE(metrics_json, '{}'),
+                COALESCE(created_at_utc, ''),
+                COALESCE(is_active, 0)
+            FROM model_registry
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(int(limit), 1),),
+        ).fetchall()
+
+        total_models = 0
+        spot_models = 0
+        futures_models = 0
+        unknown_models = 0
+        out_rows: list[tuple[str, ...]] = []
+        for model_id_raw, path_or_payload, metrics_json_raw, created_at, is_active in rows:
+            model_id = str(model_id_raw or "").strip()
+            metrics = _parse_json_dict(metrics_json_raw)
+            instrument = _infer_model_registry_instrument(model_id, metrics, release_manifest=release)
+            policy = _infer_model_registry_policy(metrics)
+            source_mode = _infer_model_registry_source(metrics)
+            status = _component_text(metrics.get("status"), fallback="candidate")
+            role = status
+            if model_id and model_id == active_spot_model:
+                role = "champion:spot"
+            elif model_id and model_id == active_futures_model:
+                role = "champion:futures"
+            elif int(is_active or 0) == 1:
+                role = "legacy-active"
+
+            total_models += 1
+            if instrument == "spot":
+                spot_models += 1
+            elif instrument == "futures":
+                futures_models += 1
+            else:
+                unknown_models += 1
+
+            outcome_payload = outcomes_by_model.get(model_id, {})
+            outcomes_total = int(outcome_payload.get("outcomes") or 0)
+            plus_count = int(outcome_payload.get("plus_count") or 0)
+            if outcomes_total > 0:
+                win_rate = float(plus_count) / float(max(outcomes_total, 1))
+            else:
+                win_rate = float(latest_stats.get(model_id, {}).get("win_rate") or 0.0)
+                if win_rate <= 0.0:
+                    try:
+                        win_rate = float(metrics.get("open_accuracy") or 0.0)
+                    except (TypeError, ValueError):
+                        win_rate = 0.0
+            edge_value = float(latest_stats.get(model_id, {}).get("edge") or 0.0)
+            if abs(edge_value) <= 1e-9:
+                try:
+                    edge_value = float(metrics.get("quality_score") or 0.0)
+                except (TypeError, ValueError):
+                    edge_value = 0.0
+            out_rows.append(
+                (
+                    model_id,
+                    instrument,
+                    policy,
+                    source_mode,
+                    role,
+                    status,
+                    str(created_at or ""),
+                    str(outcomes_total),
+                    f"{win_rate * 100.0:.1f}%",
+                    f"{float(outcome_payload.get('net_pnl') or 0.0):.6f}",
+                    f"{edge_value:.3f}",
+                    str(path_or_payload or "-"),
+                )
+            )
+
+        compare_source = "outcomes/model_stats" if has_outcomes and has_signals else "model_registry metrics only"
+        out["rows"] = out_rows
+        out["total_models"] = total_models
+        out["spot_models"] = spot_models
+        out["futures_models"] = futures_models
+        out["unknown_models"] = unknown_models
+        out["summary_line"] = (
+            f"total={total_models} | spot={spot_models} | futures={futures_models} | unknown={unknown_models} | "
+            f"champion_spot={active_spot_model} | champion_futures={active_futures_model}"
+        )
+        out["status_line"] = (
+            f"selector=active_models.yaml | legacy_db_slot=compatibility_only | compare source={compare_source}"
+        )
+        return out
+    except sqlite3.Error:
+        return out
+    finally:
+        conn.close()
 
 
 def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
@@ -1734,6 +2059,7 @@ class BotikGui:
         self.dashboard_profile_summary_var = tk.StringVar(value="Profile: unknown")
         self.dashboard_spot_meta_var = tk.StringVar(value="Spot meta: n/a")
         self.dashboard_futures_meta_var = tk.StringVar(value="Futures meta: n/a")
+        self.models_status_var = tk.StringVar(value="selector=active_models.yaml")
         self.spot_workspace_summary_var = tk.StringVar(value="Spot Summary: n/a")
         self.spot_workspace_policy_var = tk.StringVar(value="Policy: n/a")
         self.futures_training_summary_var = tk.StringVar(value="Training Summary: n/a")
@@ -2350,6 +2676,13 @@ class BotikGui:
             justify=tk.LEFT,
             wraplength=420,
         ).pack(anchor=tk.W, pady=(8, 4))
+        ttk.Label(
+            model_card,
+            textvariable=self.models_status_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=420,
+        ).pack(anchor=tk.W, pady=(0, 4))
         ttk.Label(
             model_card,
             text="Champion/challenger evaluation stays in Model Registry Workspace; Home only surfaces active state.",
@@ -3630,9 +3963,23 @@ class BotikGui:
             justify=tk.LEFT,
         ).grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
         ttk.Label(top_card, textvariable=self.models_summary_var, style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=(6, 0))
-        ttk.Button(top_card, text="Refresh", command=self.refresh_runtime_snapshot).grid(row=0, column=1, sticky=tk.E)
-        ttk.Button(top_card, text="Promote Selected to Active", command=self.activate_selected_model).grid(
-            row=2, column=1, sticky=tk.E, pady=(6, 0)
+        ttk.Label(top_card, textvariable=self.models_status_var, style="Body.TLabel", justify=tk.LEFT).grid(
+            row=3, column=0, sticky=tk.W, pady=(6, 0)
+        )
+        actions = ttk.Frame(top_card, style="Card.TFrame")
+        actions.grid(row=0, column=1, rowspan=4, sticky=tk.NE, padx=(12, 0))
+        ttk.Button(actions, text="Refresh", command=self.refresh_runtime_snapshot).grid(row=0, column=0, sticky=tk.EW, pady=2)
+        ttk.Button(actions, text="Promote Selected to Active", command=self.activate_selected_model).grid(
+            row=1, column=0, sticky=tk.EW, pady=2
+        )
+        ttk.Button(actions, text="Compare Selected Models", command=self.compare_selected_models).grid(
+            row=2, column=0, sticky=tk.EW, pady=2
+        )
+        ttk.Button(actions, text="Open Model Stats", command=self.open_selected_model_stats).grid(
+            row=3, column=0, sticky=tk.EW, pady=2
+        )
+        ttk.Button(actions, text="Copy Artifact Path", command=self.copy_selected_model_artifact).grid(
+            row=4, column=0, sticky=tk.EW, pady=2
         )
         top_card.columnconfigure(0, weight=1)
 
@@ -3642,33 +3989,39 @@ class BotikGui:
             table_card,
             columns=(
                 "model_id",
+                "instrument",
+                "policy",
+                "source",
+                "role",
+                "status",
                 "created",
-                "active",
                 "outcomes",
-                "plus",
-                "minus",
                 "winrate",
                 "net_pnl",
                 "edge",
-                "fill",
+                "artifact",
             ),
             show="headings",
             height=24,
+            selectmode="extended",
         )
         for col, title, width in [
             ("model_id", "Model", 180),
+            ("instrument", "Instrument", 90),
+            ("policy", "Policy", 90),
+            ("source", "Source", 90),
+            ("role", "Role", 120),
+            ("status", "Status", 100),
             ("created", "Created", 150),
-            ("active", "Active", 64),
             ("outcomes", "Outcomes", 86),
-            ("plus", "Plus", 64),
-            ("minus", "Minus", 64),
             ("winrate", "WinRate", 86),
             ("net_pnl", "NetPnL", 92),
             ("edge", "Edge bps", 86),
-            ("fill", "FillRate", 86),
+            ("artifact", "Artifact", 220),
         ]:
             self.models_tree.heading(col, text=title)
             self.models_tree.column(col, width=width, anchor=tk.W)
+        self.models_tree.column("artifact", stretch=True)
         self.models_tree.tag_configure("model_active", foreground="#5FE08C")
         model_scroll = ttk.Scrollbar(table_card, orient=tk.VERTICAL, command=self.models_tree.yview)
         self.models_tree.configure(yscrollcommand=model_scroll.set)
@@ -4461,8 +4814,12 @@ class BotikGui:
             messagebox.showwarning("Models", "Не удалось прочитать выбранную модель.")
             return
         model_id = str(row[0] or "").strip()
+        instrument = str(row[1] or "").strip().lower() if len(row) > 1 else "unknown"
         if not model_id:
             messagebox.showwarning("Models", "Пустой model_id.")
+            return
+        if instrument not in {"spot", "futures"}:
+            messagebox.showerror("Models", f"Не удалось определить instrument для model_id={model_id}.")
             return
         if not messagebox.askyesno("Models", f"Сделать модель активной?\n{model_id}"):
             return
@@ -4472,25 +4829,81 @@ class BotikGui:
         if not db_path.exists():
             messagebox.showerror("Models", f"DB not found: {db_path}")
             return
-        conn = sqlite3.connect(str(db_path))
-        try:
-            if not self._table_exists(conn, "model_registry"):
-                messagebox.showerror("Models", "Таблица model_registry не найдена.")
-                return
-            exists = conn.execute(
-                "SELECT 1 FROM model_registry WHERE model_id=? LIMIT 1",
-                (model_id,),
-            ).fetchone()
-            if not exists:
-                messagebox.showerror("Models", f"model_id not found: {model_id}")
-                return
-            conn.execute("UPDATE model_registry SET is_active=0")
-            conn.execute("UPDATE model_registry SET is_active=1 WHERE model_id=?", (model_id,))
-            conn.commit()
-        finally:
-            conn.close()
-        self._enqueue_log(f"[models] activated model_id={model_id}")
+        pointer_ok, pointer_msg = write_active_model_pointer(model_id, instrument)
+        if not pointer_ok:
+            messagebox.showerror("Models", pointer_msg)
+            return
+        db_ok, db_msg = promote_model_registry_model(db_path, model_id, instrument)
+        if not db_ok:
+            self._enqueue_log(f"[models] pointer updated but DB legacy flag failed for {model_id}: {db_msg}")
+            messagebox.showwarning("Models", f"Active model pointer updated, but legacy DB flag failed:\n{db_msg}")
+        self._enqueue_log(f"[models] promoted model_id={model_id} instrument={instrument} | {pointer_msg}")
         self.refresh_runtime_snapshot()
+
+    def _selected_model_registry_rows(self) -> list[list[str]]:
+        if self.models_tree is None:
+            return []
+        rows: list[list[str]] = []
+        for item_id in self.models_tree.selection():
+            values = [str(v or "") for v in list(self.models_tree.item(item_id, "values") or [])]
+            if values:
+                rows.append(values)
+        return rows
+
+    def open_selected_model_stats(self) -> None:
+        rows = self._selected_model_registry_rows()
+        if not rows:
+            messagebox.showwarning("Models", "Выберите модель в таблице.")
+            return
+        row = rows[0]
+        lines = [
+            f"Model: {row[0]}",
+            f"Instrument: {row[1] if len(row) > 1 else 'unknown'}",
+            f"Policy: {row[2] if len(row) > 2 else 'unknown'}",
+            f"Source: {row[3] if len(row) > 3 else 'unknown'}",
+            f"Role: {row[4] if len(row) > 4 else 'unknown'}",
+            f"Status: {row[5] if len(row) > 5 else 'unknown'}",
+            f"Created: {row[6] if len(row) > 6 else '-'}",
+            f"Outcomes: {row[7] if len(row) > 7 else '0'}",
+            f"WinRate: {row[8] if len(row) > 8 else '0.0%'}",
+            f"NetPnL: {row[9] if len(row) > 9 else '0.000000'}",
+            f"Edge: {row[10] if len(row) > 10 else '0.000'}",
+            f"Artifact: {row[11] if len(row) > 11 else '-'}",
+        ]
+        messagebox.showinfo("Model Stats", "\n".join(lines))
+
+    def compare_selected_models(self) -> None:
+        rows = self._selected_model_registry_rows()
+        if len(rows) < 2:
+            messagebox.showwarning("Models", "Выберите минимум две модели для сравнения.")
+            return
+        left = rows[0]
+        right = rows[1]
+        lines = [
+            f"Left:  {left[0]} | role={left[4] if len(left) > 4 else 'unknown'} | outcomes={left[7] if len(left) > 7 else '0'} | win={left[8] if len(left) > 8 else '0.0%'} | pnl={left[9] if len(left) > 9 else '0.000000'}",
+            f"Right: {right[0]} | role={right[4] if len(right) > 4 else 'unknown'} | outcomes={right[7] if len(right) > 7 else '0'} | win={right[8] if len(right) > 8 else '0.0%'} | pnl={right[9] if len(right) > 9 else '0.000000'}",
+            "",
+            "Champion selection stays externalized through active_models.yaml.",
+        ]
+        messagebox.showinfo("Compare Models", "\n".join(lines))
+
+    def copy_selected_model_artifact(self) -> None:
+        rows = self._selected_model_registry_rows()
+        if not rows:
+            messagebox.showwarning("Models", "Выберите модель в таблице.")
+            return
+        artifact = rows[0][11] if len(rows[0]) > 11 else ""
+        artifact = str(artifact or "").strip()
+        if not artifact or artifact == "-":
+            messagebox.showwarning("Models", "Для выбранной модели нет artifact path.")
+            return
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(artifact)
+        except Exception as exc:
+            messagebox.showerror("Models", f"Не удалось скопировать artifact path:\n{exc}")
+            return
+        self._enqueue_log(f"[models] artifact copied: {artifact}")
 
     def _telegram_status_text_ui(self) -> str:
         current_version = get_app_version_label()
@@ -5452,6 +5865,11 @@ class BotikGui:
             ml_process_state=str(self.ml.state),
             training_mode=ml_mode,
         )
+        model_registry_workspace = load_model_registry_workspace_read_model(
+            db_path,
+            release_manifest=release_manifest,
+            limit=400,
+        )
         try:
             recent_log_lines = list(self._log_messages)[-240:]
         except RuntimeError:
@@ -5502,7 +5920,7 @@ class BotikGui:
             futures_positions_rows = self._read_futures_positions_rows(db_path, limit=400)
             futures_orders_rows = self._read_futures_open_orders_rows(db_path, limit=400)
             reconciliation_issue_rows = self._read_reconciliation_issue_rows(db_path, limit=400)
-            model_rows = self._read_model_registry_rows(db_path, limit=400)
+            model_rows = list(model_registry_workspace.get("rows") or [])
             self._cached_heavy_snapshot = {
                 "history_rows_full": history_rows_full,
                 "history_total": int(history_total),
@@ -5695,7 +6113,9 @@ class BotikGui:
             "stats_futures_orders_rows": futures_orders_rows,
             "stats_reconciliation_issue_rows": reconciliation_issue_rows,
             "model_rows": model_rows,
-            "models_total": len(model_rows),
+            "models_total": int(model_registry_workspace.get("total_models") or len(model_rows)),
+            "model_registry_summary_line": str(model_registry_workspace.get("summary_line") or "total=0"),
+            "model_registry_status_line": str(model_registry_workspace.get("status_line") or "selector=active_models.yaml"),
             "dashboard_release_status_line": release_sections["status_line"],
             "dashboard_release_shell_line": release_sections["shell_line"],
             "dashboard_release_components_line": release_sections["components_line"],
@@ -6821,7 +7241,8 @@ class BotikGui:
                     tags = (tag,)
             elif tree is self.models_tree:
                 row_list = list(row)
-                if len(row_list) >= 3 and str(row_list[2]).lower() == "yes":
+                row_text = " | ".join(str(cell or "").lower() for cell in row_list)
+                if "champion:" in row_text or "legacy-active" in row_text:
                     tags = ("model_active",)
             tree.insert("", tk.END, values=row, tags=tags)
 
@@ -7063,7 +7484,10 @@ class BotikGui:
         self.stats_balance_events_var.set(str(int(snapshot.get("stats_balance_events", 0))))
         self.stats_balance_delta_var.set(f"{float(snapshot.get('stats_balance_delta_total', 0.0)):.6f}")
         self.models_summary_var.set(
-            f"models={int(snapshot.get('models_total', 0))} | orders={int(snapshot.get('stats_orders_total', 0))} | outcomes={int(snapshot.get('stats_outcomes_total', 0))}"
+            str(snapshot.get("model_registry_summary_line") or f"total={int(snapshot.get('models_total', 0))}")
+        )
+        self.models_status_var.set(
+            str(snapshot.get("model_registry_status_line") or "selector=active_models.yaml")
         )
         self._stats_cum_pnl_points.clear()
         self._stats_cum_pnl_points.extend(float(v) for v in list(snapshot.get("stats_cum_pnl_chart") or []))
@@ -7881,8 +8305,8 @@ class BotikGui:
             "- outcomes: закрытые outcomes в БД.\n"
             "- paired: сигналы, где есть и buy, и sell execution.\n"
             "- filled: число Filled-событий ордеров.\n"
-            "4) Models tab\n"
-            "- Показывает статистику по model_registry: outcomes, plus/minus, net PnL.\n"
+            "4) Model Registry Workspace\n"
+            "- Показывает champion/challenger registry: role, policy, source, outcomes, net PnL и artifact path.\n"
             "- Можно вручную активировать выбранную модель.\n\n"
             "5) Strategies tab\n"
             "- Здесь настраиваются пресеты; запуск Spot Runtime делается из Dashboard Home.\n"
