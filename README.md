@@ -80,6 +80,12 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
 ## Dashboard Workspaces (актуально)
 
 - Dashboard Home: статусы, quick actions, блок Loaded Components / Releases.
+- Loaded Components / Releases на Home теперь показывает структурированно:
+  - release / workspace / active-models manifest statuses,
+  - Dashboard Shell version + build SHA + version sources,
+  - component versions,
+  - active spot/futures models и active profile,
+  - manifest file names и workspace order.
 - Spot Workspace: inventory-aware контроль holdings/orders/fills/exit decisions, safe policy labels.
 - Futures Workspace: верхнеуровневое рабочее пространство для futures research/paper-потоков, без маскировки под live trading terminal.
   - Futures Training Workspace:
@@ -174,6 +180,14 @@ Paper режим не предназначен для проверки реал�
 - `VERSION` — источник `Dashboard Shell Version` (semver patch) и build number.
 - `version.txt` — build SHA (обычно текущий git commit для build/release).
 - `dashboard_release_manifest.yaml` — версии компонентов и release metadata, которые Dashboard Home читает в блоке `Loaded Components / Releases`.
+- `active_models.yaml` — внешний source of truth для `active_spot_model` / `active_futures_model`, который Dashboard Home и Futures Workspace читают поверх release manifest.
+
+На Home эти источники показываются раздельно:
+- `release manifest status`
+- `workspace manifest status`
+- `active models manifest status`
+- `shell version source`
+- `shell build source`
 
 ## Externalized Dashboard Model
 

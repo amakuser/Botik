@@ -458,8 +458,11 @@ def load_dashboard_release_manifest(
     workspace_manifest = load_dashboard_workspace_manifest(workspace_manifest_path)
     active_models_manifest = load_active_models_pointer(active_models_path)
     out: dict[str, str] = {
+        "shell_name": "Dashboard Shell",
         "shell_version": _component_text(version_data.version, fallback="0.0.0"),
         "shell_build_sha": load_shell_build_sha(),
+        "shell_version_source": "VERSION",
+        "shell_build_source": "version.txt",
         "workspace_pack_version": "unknown",
         "spot_runtime_version": "unknown",
         "futures_training_engine_version": "unknown",
@@ -468,6 +471,7 @@ def load_dashboard_release_manifest(
         "active_futures_model_version": "unknown",
         "db_schema_version": "unknown",
         "active_config_profile": "unknown",
+        "release_source": "external_manifest",
         "loaded_at": "-",
         "manifest_status": "missing",
         "manifest_path": str(path or DASHBOARD_RELEASE_MANIFEST_PATH),
@@ -496,8 +500,28 @@ def load_dashboard_release_manifest(
         if not isinstance(raw, dict):
             out["manifest_status"] = "failed"
             return out
+        shell = raw.get("shell") if isinstance(raw.get("shell"), dict) else {}
         components = raw.get("components") if isinstance(raw.get("components"), dict) else {}
         release = raw.get("release") if isinstance(raw.get("release"), dict) else {}
+        external_manifests = raw.get("external_manifests") if isinstance(raw.get("external_manifests"), dict) else {}
+        out["shell_name"] = _component_text(shell.get("name") if isinstance(shell, dict) else "", fallback="Dashboard Shell")
+        out["shell_version_source"] = _component_text(
+            shell.get("version_source") if isinstance(shell, dict) else "",
+            fallback="VERSION",
+        )
+        out["shell_build_source"] = _component_text(
+            shell.get("build_source") if isinstance(shell, dict) else "",
+            fallback="version.txt",
+        )
+        if isinstance(external_manifests, dict):
+            out["workspace_manifest_declared_path"] = _component_text(
+                external_manifests.get("workspace_manifest"),
+                fallback=str(Path(out["workspace_manifest_path"]).name),
+            )
+            out["active_models_declared_path"] = _component_text(
+                external_manifests.get("active_models_pointer"),
+                fallback=str(Path(out["active_models_manifest_path"]).name),
+            )
         out["workspace_pack_version"] = _component_text(
             components.get("workspace_pack") if isinstance(components, dict) else "",
             fallback="unknown",
@@ -530,6 +554,10 @@ def load_dashboard_release_manifest(
             release.get("active_config_profile") if isinstance(release, dict) else "",
             fallback="unknown",
         )
+        out["release_source"] = _component_text(
+            release.get("source") if isinstance(release, dict) else "",
+            fallback="external_manifest",
+        )
         loaded_dt = datetime.fromtimestamp(float(manifest_path.stat().st_mtime), tz=timezone.utc).astimezone()
         out["loaded_at"] = loaded_dt.strftime("%Y-%m-%d %H:%M:%S")
         out["manifest_status"] = "loaded"
@@ -551,30 +579,63 @@ def load_dashboard_release_manifest(
         return out
 
 
+def build_dashboard_release_home_sections(manifest: dict[str, str]) -> dict[str, str]:
+    release_status = _component_text(manifest.get("manifest_status"), fallback="missing")
+    workspace_status = _component_text(manifest.get("workspace_manifest_status"), fallback="missing")
+    models_status = _component_text(manifest.get("active_models_manifest_status"), fallback="missing")
+    shell_line = (
+        f"{manifest.get('shell_name', 'Dashboard Shell')} "
+        f"{manifest.get('shell_version', 'unknown')} "
+        f"| build={manifest.get('shell_build_sha', 'unknown')} "
+        f"| version_source={manifest.get('shell_version_source', 'VERSION')} "
+        f"| build_source={manifest.get('shell_build_source', 'version.txt')}"
+    )
+    status_line = (
+        f"release={release_status} @ {manifest.get('loaded_at', '-')} "
+        f"| workspace_manifest={workspace_status} "
+        f"| active_models_manifest={models_status} "
+        f"| source={manifest.get('release_source', 'external_manifest')}"
+    )
+    components_line = (
+        f"workspace_pack={manifest.get('workspace_pack_version', 'unknown')} | "
+        f"spot_runtime={manifest.get('spot_runtime_version', 'unknown')} | "
+        f"futures_training={manifest.get('futures_training_engine_version', 'unknown')} | "
+        f"telegram={manifest.get('telegram_bot_module_version', 'unknown')} | "
+        f"db_schema={manifest.get('db_schema_version', 'unknown')}"
+    )
+    models_line = (
+        f"spot_model={manifest.get('active_spot_model_version', 'unknown')} | "
+        f"futures_model={manifest.get('active_futures_model_version', 'unknown')} | "
+        f"profile={manifest.get('active_config_profile', 'unknown')}"
+    )
+    manifests_line = (
+        f"release={Path(str(manifest.get('manifest_path') or DASHBOARD_RELEASE_MANIFEST_PATH)).name} | "
+        f"workspace={Path(str(manifest.get('workspace_manifest_path') or DASHBOARD_WORKSPACE_MANIFEST_PATH)).name} | "
+        f"active_models={Path(str(manifest.get('active_models_manifest_path') or ACTIVE_MODELS_MANIFEST_PATH)).name}"
+    )
+    workspace_line = f"workspace_order={manifest.get('workspace_order_line', 'unknown')}"
+    return {
+        "status_line": status_line,
+        "shell_line": shell_line,
+        "components_line": components_line,
+        "models_line": models_line,
+        "manifests_line": manifests_line,
+        "workspace_line": workspace_line,
+    }
+
+
 def format_dashboard_release_panel(manifest: dict[str, str]) -> str:
+    sections = build_dashboard_release_home_sections(manifest)
     return "\n".join(
         [
             f"Release Manifest Status: {manifest.get('manifest_status', 'missing')}",
             f"Release Manifest Loaded At: {manifest.get('loaded_at', '-')}",
-            (
-                "Workspace Manifest: "
-                f"{manifest.get('workspace_manifest_status', 'missing')} @ {manifest.get('workspace_manifest_loaded_at', '-')}"
-            ),
-            f"Workspace Order: {manifest.get('workspace_order_line', 'unknown')}",
-            (
-                "Active Models Manifest: "
-                f"{manifest.get('active_models_manifest_status', 'missing')} @ {manifest.get('active_models_manifest_loaded_at', '-')}"
-            ),
-            f"Dashboard Shell Version: {manifest.get('shell_version', 'unknown')}",
-            f"Shell Build SHA: {manifest.get('shell_build_sha', 'unknown')}",
-            f"Workspace Pack Version: {manifest.get('workspace_pack_version', 'unknown')}",
-            f"Spot Runtime Version: {manifest.get('spot_runtime_version', 'unknown')}",
-            f"Futures Training Engine Version: {manifest.get('futures_training_engine_version', 'unknown')}",
-            f"Telegram Bot Module Version: {manifest.get('telegram_bot_module_version', 'unknown')}",
-            f"Active Spot Model Version: {manifest.get('active_spot_model_version', 'unknown')}",
-            f"Active Futures Model Version: {manifest.get('active_futures_model_version', 'unknown')}",
-            f"DB Schema Version: {manifest.get('db_schema_version', 'unknown')}",
-            f"Active Config Profile: {manifest.get('active_config_profile', 'unknown')}",
+            sections["status_line"],
+            sections["shell_line"],
+            sections["components_line"],
+            sections["models_line"],
+            sections["manifests_line"],
+            sections["workspace_line"],
         ]
     )
 
@@ -1663,6 +1724,11 @@ class BotikGui:
         self.dashboard_telegram_status_var = tk.StringVar(value="Telegram: n/a")
         self.dashboard_ops_status_var = tk.StringVar(value="Ops: n/a")
         self.dashboard_release_panel_var = tk.StringVar(value="Loaded Components / Releases: not loaded")
+        self.dashboard_release_status_var = tk.StringVar(value="release=missing")
+        self.dashboard_release_shell_var = tk.StringVar(value="Dashboard Shell: unknown")
+        self.dashboard_release_components_var = tk.StringVar(value="workspace_pack=unknown")
+        self.dashboard_release_models_var = tk.StringVar(value="spot_model=unknown | futures_model=unknown")
+        self.dashboard_release_manifests_var = tk.StringVar(value="release=dashboard_release_manifest.yaml")
         self.dashboard_balance_summary_var = tk.StringVar(value="Balance: n/a")
         self.dashboard_pnl_summary_var = tk.StringVar(value="Day PnL: n/a")
         self.dashboard_profile_summary_var = tk.StringVar(value="Profile: unknown")
@@ -2236,11 +2302,39 @@ class BotikGui:
         ttk.Label(components_card, text="Loaded Components / Releases", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             components_card,
-            textvariable=self.dashboard_release_panel_var,
+            textvariable=self.dashboard_release_status_var,
+            style="MetricValue.TLabel",
+            justify=tk.LEFT,
+            wraplength=620,
+        ).pack(anchor=tk.W, pady=(8, 2))
+        ttk.Label(
+            components_card,
+            textvariable=self.dashboard_release_shell_var,
             style="Body.TLabel",
             justify=tk.LEFT,
             wraplength=620,
-        ).pack(anchor=tk.W, pady=(6, 0))
+        ).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(
+            components_card,
+            textvariable=self.dashboard_release_components_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=620,
+        ).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(
+            components_card,
+            textvariable=self.dashboard_release_models_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=620,
+        ).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(
+            components_card,
+            textvariable=self.dashboard_release_manifests_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=620,
+        ).pack(anchor=tk.W, pady=(2, 0))
         ttk.Label(
             components_card,
             text=f"Manifest source: {DASHBOARD_RELEASE_MANIFEST_PATH.name}",
@@ -5347,6 +5441,7 @@ class BotikGui:
         ops_status = load_runtime_ops_status_snapshot(db_path)
         release_manifest = load_dashboard_release_manifest()
         release_panel = format_dashboard_release_panel(release_manifest)
+        release_sections = build_dashboard_release_home_sections(release_manifest)
         spot_workspace = load_spot_workspace_read_model(db_path, account_type="UNIFIED", limit=400)
         futures_training_workspace = load_futures_training_workspace_read_model(
             db_path,
@@ -5601,16 +5696,26 @@ class BotikGui:
             "stats_reconciliation_issue_rows": reconciliation_issue_rows,
             "model_rows": model_rows,
             "models_total": len(model_rows),
+            "dashboard_release_status_line": release_sections["status_line"],
+            "dashboard_release_shell_line": release_sections["shell_line"],
+            "dashboard_release_components_line": release_sections["components_line"],
+            "dashboard_release_models_line": release_sections["models_line"],
+            "dashboard_release_manifests_line": (
+                f"{release_sections['manifests_line']} | {release_sections['workspace_line']}"
+            ),
             "dashboard_balance_summary_line": f"{str('USDT total')} {str('=')} {str('n/a')}",
             "dashboard_pnl_summary_line": f"{float(outcomes_summary.get('sum_net_pnl_quote', 0.0)):.6f} quote",
             "dashboard_profile_summary_line": str(release_manifest.get("active_config_profile") or "unknown"),
             "dashboard_spot_meta_line": (
-                "active_holdings={holdings} | pending_orders={orders} | recovered={recovered} | stale={stale}"
+                "active_holdings={holdings} | pending_orders={orders} | recovered={recovered} | stale={stale} | "
+                "model={model} | runtime={runtime}"
             ).format(
                 holdings=int(spot_workspace.get("holdings_count") or 0),
                 orders=int(spot_workspace.get("open_orders_count") or 0),
                 recovered=int(spot_workspace.get("recovered_holdings_count") or 0),
                 stale=int(spot_workspace.get("stale_holdings_count") or 0),
+                model=str(release_manifest.get("active_spot_model_version") or "unknown"),
+                runtime=str(release_manifest.get("spot_runtime_version") or "unknown"),
             ),
             "dashboard_futures_meta_line": (
                 "paper_positions={positions} | paper_orders={orders} | training_model={model} | engine={engine}"
@@ -6815,6 +6920,21 @@ class BotikGui:
         self.runtime_capabilities_var.set(str(snapshot.get("runtime_capabilities_status", "capabilities: n/a")))
         self.dashboard_release_panel_var.set(
             str(snapshot.get("dashboard_release_panel", "Loaded Components / Releases: not loaded"))
+        )
+        self.dashboard_release_status_var.set(
+            str(snapshot.get("dashboard_release_status_line") or "release=missing")
+        )
+        self.dashboard_release_shell_var.set(
+            str(snapshot.get("dashboard_release_shell_line") or "Dashboard Shell: unknown")
+        )
+        self.dashboard_release_components_var.set(
+            str(snapshot.get("dashboard_release_components_line") or "workspace_pack=unknown")
+        )
+        self.dashboard_release_models_var.set(
+            str(snapshot.get("dashboard_release_models_line") or "spot_model=unknown | futures_model=unknown")
+        )
+        self.dashboard_release_manifests_var.set(
+            str(snapshot.get("dashboard_release_manifests_line") or "release=dashboard_release_manifest.yaml")
         )
         self.dashboard_balance_summary_var.set(
             f"{snapshot.get('balance_total', 'n/a')} total | wallet={snapshot.get('balance_wallet', 'n/a')}"

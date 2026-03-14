@@ -173,8 +173,8 @@ def test_release_manifest_overrides_active_models_from_external_pointer(tmp_path
     assert data["active_spot_model_version"] == "spot-model-external"
     assert data["active_futures_model_version"] == "futures-model-external"
     panel = format_dashboard_release_panel(data)
-    assert "Workspace Manifest:" in panel
-    assert "Active Models Manifest:" in panel
+    assert "workspace_manifest=loaded" in panel
+    assert "active_models_manifest=loaded" in panel
     assert "spot-model-external" in panel
 
 
