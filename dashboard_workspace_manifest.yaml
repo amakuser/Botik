@@ -11,28 +11,33 @@ workspaces:
     enabled: true
     visible: true
     order: 2
-  - key: futures_training
-    label: Futures Training Workspace
+  - key: futures
+    label: Futures Workspace
     enabled: true
     visible: true
     order: 3
+  - key: model_registry
+    label: Model Registry Workspace
+    enabled: true
+    visible: true
+    order: 4
   - key: telegram
     label: Telegram Workspace
     enabled: true
     visible: true
-    order: 4
+    order: 5
   - key: logs
     label: Logs Workspace
     enabled: true
     visible: true
-    order: 5
+    order: 6
   - key: ops
     label: Ops Workspace
     enabled: true
     visible: true
-    order: 6
+    order: 7
   - key: settings
     label: Settings Workspace
     enabled: true
     visible: true
-    order: 7
+    order: 8

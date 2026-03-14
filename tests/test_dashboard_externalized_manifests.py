@@ -57,6 +57,22 @@ def test_load_dashboard_workspace_manifest_reads_order_and_visibility(tmp_path: 
     assert any(key == "home" for key, _ in tabs)
 
 
+def test_resolve_dashboard_workspace_tabs_normalizes_legacy_keys_and_labels() -> None:
+    tabs = resolve_dashboard_workspace_tabs(
+        {
+            "workspaces": [
+                {"key": "futures_training", "label": "Futures Training Workspace", "enabled": True, "visible": True, "order": 2},
+                {"key": "models", "label": "Models", "enabled": True, "visible": True, "order": 3},
+            ]
+        }
+    )
+    assert tabs == [
+        ("home", "Dashboard Home"),
+        ("futures", "Futures Workspace"),
+        ("model_registry", "Model Registry Workspace"),
+    ]
+
+
 def test_load_dashboard_workspace_manifest_safe_fallbacks(tmp_path: Path) -> None:
     missing = load_dashboard_workspace_manifest(tmp_path / "absent_workspace_manifest.yaml")
     assert missing["manifest_status"] == "defaulted"
@@ -185,7 +201,8 @@ def test_apply_workspace_manifest_to_notebook_uses_external_order_visibility() -
     gui.notebook = _NotebookStub()
     gui.home_tab = object()
     gui.control_tab = object()
-    gui.futures_training_tab = object()
+    gui.futures_tab = object()
+    gui.model_registry_tab = object()
     gui.telegram_tab = object()
     gui.logs_tab = object()
     gui.statistics_tab = object()

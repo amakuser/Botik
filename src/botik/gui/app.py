@@ -82,7 +82,8 @@ RECONCILIATION_ENTRY_LOCK_ISSUES: tuple[str, ...] = (
 DASHBOARD_WORKSPACE_TABS: tuple[tuple[str, str], ...] = (
     ("home", "Dashboard Home"),
     ("spot", "Spot Workspace"),
-    ("futures_training", "Futures Training Workspace"),
+    ("futures", "Futures Workspace"),
+    ("model_registry", "Model Registry Workspace"),
     ("telegram", "Telegram Workspace"),
     ("logs", "Logs Workspace"),
     ("ops", "Ops Workspace"),
@@ -115,6 +116,15 @@ def dashboard_workspace_labels() -> list[str]:
     return [label for _, label in DASHBOARD_WORKSPACE_TABS]
 
 
+def _normalize_dashboard_workspace_key(raw_key: Any) -> str:
+    key = str(raw_key or "").strip().lower()
+    alias_map = {
+        "futures_training": "futures",
+        "models": "model_registry",
+    }
+    return alias_map.get(key, key)
+
+
 def _default_workspace_manifest_tabs() -> list[dict[str, Any]]:
     return [
         {
@@ -130,16 +140,25 @@ def _default_workspace_manifest_tabs() -> list[dict[str, Any]]:
 
 def resolve_dashboard_workspace_tabs(manifest_data: dict[str, Any] | None = None) -> list[tuple[str, str]]:
     defaults_map = {key: label for key, label in DASHBOARD_WORKSPACE_TABS}
+    legacy_default_labels = {
+        "futures_training": "Futures Training Workspace",
+        "models": "Models",
+    }
     entries: list[dict[str, Any]] = []
     raw_entries = manifest_data.get("workspaces") if isinstance(manifest_data, dict) else None
     if isinstance(raw_entries, list):
         for idx, item in enumerate(raw_entries, start=1):
             if not isinstance(item, dict):
                 continue
-            key = str(item.get("key") or "").strip()
+            raw_key = str(item.get("key") or "").strip().lower()
+            key = _normalize_dashboard_workspace_key(raw_key)
             if key not in defaults_map:
                 continue
-            label = str(item.get("label") or defaults_map[key]).strip() or defaults_map[key]
+            raw_label = str(item.get("label") or "").strip()
+            if raw_key != key and (not raw_label or raw_label == legacy_default_labels.get(raw_key, "")):
+                label = defaults_map[key]
+            else:
+                label = raw_label or defaults_map[key]
             enabled = bool(item.get("enabled", True))
             visible = bool(item.get("visible", True))
             order_raw = item.get("order", idx)
@@ -1640,10 +1659,15 @@ class BotikGui:
         self.panel_freshness_var = tk.StringVar(value="freshness: n/a")
         self.futures_protection_status_var = tk.StringVar(value="protection: n/a")
         self.dashboard_spot_status_var = tk.StringVar(value="Spot: n/a")
-        self.dashboard_futures_training_status_var = tk.StringVar(value="Futures Training: n/a")
+        self.dashboard_futures_status_var = tk.StringVar(value="Futures: n/a")
         self.dashboard_telegram_status_var = tk.StringVar(value="Telegram: n/a")
         self.dashboard_ops_status_var = tk.StringVar(value="Ops: n/a")
         self.dashboard_release_panel_var = tk.StringVar(value="Loaded Components / Releases: not loaded")
+        self.dashboard_balance_summary_var = tk.StringVar(value="Balance: n/a")
+        self.dashboard_pnl_summary_var = tk.StringVar(value="Day PnL: n/a")
+        self.dashboard_profile_summary_var = tk.StringVar(value="Profile: unknown")
+        self.dashboard_spot_meta_var = tk.StringVar(value="Spot meta: n/a")
+        self.dashboard_futures_meta_var = tk.StringVar(value="Futures meta: n/a")
         self.spot_workspace_summary_var = tk.StringVar(value="Spot Summary: n/a")
         self.spot_workspace_policy_var = tk.StringVar(value="Policy: n/a")
         self.futures_training_summary_var = tk.StringVar(value="Training Summary: n/a")
@@ -1652,6 +1676,7 @@ class BotikGui:
         self.futures_run_progress_var = tk.StringVar(value="Training Run Progress: n/a")
         self.futures_eval_summary_var = tk.StringVar(value="Evaluation Summary: n/a")
         self.futures_checkpoints_summary_var = tk.StringVar(value="Checkpoints: n/a")
+        self.futures_paper_summary_var = tk.StringVar(value="Paper Results: n/a")
         self.telegram_workspace_summary_var = tk.StringVar(value="Telegram Status Summary: n/a")
         self.telegram_workspace_profile_var = tk.StringVar(value="Bot Profile / Connection: n/a")
         self.telegram_workspace_access_var = tk.StringVar(value="Allowed Chats / Access: n/a")
@@ -1698,6 +1723,8 @@ class BotikGui:
         self.spot_workspace_fills_tree: ttk.Treeview | None = None
         self.spot_workspace_exit_tree: ttk.Treeview | None = None
         self.futures_training_checkpoints_tree: ttk.Treeview | None = None
+        self.futures_paper_positions_tree: ttk.Treeview | None = None
+        self.futures_paper_orders_tree: ttk.Treeview | None = None
         self.log_text_full: tk.Text | None = None
         self.telegram_workspace_text: tk.Text | None = None
         self.telegram_workspace_commands_tree: ttk.Treeview | None = None
@@ -1727,6 +1754,7 @@ class BotikGui:
         self._suppressed_policy_logs = 0
         self._suppressed_logs_last_flush = time.monotonic()
         self.notebook: ttk.Notebook | None = None
+        self.futures_notebook: ttk.Notebook | None = None
         self.statistics_notebook: ttk.Notebook | None = None
         self.settings_notebook: ttk.Notebook | None = None
         self.settings_main_tab: ttk.Frame | None = None
@@ -1909,7 +1937,10 @@ class BotikGui:
 
         self.home_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.control_tab = ttk.Frame(notebook, style="Root.TFrame")
-        self.futures_training_tab = ttk.Frame(notebook, style="Root.TFrame")
+        self.futures_tab = ttk.Frame(notebook, style="Root.TFrame")
+        self.futures_training_tab = ttk.Frame(self.futures_tab, style="Root.TFrame")
+        self.futures_paper_tab = ttk.Frame(self.futures_tab, style="Root.TFrame")
+        self.model_registry_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.telegram_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.logs_tab = ttk.Frame(notebook, style="Root.TFrame")
         self.settings_tab = ttk.Frame(notebook, style="Root.TFrame")
@@ -1929,13 +1960,12 @@ class BotikGui:
         self.statistics_notebook = ttk.Notebook(statistics_shell)
         self.statistics_notebook.pack(fill=tk.BOTH, expand=True)
         self.stats_tab = ttk.Frame(self.statistics_notebook, style="Root.TFrame")
-        self.models_tab = ttk.Frame(self.statistics_notebook, style="Root.TFrame")
         self.statistics_notebook.add(self.stats_tab, text="Ops Snapshot")
-        self.statistics_notebook.add(self.models_tab, text="Model Registry")
+        self.models_tab = self.model_registry_tab
 
         self._build_dashboard_home_tab()
         self._build_control_tab()
-        self._build_futures_training_tab()
+        self._build_futures_workspace_tab()
         self._build_telegram_workspace_tab()
         self._build_logs_tab()
         self._build_settings_tab()
@@ -1950,7 +1980,8 @@ class BotikGui:
         return {
             "home": self.home_tab,
             "spot": self.control_tab,
-            "futures_training": self.futures_training_tab,
+            "futures": self.futures_tab,
+            "model_registry": self.model_registry_tab,
             "telegram": self.telegram_tab,
             "logs": self.logs_tab,
             "ops": self.statistics_tab,
@@ -2013,6 +2044,22 @@ class BotikGui:
     def _open_workspace(self, workspace: ttk.Frame | None) -> None:
         if self.notebook is None or workspace is None:
             return
+        if workspace in {self.futures_training_tab, self.futures_paper_tab} and self.futures_tab is not None:
+            try:
+                self.notebook.select(self.futures_tab)
+                if self.futures_notebook is not None:
+                    self.futures_notebook.select(workspace)
+                return
+            except Exception:
+                return
+        if workspace in {self.settings_main_tab, self.spike_tab} and self.settings_tab is not None:
+            try:
+                self.notebook.select(self.settings_tab)
+                if self.settings_notebook is not None:
+                    self.settings_notebook.select(workspace)
+                return
+            except Exception:
+                return
         try:
             self.notebook.select(workspace)
         except Exception:
@@ -2022,57 +2069,177 @@ class BotikGui:
         home_root = ttk.Frame(self.home_tab, style="Root.TFrame")
         home_root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        top_row = ttk.Frame(home_root, style="Root.TFrame")
-        top_row.pack(fill=tk.X)
-        left = ttk.Frame(top_row, style="Card.TFrame", padding=12)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        right = ttk.Frame(top_row, style="Card.TFrame", padding=12)
-        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+        hero = ttk.Frame(home_root, style="Card.TFrame", padding=16)
+        hero.pack(fill=tk.X)
+        ttk.Label(hero, text="Dashboard Home", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            hero,
+            text="Single-window Dashboard Shell for Spot, Futures, models and operations. No visible console windows.",
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Button(hero, text="Open Full Stats", command=lambda: self._open_workspace(self.statistics_tab)).grid(
+            row=0, column=1, rowspan=2, sticky=tk.E, padx=(12, 0)
+        )
+        hero.columnconfigure(0, weight=1)
 
-        ttk.Label(left, text="Dashboard Home", style="Section.TLabel").pack(anchor=tk.W)
-        ttk.Label(left, textvariable=self.dashboard_spot_status_var, style="Body.TLabel").pack(anchor=tk.W, pady=(8, 2))
-        ttk.Label(left, textvariable=self.dashboard_futures_training_status_var, style="Body.TLabel").pack(anchor=tk.W, pady=2)
-        ttk.Label(left, textvariable=self.dashboard_telegram_status_var, style="Body.TLabel").pack(anchor=tk.W, pady=2)
-        ttk.Label(left, textvariable=self.dashboard_ops_status_var, style="Body.TLabel", wraplength=500, justify=tk.LEFT).pack(
-            anchor=tk.W, pady=2
+        metrics = ttk.Frame(home_root, style="Root.TFrame")
+        metrics.pack(fill=tk.X, pady=(8, 0))
+        for idx, (title, value_var) in enumerate(
+            [
+                ("Total Balance", self.dashboard_balance_summary_var),
+                ("Day PnL", self.dashboard_pnl_summary_var),
+                ("Active Profile", self.dashboard_profile_summary_var),
+                ("Shell / Ops", self.dashboard_ops_status_var),
+            ]
+        ):
+            card_frame = ttk.Frame(metrics, style="CardAlt.TFrame", padding=12)
+            card_frame.grid(row=0, column=idx, sticky=tk.NSEW, padx=(0 if idx == 0 else 8, 0))
+            ttk.Label(card_frame, text=title, style="SectionAlt.TLabel").pack(anchor=tk.W)
+            ttk.Label(
+                card_frame,
+                textvariable=value_var,
+                style="MetricValue.TLabel",
+                justify=tk.LEFT,
+                wraplength=220,
+            ).pack(anchor=tk.W, pady=(8, 0))
+            metrics.columnconfigure(idx, weight=1)
+
+        instruments = ttk.Frame(home_root, style="Root.TFrame")
+        instruments.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        spot_card = ttk.Frame(instruments, style="Card.TFrame", padding=14)
+        spot_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        futures_card = ttk.Frame(instruments, style="Card.TFrame", padding=14)
+        futures_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        ttk.Label(spot_card, text="Spot", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(spot_card, textvariable=self.dashboard_spot_status_var, style="Body.TLabel", justify=tk.LEFT).grid(
+            row=1, column=0, sticky=tk.W, pady=(8, 2)
         )
         ttk.Label(
-            left,
-            text="Futures workspace in this release is training/research only.",
+            spot_card,
+            textvariable=self.spot_workspace_summary_var,
             style="Body.TLabel",
-            foreground=self._ui_colors.get("warning", "#F0B23A"),
-        ).pack(anchor=tk.W, pady=(8, 0))
+            justify=tk.LEFT,
+            wraplength=520,
+        ).grid(row=2, column=0, sticky=tk.W, pady=(0, 2))
+        ttk.Label(
+            spot_card,
+            textvariable=self.dashboard_spot_meta_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=520,
+        ).grid(row=3, column=0, sticky=tk.W, pady=(0, 10))
 
-        ttk.Label(right, text="Quick Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=2, sticky=tk.W)
-        ttk.Button(right, text="Start Spot", command=self.start_trading, style="Start.TButton").grid(
+        spot_settings = ttk.Frame(spot_card, style="CardAlt.TFrame", padding=10)
+        spot_settings.grid(row=4, column=0, sticky=tk.EW, pady=(0, 10))
+        ttk.Label(spot_settings, text="Spot Mini Settings", style="SectionAlt.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        ttk.Label(spot_settings, text="TP", style="BodyAlt.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Entry(spot_settings, textvariable=self.cfg_take_profit, width=10).grid(row=1, column=1, sticky=tk.W, padx=(6, 0))
+        ttk.Label(spot_settings, text="SL", style="BodyAlt.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0))
+        ttk.Entry(spot_settings, textvariable=self.cfg_stop_loss, width=10).grid(row=1, column=3, sticky=tk.W, padx=(6, 0))
+        ttk.Label(spot_settings, text="Max Pos", style="BodyAlt.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
+        ttk.Entry(spot_settings, textvariable=self.cfg_target_profit, width=10).grid(row=2, column=1, sticky=tk.W, padx=(6, 0))
+        ttk.Label(spot_settings, text="Dust", style="BodyAlt.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(16, 0))
+        ttk.Entry(spot_settings, textvariable=self.cfg_min_active_usdt, width=10).grid(row=2, column=3, sticky=tk.W, padx=(6, 0))
+        ttk.Label(
+            spot_settings,
+            text="Hard rules / training source become instrument-level controls in the next step.",
+            style="BodyAlt.TLabel",
+        ).grid(row=3, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
+
+        spot_actions = ttk.Frame(spot_card, style="Root.TFrame")
+        spot_actions.grid(row=5, column=0, sticky=tk.EW)
+        ttk.Button(spot_actions, text="Start", command=self.start_trading, style="Start.TButton").grid(
+            row=0, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(spot_actions, text="Stop", command=self.stop_trading, style="Stop.TButton").grid(
+            row=0, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(spot_actions, text="Go To Spot Workspace", command=lambda: self._open_workspace(self.control_tab)).grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(right, text="Stop Spot", command=self.stop_trading, style="Stop.TButton").grid(
+        ttk.Button(spot_actions, text="Open Spot Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
             row=1, column=1, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(right, text="Start Futures Training", command=self.start_ml).grid(
-            row=2, column=0, sticky=tk.EW, padx=4, pady=4
+        for idx in range(2):
+            spot_actions.columnconfigure(idx, weight=1)
+        spot_card.columnconfigure(0, weight=1)
+
+        ttk.Label(futures_card, text="Futures", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            futures_card,
+            textvariable=self.dashboard_futures_status_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(8, 2))
+        ttk.Label(
+            futures_card,
+            textvariable=self.futures_training_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=520,
+        ).grid(row=2, column=0, sticky=tk.W, pady=(0, 2))
+        ttk.Label(
+            futures_card,
+            textvariable=self.dashboard_futures_meta_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=520,
+        ).grid(row=3, column=0, sticky=tk.W, pady=(0, 10))
+
+        futures_settings = ttk.Frame(futures_card, style="CardAlt.TFrame", padding=10)
+        futures_settings.grid(row=4, column=0, sticky=tk.EW, pady=(0, 10))
+        ttk.Label(futures_settings, text="Futures Mini Settings", style="SectionAlt.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        ttk.Label(futures_settings, text="TP", style="BodyAlt.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Entry(futures_settings, textvariable=self.cfg_take_profit, width=10).grid(row=1, column=1, sticky=tk.W, padx=(6, 0))
+        ttk.Label(futures_settings, text="SL", style="BodyAlt.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0))
+        ttk.Entry(futures_settings, textvariable=self.cfg_stop_loss, width=10).grid(row=1, column=3, sticky=tk.W, padx=(6, 0))
+        ttk.Label(futures_settings, text="Max Pos", style="BodyAlt.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
+        ttk.Entry(futures_settings, textvariable=self.cfg_target_profit, width=10).grid(row=2, column=1, sticky=tk.W, padx=(6, 0))
+        ttk.Label(futures_settings, text="Training", style="BodyAlt.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(16, 0))
+        ttk.Label(futures_settings, textvariable=self.ml_training_state_var, style="BodyAlt.TLabel").grid(
+            row=2, column=3, sticky=tk.W, padx=(6, 0)
         )
-        ttk.Button(right, text="Pause Training", command=self.pause_training).grid(
-            row=2, column=1, sticky=tk.EW, padx=4, pady=4
+        ttk.Label(
+            futures_settings,
+            text="Execution stays separated from training/paper until a safe futures execution path exists.",
+            style="BodyAlt.TLabel",
+        ).grid(row=3, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
+
+        futures_actions = ttk.Frame(futures_card, style="Root.TFrame")
+        futures_actions.grid(row=5, column=0, sticky=tk.EW)
+        ttk.Button(futures_actions, text="Start Training", command=self.start_ml, style="Accent.TButton").grid(
+            row=0, column=0, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(right, text="Run Reconcile", command=self.refresh_runtime_snapshot).grid(
-            row=3, column=0, sticky=tk.EW, padx=4, pady=4
+        ttk.Button(futures_actions, text="Pause Training", command=self.pause_training).grid(
+            row=0, column=1, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(right, text="Open Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
-            row=3, column=1, sticky=tk.EW, padx=4, pady=4
+        ttk.Button(
+            futures_actions,
+            text="Go To Futures Workspace",
+            command=lambda: self._open_workspace(self.futures_tab),
+        ).grid(row=1, column=0, sticky=tk.EW, padx=4, pady=4)
+        ttk.Button(futures_actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+            row=1, column=1, sticky=tk.EW, padx=4, pady=4
         )
         for idx in range(2):
-            right.columnconfigure(idx, weight=1)
+            futures_actions.columnconfigure(idx, weight=1)
+        futures_card.columnconfigure(0, weight=1)
 
-        components_card = ttk.Frame(home_root, style="Card.TFrame", padding=12)
-        components_card.pack(fill=tk.X, pady=(8, 0))
+        bottom_row = ttk.Frame(home_root, style="Root.TFrame")
+        bottom_row.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        components_card = ttk.Frame(bottom_row, style="Card.TFrame", padding=12)
+        components_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        model_card = ttk.Frame(bottom_row, style="Card.TFrame", padding=12)
+        model_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
         ttk.Label(components_card, text="Loaded Components / Releases", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             components_card,
             textvariable=self.dashboard_release_panel_var,
             style="Body.TLabel",
             justify=tk.LEFT,
+            wraplength=620,
         ).pack(anchor=tk.W, pady=(6, 0))
         ttk.Label(
             components_card,
@@ -2081,26 +2248,61 @@ class BotikGui:
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(6, 0))
 
-    def _build_futures_training_tab(self) -> None:
-        root = ttk.Frame(self.futures_training_tab, style="Root.TFrame")
+        ttk.Label(model_card, text="Model Registry", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            model_card,
+            textvariable=self.models_summary_var,
+            style="MetricValue.TLabel",
+            justify=tk.LEFT,
+            wraplength=420,
+        ).pack(anchor=tk.W, pady=(8, 4))
+        ttk.Label(
+            model_card,
+            text="Champion/challenger evaluation stays in Model Registry Workspace; Home only surfaces active state.",
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=420,
+        ).pack(anchor=tk.W)
+        ttk.Button(
+            model_card,
+            text="Open Model Registry Workspace",
+            command=lambda: self._open_workspace(self.model_registry_tab),
+        ).pack(anchor=tk.W, pady=(10, 0))
+
+    def _build_futures_workspace_tab(self) -> None:
+        root = ttk.Frame(self.futures_tab, style="Root.TFrame")
         root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        head = ttk.Frame(root, style="Card.TFrame", padding=12)
-        head.pack(fill=tk.X)
-        ttk.Label(head, text="Futures Training Workspace", style="Section.TLabel").pack(anchor=tk.W)
+        shell_head = ttk.Frame(root, style="Card.TFrame", padding=14)
+        shell_head.pack(fill=tk.X)
+        ttk.Label(shell_head, text="Futures Workspace", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
-            head,
-            text="Research and training only. This workspace is not a futures trading terminal.",
+            shell_head,
+            text=(
+                "Futures are split into two internal zones: Training and Paper Workspace. "
+                "This release does not present a live futures trading terminal."
+            ),
             style="Body.TLabel",
             foreground=self._ui_colors.get("warning", "#F0B23A"),
             justify=tk.LEFT,
+            wraplength=1180,
         ).pack(anchor=tk.W, pady=(6, 0))
 
+        self.futures_notebook = ttk.Notebook(root)
+        self.futures_notebook.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        self.futures_notebook.add(self.futures_training_tab, text="Futures Training Workspace")
+        self.futures_notebook.add(self.futures_paper_tab, text="Futures Paper Workspace")
+
+        self._build_futures_training_subworkspace()
+        self._build_futures_paper_subworkspace()
+
+    def _build_futures_training_subworkspace(self) -> None:
+        root = ttk.Frame(self.futures_training_tab, style="Root.TFrame")
+        root.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
         summary = ttk.Frame(root, style="Card.TFrame", padding=12)
-        summary.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(summary, text="Training Status Summary", style="Section.TLabel").grid(
-            row=0, column=0, sticky=tk.W
-        )
+        summary.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(summary, text="Training Status Summary", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
         ttk.Label(
             summary,
             textvariable=self.futures_training_summary_var,
@@ -2118,7 +2320,7 @@ class BotikGui:
         summary.columnconfigure(0, weight=1)
 
         pipelines = ttk.Frame(root, style="Root.TFrame")
-        pipelines.pack(fill=tk.X, pady=(8, 0))
+        pipelines.pack(fill=tk.X, pady=(0, 8))
         dataset_card = ttk.Frame(pipelines, style="Card.TFrame", padding=12)
         dataset_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         pipeline_card = ttk.Frame(pipelines, style="Card.TFrame", padding=12)
@@ -2143,7 +2345,7 @@ class BotikGui:
         ).pack(anchor=tk.W, pady=(6, 0))
 
         eval_row = ttk.Frame(root, style="Root.TFrame")
-        eval_row.pack(fill=tk.X, pady=(8, 0))
+        eval_row.pack(fill=tk.X, pady=(0, 8))
         eval_card = ttk.Frame(eval_row, style="Card.TFrame", padding=12)
         eval_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         metrics_card = ttk.Frame(eval_row, style="Card.TFrame", padding=12)
@@ -2162,9 +2364,15 @@ class BotikGui:
             row=0, column=0, columnspan=4, sticky=tk.W
         )
         ttk.Label(metrics_card, text="Model", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=3)
-        ttk.Label(metrics_card, textvariable=self.ml_model_id_var, style="Body.TLabel").grid(row=1, column=1, sticky=tk.W, pady=3)
-        ttk.Label(metrics_card, text="State", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, pady=3, padx=(12, 0))
-        ttk.Label(metrics_card, textvariable=self.ml_training_state_var, style="Body.TLabel").grid(row=1, column=3, sticky=tk.W, pady=3)
+        ttk.Label(metrics_card, textvariable=self.ml_model_id_var, style="Body.TLabel").grid(
+            row=1, column=1, sticky=tk.W, pady=3
+        )
+        ttk.Label(metrics_card, text="State", style="Body.TLabel").grid(
+            row=1, column=2, sticky=tk.W, pady=3, padx=(12, 0)
+        )
+        ttk.Label(metrics_card, textvariable=self.ml_training_state_var, style="Body.TLabel").grid(
+            row=1, column=3, sticky=tk.W, pady=3
+        )
         ttk.Label(metrics_card, text="Progress", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=3)
         self.ml_progress = ttk.Progressbar(metrics_card, mode="indeterminate", maximum=100)
         self.ml_progress.grid(row=2, column=1, columnspan=2, sticky=tk.EW, pady=3, padx=(0, 8))
@@ -2188,7 +2396,7 @@ class BotikGui:
             metrics_card.columnconfigure(i, weight=1)
 
         checkpoints_card = ttk.Frame(root, style="Card.TFrame", padding=12)
-        checkpoints_card.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        checkpoints_card.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
         ttk.Label(checkpoints_card, text="Checkpoints / Active Futures Model", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             checkpoints_card,
@@ -2229,8 +2437,10 @@ class BotikGui:
         cp_scroll_x.grid(row=1, column=0, sticky=tk.EW)
 
         actions = ttk.Frame(root, style="Card.TFrame", padding=12)
-        actions.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(actions, text="Training Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        actions.pack(fill=tk.X)
+        ttk.Label(actions, text="Training Actions", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=4, sticky=tk.W
+        )
         ttk.Button(actions, text="Refresh", command=self.refresh_runtime_snapshot).grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=4
         )
@@ -2252,9 +2462,123 @@ class BotikGui:
         ttk.Button(actions, text="Open Checkpoints", command=self.open_futures_checkpoints_dir).grid(
             row=2, column=2, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Open Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+        ttk.Button(actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
             row=2, column=3, sticky=tk.EW, padx=4, pady=4
         )
+        for idx in range(4):
+            actions.columnconfigure(idx, weight=1)
+
+    def _build_futures_paper_subworkspace(self) -> None:
+        root = ttk.Frame(self.futures_paper_tab, style="Root.TFrame")
+        root.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        summary = ttk.Frame(root, style="Card.TFrame", padding=12)
+        summary.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(summary, text="Futures Paper Workspace", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            summary,
+            text=(
+                "Paper results stay separate from live execution. Rows here are read-only session snapshots "
+                "until the dedicated paper evaluator layer is expanded."
+            ),
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(
+            summary,
+            textvariable=self.futures_paper_summary_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=2, column=0, sticky=tk.W)
+        summary.columnconfigure(0, weight=1)
+
+        tables_row = ttk.Frame(root, style="Root.TFrame")
+        tables_row.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+
+        pos_card = ttk.Frame(tables_row, style="Card.TFrame", padding=12)
+        pos_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        ord_card = ttk.Frame(tables_row, style="Card.TFrame", padding=12)
+        ord_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        ttk.Label(pos_card, text="Paper Positions Snapshot", style="Section.TLabel").pack(anchor=tk.W)
+        pos_wrap = ttk.Frame(pos_card, style="Card.TFrame")
+        pos_wrap.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        pos_wrap.columnconfigure(0, weight=1)
+        pos_wrap.rowconfigure(0, weight=1)
+        self.futures_paper_positions_tree = ttk.Treeview(
+            pos_wrap,
+            columns=("n", "symbol", "side", "qty", "entry", "mark", "liq", "u_pnl", "tp", "sl", "protection"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("symbol", "Symbol", 120),
+            ("side", "Side", 70),
+            ("qty", "Qty", 80),
+            ("entry", "Entry", 92),
+            ("mark", "Mark", 92),
+            ("liq", "Liq", 92),
+            ("u_pnl", "Unrealized", 92),
+            ("tp", "TP", 92),
+            ("sl", "SL", 92),
+            ("protection", "Protection", 96),
+        ]:
+            self.futures_paper_positions_tree.heading(col, text=title)
+            self.futures_paper_positions_tree.column(col, width=width, anchor=tk.W, stretch=False)
+        pos_scroll = ttk.Scrollbar(pos_wrap, orient=tk.VERTICAL, command=self.futures_paper_positions_tree.yview)
+        self.futures_paper_positions_tree.configure(yscrollcommand=pos_scroll.set)
+        self.futures_paper_positions_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        pos_scroll.grid(row=0, column=1, sticky=tk.NS)
+
+        ttk.Label(ord_card, text="Pending Futures Orders", style="Section.TLabel").pack(anchor=tk.W)
+        ord_wrap = ttk.Frame(ord_card, style="Card.TFrame")
+        ord_wrap.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        ord_wrap.columnconfigure(0, weight=1)
+        ord_wrap.rowconfigure(0, weight=1)
+        self.futures_paper_orders_tree = ttk.Treeview(
+            ord_wrap,
+            columns=("n", "symbol", "side", "order_id", "link_id", "type", "price", "qty", "status"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("symbol", "Symbol", 120),
+            ("side", "Side", 70),
+            ("order_id", "OrderID", 120),
+            ("link_id", "LinkID", 120),
+            ("type", "Type", 72),
+            ("price", "Price", 92),
+            ("qty", "Qty", 80),
+            ("status", "Status", 92),
+        ]:
+            self.futures_paper_orders_tree.heading(col, text=title)
+            self.futures_paper_orders_tree.column(col, width=width, anchor=tk.W, stretch=False)
+        ord_scroll = ttk.Scrollbar(ord_wrap, orient=tk.VERTICAL, command=self.futures_paper_orders_tree.yview)
+        self.futures_paper_orders_tree.configure(yscrollcommand=ord_scroll.set)
+        self.futures_paper_orders_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        ord_scroll.grid(row=0, column=1, sticky=tk.NS)
+
+        actions = ttk.Frame(root, style="Card.TFrame", padding=12)
+        actions.pack(fill=tk.X)
+        ttk.Label(actions, text="Paper Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        ttk.Button(actions, text="Refresh", command=self.refresh_runtime_snapshot).grid(
+            row=1, column=0, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+            row=1, column=1, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Model Registry", command=lambda: self._open_workspace(self.model_registry_tab)).grid(
+            row=1, column=2, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Label(
+            actions,
+            text="Close/reset paper session controls arrive in the next Futures stage once paper result lifecycle is separated.",
+            style="Body.TLabel",
+        ).grid(row=1, column=3, sticky=tk.W, padx=4, pady=4)
         for idx in range(4):
             actions.columnconfigure(idx, weight=1)
 
@@ -2840,18 +3164,18 @@ class BotikGui:
         )
         training_redirect = ttk.Frame(right, style="Card.TFrame", padding=10)
         training_redirect.pack(fill=tk.X, pady=8)
-        ttk.Label(training_redirect, text="Futures Training", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(training_redirect, text="Futures Workspace", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
             training_redirect,
-            text="Futures training/research controls are separated in Futures Training Workspace.",
+            text="Training and paper research controls are separated inside Futures Workspace.",
             style="Body.TLabel",
             justify=tk.LEFT,
             wraplength=320,
         ).pack(anchor=tk.W, pady=(6, 4))
         ttk.Button(
             training_redirect,
-            text="Open Futures Training Workspace",
-            command=lambda: self._open_workspace(self.futures_training_tab),
+            text="Open Futures Workspace",
+            command=lambda: self._open_workspace(self.futures_tab),
         ).pack(anchor=tk.W)
 
         hint = ttk.Frame(right, style="Card.TFrame", padding=10)
@@ -3204,11 +3528,17 @@ class BotikGui:
 
         top_card = ttk.Frame(models_root, style="Card.TFrame", padding=10)
         top_card.pack(fill=tk.X)
-        ttk.Label(top_card, text="Реестр моделей и качество", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
-        ttk.Label(top_card, textvariable=self.models_summary_var, style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
-        ttk.Button(top_card, text="Обновить", command=self.refresh_runtime_snapshot).grid(row=0, column=1, sticky=tk.E)
-        ttk.Button(top_card, text="Активировать выбранную модель", command=self.activate_selected_model).grid(
-            row=1, column=1, sticky=tk.E, pady=(6, 0)
+        ttk.Label(top_card, text="Model Registry Workspace", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            top_card,
+            text="Champion/challenger state, activation and comparison live here as a dedicated Dashboard workspace.",
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Label(top_card, textvariable=self.models_summary_var, style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Button(top_card, text="Refresh", command=self.refresh_runtime_snapshot).grid(row=0, column=1, sticky=tk.E)
+        ttk.Button(top_card, text="Promote Selected to Active", command=self.activate_selected_model).grid(
+            row=2, column=1, sticky=tk.E, pady=(6, 0)
         )
         top_card.columnconfigure(0, weight=1)
 
@@ -4455,8 +4785,8 @@ class BotikGui:
         self.dashboard_spot_status_var.set(
             f"Spot: {trading_state.upper()} | modes={','.join(running_modes) if running_modes else '-'} | mode={exec_mode}"
         )
-        self.dashboard_futures_training_status_var.set(
-            f"Futures Training: {self._status_text(self.ml)} | state={self.ml_training_state_var.get()}"
+        self.dashboard_futures_status_var.set(
+            f"Futures: training={self._status_text(self.ml)} | state={self.ml_training_state_var.get()} | execution=research-only"
         )
         self.dashboard_telegram_status_var.set(f"Telegram: {telegram_state}")
         self.dashboard_ops_status_var.set(str(self.reconciliation_status_var.get()))
@@ -5066,7 +5396,7 @@ class BotikGui:
             active_tab = "home"
         now_mono = time.monotonic()
         heavy_due = (now_mono - float(self._last_heavy_refresh_ts)) >= float(self._heavy_refresh_min_interval_sec)
-        need_heavy_refresh = heavy_due or active_tab in {"stats", "models"}
+        need_heavy_refresh = heavy_due or active_tab in {"ops", "model_registry", "futures_paper"}
         if need_heavy_refresh:
             history_rows_full = self._read_local_order_history(db_path, raw_cfg, limit=3000)
             history_total = self._read_order_history_count(db_path)
@@ -5204,6 +5534,16 @@ class BotikGui:
                 active_model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
             ),
             "futures_training_checkpoints_rows": list(futures_training_workspace.get("checkpoints_rows") or []),
+            "futures_paper_summary_line": (
+                "positions={positions} | pending_orders={orders} | outcomes={outcomes} | "
+                "net_pnl={net_pnl:.6f} | active_model={active_model}"
+            ).format(
+                positions=len(list(futures_positions_rows)),
+                orders=len(list(futures_orders_rows)),
+                outcomes=int(outcomes_summary.get("total", 0)),
+                net_pnl=float(outcomes_summary.get("sum_net_pnl_quote", 0.0)),
+                active_model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
+            ),
             "telegram_workspace_summary_line": (
                 "Telegram Status Summary: {line}"
             ).format(
@@ -5261,6 +5601,25 @@ class BotikGui:
             "stats_reconciliation_issue_rows": reconciliation_issue_rows,
             "model_rows": model_rows,
             "models_total": len(model_rows),
+            "dashboard_balance_summary_line": f"{str('USDT total')} {str('=')} {str('n/a')}",
+            "dashboard_pnl_summary_line": f"{float(outcomes_summary.get('sum_net_pnl_quote', 0.0)):.6f} quote",
+            "dashboard_profile_summary_line": str(release_manifest.get("active_config_profile") or "unknown"),
+            "dashboard_spot_meta_line": (
+                "active_holdings={holdings} | pending_orders={orders} | recovered={recovered} | stale={stale}"
+            ).format(
+                holdings=int(spot_workspace.get("holdings_count") or 0),
+                orders=int(spot_workspace.get("open_orders_count") or 0),
+                recovered=int(spot_workspace.get("recovered_holdings_count") or 0),
+                stale=int(spot_workspace.get("stale_holdings_count") or 0),
+            ),
+            "dashboard_futures_meta_line": (
+                "paper_positions={positions} | paper_orders={orders} | training_model={model} | engine={engine}"
+            ).format(
+                positions=len(list(futures_positions_rows)),
+                orders=len(list(futures_orders_rows)),
+                model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
+                engine=str(futures_training_workspace.get("training_engine_version") or "unknown"),
+            ),
             "api_status": f"mode={mode}; modes={','.join(enabled_modes)}",
             "updated_at": datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
             "runtime_capabilities_status": (
@@ -6192,7 +6551,7 @@ class BotikGui:
                         "yes" if int(auto_sell or 0) == 1 else "no",
                     )
                 )
-            return self._reindex_rows(out, width=10)
+            return self._reindex_rows(out, width=11)
         except sqlite3.Error:
             return []
         finally:
@@ -6246,7 +6605,7 @@ class BotikGui:
                         str(protection or ""),
                     )
                 )
-            return self._reindex_rows(out, width=10)
+            return self._reindex_rows(out, width=9)
         except sqlite3.Error:
             return []
         finally:
@@ -6373,8 +6732,17 @@ class BotikGui:
             return "home"
         if widget is self.control_tab:
             return "spot"
-        if widget is self.futures_training_tab:
+        if widget is self.futures_tab:
+            if self.futures_notebook is not None:
+                try:
+                    inner = self.futures_notebook.nametowidget(self.futures_notebook.select())
+                    if inner is self.futures_paper_tab:
+                        return "futures_paper"
+                except Exception:
+                    pass
             return "futures_training"
+        if widget is self.model_registry_tab:
+            return "model_registry"
         if widget is self.telegram_tab:
             return "telegram"
         if widget is self.logs_tab:
@@ -6389,14 +6757,7 @@ class BotikGui:
                     pass
             return "settings"
         if widget is self.statistics_tab:
-            if self.statistics_notebook is not None:
-                try:
-                    inner = self.statistics_notebook.nametowidget(self.statistics_notebook.select())
-                    if inner is self.models_tab:
-                        return "models"
-                except Exception:
-                    pass
-            return "stats"
+            return "ops"
         return "home"
 
     @staticmethod
@@ -6455,10 +6816,25 @@ class BotikGui:
         self.dashboard_release_panel_var.set(
             str(snapshot.get("dashboard_release_panel", "Loaded Components / Releases: not loaded"))
         )
+        self.dashboard_balance_summary_var.set(
+            f"{snapshot.get('balance_total', 'n/a')} total | wallet={snapshot.get('balance_wallet', 'n/a')}"
+        )
+        self.dashboard_pnl_summary_var.set(
+            f"{float(snapshot.get('stats_net_pnl_quote', 0.0)):.6f} quote | balance-flow={float(snapshot.get('stats_balance_delta_total', 0.0)):.6f}"
+        )
+        self.dashboard_profile_summary_var.set(
+            f"{snapshot.get('api_status', 'n/a')} | profile={snapshot.get('dashboard_profile_summary_line', 'unknown')}"
+        )
         self.reconciliation_status_var.set(str(snapshot.get("reconciliation_status_line", "reconciliation: n/a")))
         self.panel_freshness_var.set(str(snapshot.get("panel_freshness_line", "freshness: n/a")))
         self.futures_protection_status_var.set(
             str(snapshot.get("futures_protection_status_line", "protection: n/a"))
+        )
+        self.dashboard_spot_meta_var.set(
+            str(snapshot.get("dashboard_spot_meta_line") or "Spot meta: n/a")
+        )
+        self.dashboard_futures_meta_var.set(
+            str(snapshot.get("dashboard_futures_meta_line") or "Futures meta: n/a")
         )
         self.spot_workspace_summary_var.set(str(snapshot.get("spot_workspace_summary_line") or "Spot Summary: n/a"))
         self.spot_workspace_policy_var.set(str(snapshot.get("spot_workspace_policy_line") or "Policy: n/a"))
@@ -6479,6 +6855,9 @@ class BotikGui:
         )
         self.futures_checkpoints_summary_var.set(
             str(snapshot.get("futures_checkpoints_summary_line") or "Checkpoints: n/a")
+        )
+        self.futures_paper_summary_var.set(
+            str(snapshot.get("futures_paper_summary_line") or "Paper Results: n/a")
         )
         self.telegram_workspace_summary_var.set(
             str(snapshot.get("telegram_workspace_summary_line") or "Telegram Status Summary: n/a")
@@ -6510,6 +6889,16 @@ class BotikGui:
                 self.futures_training_checkpoints_tree,
                 list(snapshot.get("futures_training_checkpoints_rows") or []),
             )
+        if self.futures_paper_positions_tree is not None:
+            self._set_tree_rows(
+                self.futures_paper_positions_tree,
+                list(snapshot.get("stats_futures_positions_rows") or []),
+            )
+        if self.futures_paper_orders_tree is not None:
+            self._set_tree_rows(
+                self.futures_paper_orders_tree,
+                list(snapshot.get("stats_futures_orders_rows") or []),
+            )
         if self.telegram_workspace_commands_tree is not None:
             self._set_tree_rows(
                 self.telegram_workspace_commands_tree,
@@ -6527,22 +6916,22 @@ class BotikGui:
             )
         if self.order_history_tree is not None:
             self._set_tree_rows(self.order_history_tree, list(snapshot.get("history_rows") or []))
-        if self.stats_history_tree is not None and active_tab == "stats":
+        if self.stats_history_tree is not None and active_tab == "ops":
             self._set_tree_rows(self.stats_history_tree, list(snapshot.get("history_rows_full") or []))
-        if self.stats_balance_tree is not None and active_tab == "stats":
+        if self.stats_balance_tree is not None and active_tab == "ops":
             self._set_tree_rows(self.stats_balance_tree, list(snapshot.get("stats_balance_rows") or []))
-        if self.stats_spot_holdings_tree is not None and active_tab == "stats":
+        if self.stats_spot_holdings_tree is not None and active_tab == "ops":
             self._set_tree_rows(self.stats_spot_holdings_tree, list(snapshot.get("stats_spot_holdings_rows") or []))
-        if self.stats_futures_positions_tree is not None and active_tab == "stats":
+        if self.stats_futures_positions_tree is not None and active_tab == "ops":
             self._set_tree_rows(self.stats_futures_positions_tree, list(snapshot.get("stats_futures_positions_rows") or []))
-        if self.stats_futures_orders_tree is not None and active_tab == "stats":
+        if self.stats_futures_orders_tree is not None and active_tab == "ops":
             self._set_tree_rows(self.stats_futures_orders_tree, list(snapshot.get("stats_futures_orders_rows") or []))
-        if self.stats_reconciliation_issues_tree is not None and active_tab == "stats":
+        if self.stats_reconciliation_issues_tree is not None and active_tab == "ops":
             self._set_tree_rows(
                 self.stats_reconciliation_issues_tree,
                 list(snapshot.get("stats_reconciliation_issue_rows") or []),
             )
-        if self.models_tree is not None and active_tab == "models":
+        if self.models_tree is not None and active_tab == "model_registry":
             self._set_tree_rows(self.models_tree, list(snapshot.get("model_rows") or []))
         self.stats_orders_total_var.set(str(int(snapshot.get("stats_orders_total", 0))))
         self.stats_outcomes_total_var.set(str(int(snapshot.get("stats_outcomes_total", 0))))

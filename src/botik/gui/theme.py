@@ -60,6 +60,24 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         foreground=colors["text_soft"],
         font=("Segoe UI", 10),
     )
+    style.configure(
+        "SectionAlt.TLabel",
+        background=colors["card_alt"],
+        foreground=colors["text"],
+        font=("Segoe UI", 11, "bold"),
+    )
+    style.configure(
+        "BodyAlt.TLabel",
+        background=colors["card_alt"],
+        foreground=colors["text_soft"],
+        font=("Segoe UI", 10),
+    )
+    style.configure(
+        "MetricValue.TLabel",
+        background=colors["card_alt"],
+        foreground=colors["text"],
+        font=("Segoe UI", 14, "bold"),
+    )
 
     style.configure(
         "TNotebook",
