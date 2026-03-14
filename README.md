@@ -133,6 +133,9 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - quick routes: `Spot`, `Futures`, `Telegram`, `Ops`, `Errors`
   - `Open Spot Logs` / `Open Futures Logs` / `Open Telegram Logs` теперь открывают Logs Workspace уже с преднастроенными filters, а не просто переводят на пустой общий log view.
 - Ops Workspace: reconciliation/issues/audit/health.
+  - operational cards: `Runtime Services`, `Reconciliation`, `Protection / Risk`, `DB / Freshness`, `Capabilities`
+  - quick actions: `Refresh`, `Open Ops Logs`, `Focus Issues`, `Focus Futures Positions`
+  - keeps active issues, resolved issues, protection status and freshness visible without overloading Dashboard Home.
 - Settings Workspace: profile/paths/runtime settings.
 
 ## Reconciliation

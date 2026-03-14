@@ -1269,6 +1269,76 @@ def load_runtime_ops_status_snapshot(db_path: Path) -> dict[str, Any]:
     return out
 
 
+def build_dashboard_ops_workspace_sections(
+    *,
+    ops_status: dict[str, Any] | None,
+    runtime_caps: dict[str, str] | None,
+    trading_state: str,
+    running_modes: list[str] | tuple[str, ...],
+    ml_state: str,
+    telegram_state: str,
+    db_path: Path,
+) -> dict[str, str]:
+    snapshot = ops_status or {}
+    capabilities = runtime_caps or {}
+    lock_symbols = ",".join(list(snapshot.get("reconciliation_lock_symbols") or [])[:5]) or "-"
+    open_issues = int(snapshot.get("reconciliation_open_issues") or 0)
+    resolved_issues = int(snapshot.get("reconciliation_resolved_issues") or 0)
+    db_status = "ok" if db_path.exists() else "missing"
+    db_name = db_path.name if str(db_path or "") else "unknown"
+
+    service_health_line = (
+        "trading={trading} ({modes}) | ml={ml} | telegram={telegram}"
+    ).format(
+        trading=str(trading_state or "stopped"),
+        modes=",".join(list(running_modes or [])) or "-",
+        ml=str(ml_state or "unknown"),
+        telegram=str(telegram_state or "unknown"),
+    )
+    reconciliation_line = (
+        "status={status} @ {ts} ({trigger}) | issues open={open_cnt} resolved={resolved_cnt} | locks={locks}"
+    ).format(
+        status=str(snapshot.get("reconciliation_last_status") or "skipped"),
+        ts=str(snapshot.get("reconciliation_last_timestamp") or "-"),
+        trigger=str(snapshot.get("reconciliation_last_trigger") or "-"),
+        open_cnt=open_issues,
+        resolved_cnt=resolved_issues,
+        locks=lock_symbols,
+    )
+    protection_line = (
+        "{protection} | {risk}"
+    ).format(
+        protection=str(snapshot.get("futures_protection_line") or "none"),
+        risk=str(snapshot.get("futures_risk_telemetry_line") or "funding=none | liq=none"),
+    )
+    db_health_line = (
+        "db={db_status} ({db_name}) | spot={spot} | fut_pos={fut_pos} | fut_ord={fut_ord} | issues={issues}"
+    ).format(
+        db_status=db_status,
+        db_name=db_name,
+        spot=str(snapshot.get("spot_holdings_freshness") or "-"),
+        fut_pos=str(snapshot.get("futures_positions_freshness") or "-"),
+        fut_ord=str(snapshot.get("futures_orders_freshness") or "-"),
+        issues=str(snapshot.get("reconciliation_issues_freshness") or "-"),
+    )
+    capabilities_line = (
+        "reconciliation={reconcile} | protection={protection} | funding_freshness={funding} | liq_freshness={liq}"
+    ).format(
+        reconcile=str(capabilities.get("reconciliation") or "unknown"),
+        protection=str(capabilities.get("protection") or "unknown"),
+        funding=str(snapshot.get("futures_funding_freshness") or "-"),
+        liq=str(snapshot.get("futures_liq_snapshots_freshness") or "-"),
+    )
+    return {
+        "service_health_line": service_health_line,
+        "reconciliation_line": reconciliation_line,
+        "protection_line": protection_line,
+        "db_health_line": db_health_line,
+        "capabilities_line": capabilities_line,
+        "issues_summary_line": f"open={open_issues} | resolved={resolved_issues} | locks={lock_symbols}",
+    }
+
+
 SPOT_OPEN_ORDER_STATUSES: tuple[str, ...] = (
     "new",
     "partiallyfilled",
@@ -2597,6 +2667,11 @@ class BotikGui:
         self.stats_avg_pnl_var = tk.StringVar(value="0.000000")
         self.stats_balance_events_var = tk.StringVar(value="0")
         self.stats_balance_delta_var = tk.StringVar(value="0.000000")
+        self.ops_service_health_var = tk.StringVar(value="services: n/a")
+        self.ops_reconciliation_var = tk.StringVar(value="reconciliation: n/a")
+        self.ops_protection_var = tk.StringVar(value="protection: n/a")
+        self.ops_db_health_var = tk.StringVar(value="db: n/a")
+        self.ops_capabilities_var = tk.StringVar(value="capabilities: n/a")
         self.models_summary_var = tk.StringVar(value="models=0")
         self.ml_training_paused = False
         self.ml_runtime_mode = "bootstrap"
@@ -2610,6 +2685,9 @@ class BotikGui:
         self.stats_futures_positions_tree: ttk.Treeview | None = None
         self.stats_futures_orders_tree: ttk.Treeview | None = None
         self.stats_reconciliation_issues_tree: ttk.Treeview | None = None
+        self.ops_domain_notebook: ttk.Notebook | None = None
+        self.ops_issues_frame: ttk.Frame | None = None
+        self.ops_futures_positions_frame: ttk.Frame | None = None
         self.models_tree: ttk.Treeview | None = None
         self.order_history_tree: ttk.Treeview | None = None
         self.spot_workspace_holdings_tree: ttk.Treeview | None = None
@@ -4330,8 +4408,50 @@ class BotikGui:
         stats_root = ttk.Frame(self.stats_tab, style="Root.TFrame")
         stats_root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
+        ops_head = ttk.Frame(stats_root, style="Card.TFrame", padding=10)
+        ops_head.pack(fill=tk.X)
+        ttk.Label(ops_head, text="Ops Workspace", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            ops_head,
+            text="Operational health, reconciliation, protection and domain snapshots live here.",
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+        ops_actions = ttk.Frame(ops_head, style="Card.TFrame")
+        ops_actions.grid(row=0, column=1, rowspan=2, sticky=tk.NE, padx=(12, 0))
+        ttk.Button(ops_actions, text="Refresh", command=self.refresh_runtime_snapshot).grid(row=0, column=0, sticky=tk.EW, pady=2)
+        ttk.Button(ops_actions, text="Open Ops Logs", command=self.open_ops_logs_workspace).grid(row=1, column=0, sticky=tk.EW, pady=2)
+        ttk.Button(ops_actions, text="Focus Issues", command=self.open_ops_issues_view).grid(row=2, column=0, sticky=tk.EW, pady=2)
+        ttk.Button(ops_actions, text="Focus Futures Positions", command=self.open_ops_futures_positions_view).grid(
+            row=3, column=0, sticky=tk.EW, pady=2
+        )
+        ops_head.columnconfigure(0, weight=1)
+
+        health_row = ttk.Frame(stats_root, style="Root.TFrame")
+        health_row.pack(fill=tk.X, pady=(8, 0))
+        for idx, (title, value_var) in enumerate(
+            [
+                ("Runtime Services", self.ops_service_health_var),
+                ("Reconciliation", self.ops_reconciliation_var),
+                ("Protection / Risk", self.ops_protection_var),
+                ("DB / Freshness", self.ops_db_health_var),
+                ("Capabilities", self.ops_capabilities_var),
+            ]
+        ):
+            card_frame = ttk.Frame(health_row, style="CardAlt.TFrame", padding=10)
+            card_frame.grid(row=0, column=idx, sticky=tk.NSEW, padx=(0 if idx == 0 else 8, 0))
+            ttk.Label(card_frame, text=title, style="SectionAlt.TLabel").pack(anchor=tk.W)
+            ttk.Label(
+                card_frame,
+                textvariable=value_var,
+                style="BodyAlt.TLabel",
+                justify=tk.LEFT,
+                wraplength=220,
+            ).pack(anchor=tk.W, pady=(6, 0))
+            health_row.columnconfigure(idx, weight=1)
+
         summary_card = ttk.Frame(stats_root, style="Card.TFrame", padding=10)
-        summary_card.pack(fill=tk.X)
+        summary_card.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(summary_card, text="Статистика закрытий", style="Section.TLabel").grid(
             row=0, column=0, columnspan=8, sticky=tk.W
         )
@@ -4438,12 +4558,15 @@ class BotikGui:
         ttk.Label(domain_card, text="Spot/Futures/Reconciliation", style="Section.TLabel").pack(anchor=tk.W)
 
         domain_notebook = ttk.Notebook(domain_card)
+        self.ops_domain_notebook = domain_notebook
         domain_notebook.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
         spot_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
         futures_pos_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
         futures_ord_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
         issues_frame = ttk.Frame(domain_notebook, style="Root.TFrame")
+        self.ops_futures_positions_frame = futures_pos_frame
+        self.ops_issues_frame = issues_frame
         domain_notebook.add(spot_frame, text="Spot Holdings")
         domain_notebook.add(futures_pos_frame, text="Futures Positions")
         domain_notebook.add(futures_ord_frame, text="Futures Orders")
@@ -5768,6 +5891,22 @@ class BotikGui:
     def open_error_logs_workspace(self) -> None:
         self.open_logs_workspace(level="ERROR")
 
+    def open_ops_issues_view(self) -> None:
+        self._open_workspace(self.statistics_tab)
+        if self.ops_domain_notebook is not None and self.ops_issues_frame is not None:
+            try:
+                self.ops_domain_notebook.select(self.ops_issues_frame)
+            except Exception:
+                pass
+
+    def open_ops_futures_positions_view(self) -> None:
+        self._open_workspace(self.statistics_tab)
+        if self.ops_domain_notebook is not None and self.ops_futures_positions_frame is not None:
+            try:
+                self.ops_domain_notebook.select(self.ops_futures_positions_frame)
+            except Exception:
+                pass
+
     def _drain_logs(self) -> None:
         got = False
         dropped = 0
@@ -6513,6 +6652,15 @@ class BotikGui:
         pause_flag_path = self._resolve_training_pause_flag(raw_cfg)
         runtime_caps = runtime_capabilities_for_mode(mode)
         ops_status = load_runtime_ops_status_snapshot(db_path)
+        ops_sections = build_dashboard_ops_workspace_sections(
+            ops_status=ops_status,
+            runtime_caps=runtime_caps,
+            trading_state=self._trading_group_state(),
+            running_modes=self._running_trading_modes(),
+            ml_state=str(self.ml.state or "stopped"),
+            telegram_state=("running" if bool(self._telegram_thread is not None and self._telegram_thread.is_alive()) else "stopped"),
+            db_path=db_path,
+        )
         release_manifest = load_dashboard_release_manifest()
         release_panel = format_dashboard_release_panel(release_manifest)
         release_sections = build_dashboard_release_home_sections(release_manifest)
@@ -6801,6 +6949,11 @@ class BotikGui:
             "dashboard_futures_primary_line": str(dashboard_home_sections.get("futures_primary_line") or "Futures primary: n/a"),
             "dashboard_futures_meta_line": str(dashboard_home_sections.get("futures_meta_line") or "Futures meta: n/a"),
             "dashboard_futures_settings_line": str(dashboard_home_sections.get("futures_settings_line") or "Futures settings: n/a"),
+            "ops_service_health_line": str(ops_sections.get("service_health_line") or "services: n/a"),
+            "ops_reconciliation_line": str(ops_sections.get("reconciliation_line") or "reconciliation: n/a"),
+            "ops_protection_line": str(ops_sections.get("protection_line") or "protection: n/a"),
+            "ops_db_health_line": str(ops_sections.get("db_health_line") or "db: n/a"),
+            "ops_capabilities_line": str(ops_sections.get("capabilities_line") or "capabilities: n/a"),
             "api_status": f"mode={mode}; modes={','.join(enabled_modes)}",
             "updated_at": datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
             "runtime_capabilities_status": (
@@ -8031,6 +8184,11 @@ class BotikGui:
         self.dashboard_profile_summary_var.set(
             f"{snapshot.get('api_status', 'n/a')} | profile={snapshot.get('dashboard_profile_summary_line', 'unknown')}"
         )
+        self.ops_service_health_var.set(str(snapshot.get("ops_service_health_line") or "services: n/a"))
+        self.ops_reconciliation_var.set(str(snapshot.get("ops_reconciliation_line") or "reconciliation: n/a"))
+        self.ops_protection_var.set(str(snapshot.get("ops_protection_line") or "protection: n/a"))
+        self.ops_db_health_var.set(str(snapshot.get("ops_db_health_line") or "db: n/a"))
+        self.ops_capabilities_var.set(str(snapshot.get("ops_capabilities_line") or "capabilities: n/a"))
         self.reconciliation_status_var.set(str(snapshot.get("reconciliation_status_line", "reconciliation: n/a")))
         self.panel_freshness_var.set(str(snapshot.get("panel_freshness_line", "freshness: n/a")))
         self.futures_protection_status_var.set(
