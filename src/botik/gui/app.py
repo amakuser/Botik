@@ -35,6 +35,7 @@ from src.botik.risk.position import apply_fill
 from src.botik.version import get_app_version_label, load_app_version, load_build_sha
 from src.botik.gui.theme import apply_dark_theme
 from src.botik.gui.ui_components import card, labeled_combobox, labeled_entry
+from src.botik.storage.futures_store import list_futures_positions
 from src.botik.storage.spot_store import (
     insert_spot_exit_decision,
     list_spot_exit_decisions,
@@ -1868,6 +1869,197 @@ def load_futures_training_workspace_read_model(
     return out
 
 
+def load_futures_paper_workspace_read_model(
+    db_path: Path,
+    *,
+    release_manifest: dict[str, Any] | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    manifest = release_manifest or {}
+    active_futures_model = str(manifest.get("active_futures_model_version") or "unknown")
+    out: dict[str, Any] = {
+        "session_status": "read_only",
+        "capability_status": "close_controls_unsupported",
+        "positions_count": 0,
+        "open_orders_count": 0,
+        "closed_results_count": 0,
+        "good_results_count": 0,
+        "bad_results_count": 0,
+        "flat_results_count": 0,
+        "net_pnl_total": 0.0,
+        "last_closed_at": "-",
+        "active_futures_model_version": active_futures_model,
+        "summary_line": (
+            "paper_session=read_only | positions=0 | pending_orders=0 | "
+            "closed_results=0 | net_pnl=0.000000 | active_model={model}"
+        ).format(model=active_futures_model),
+        "status_line": (
+            "good=0 | bad=0 | flat=0 | close_controls=unsupported | reset_session=unsupported"
+        ),
+        "positions_rows": [],
+        "open_orders_rows": [],
+        "closed_results_rows": [],
+        "actions": [
+            "Refresh",
+            "Close Selected Paper Position",
+            "Close All Paper Positions",
+            "Reset Paper Session",
+            "Open Futures Logs",
+            "Open Model Registry",
+        ],
+    }
+    if not db_path.exists():
+        return out
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        if _table_exists_local(conn, "futures_positions"):
+            positions = list_futures_positions(conn, account_type="UNIFIED")
+            out["positions_count"] = len(positions)
+            out["positions_rows"] = [
+                (
+                    str(idx),
+                    str(item.get("symbol") or ""),
+                    str(item.get("side") or ""),
+                    _fmt_workspace_float(item.get("qty"), precision=8, fallback="0"),
+                    _fmt_workspace_float(item.get("entry_price"), precision=8, fallback=""),
+                    _fmt_workspace_float(item.get("mark_price"), precision=8, fallback=""),
+                    _fmt_workspace_float(item.get("liq_price"), precision=8, fallback=""),
+                    _fmt_workspace_float(item.get("unrealized_pnl"), precision=6, fallback=""),
+                    _fmt_workspace_float(item.get("take_profit"), precision=8, fallback=""),
+                    _fmt_workspace_float(item.get("stop_loss"), precision=8, fallback=""),
+                    str(item.get("protection_status") or "unknown"),
+                )
+                for idx, item in enumerate(positions[: max(int(limit), 1)], start=1)
+            ]
+
+        if _table_exists_local(conn, "futures_open_orders"):
+            rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(symbol, ''),
+                    COALESCE(side, ''),
+                    COALESCE(order_id, ''),
+                    COALESCE(order_link_id, ''),
+                    COALESCE(order_type, ''),
+                    price,
+                    qty,
+                    COALESCE(status, '')
+                FROM futures_open_orders
+                ORDER BY COALESCE(updated_at_utc, created_at_utc) DESC, id DESC
+                LIMIT ?
+                """,
+                (max(int(limit), 1),),
+            ).fetchall()
+            out["open_orders_count"] = len(rows)
+            out["open_orders_rows"] = [
+                (
+                    str(idx),
+                    str(symbol or ""),
+                    str(side or ""),
+                    str(order_id or ""),
+                    str(order_link_id or ""),
+                    str(order_type or ""),
+                    _fmt_workspace_float(price, precision=8, fallback=""),
+                    _fmt_workspace_float(qty, precision=8, fallback=""),
+                    str(status or ""),
+                )
+                for idx, (symbol, side, order_id, order_link_id, order_type, price, qty, status) in enumerate(
+                    rows, start=1
+                )
+            ]
+
+        if _table_exists_local(conn, "outcomes"):
+            closed_rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(o.symbol, ''),
+                    COALESCE(s.side, ''),
+                    o.entry_vwap,
+                    o.exit_vwap,
+                    o.net_pnl_quote,
+                    COALESCE(s.active_model_id, s.model_id, ''),
+                    COALESCE(s.policy_used, ''),
+                    COALESCE(s.created_at_utc, ''),
+                    COALESCE(o.closed_at_utc, '')
+                FROM outcomes o
+                LEFT JOIN signals s ON s.signal_id = o.signal_id
+                ORDER BY COALESCE(o.closed_at_utc, '') DESC, COALESCE(o.signal_id, '') DESC
+                LIMIT ?
+                """,
+                (max(int(limit), 1),),
+            ).fetchall()
+            if closed_rows:
+                out["last_closed_at"] = str(closed_rows[0][8] or "-")
+            closed_result_rows: list[tuple[str, ...]] = []
+            good = 0
+            bad = 0
+            flat = 0
+            net_total = 0.0
+            for idx, (symbol, side, entry_vwap, exit_vwap, net_pnl_quote, model_source, policy_used, opened_at, closed_at) in enumerate(
+                closed_rows,
+                start=1,
+            ):
+                net_pnl_value = float(net_pnl_quote or 0.0)
+                net_total += net_pnl_value
+                if net_pnl_value > 0:
+                    result_class = "good"
+                    good += 1
+                elif net_pnl_value < 0:
+                    result_class = "bad"
+                    bad += 1
+                else:
+                    result_class = "flat"
+                    flat += 1
+                closed_result_rows.append(
+                    (
+                        str(idx),
+                        str(symbol or ""),
+                        str(side or "unknown"),
+                        _fmt_workspace_float(entry_vwap, precision=8, fallback=""),
+                        _fmt_workspace_float(exit_vwap, precision=8, fallback=""),
+                        f"{net_pnl_value:.6f}",
+                        result_class,
+                        _component_text(model_source, fallback="unknown"),
+                        str(policy_used or "unknown"),
+                        str(opened_at or "-"),
+                        str(closed_at or "-"),
+                    )
+                )
+            out["closed_results_rows"] = closed_result_rows
+            out["closed_results_count"] = len(closed_result_rows)
+            out["good_results_count"] = good
+            out["bad_results_count"] = bad
+            out["flat_results_count"] = flat
+            out["net_pnl_total"] = net_total
+    except sqlite3.Error:
+        return out
+    finally:
+        conn.close()
+
+    out["summary_line"] = (
+        "paper_session={status} | positions={positions} | pending_orders={orders} | "
+        "closed_results={closed} | net_pnl={net_pnl:.6f} | active_model={model}"
+    ).format(
+        status=str(out.get("session_status") or "read_only"),
+        positions=int(out.get("positions_count") or 0),
+        orders=int(out.get("open_orders_count") or 0),
+        closed=int(out.get("closed_results_count") or 0),
+        net_pnl=float(out.get("net_pnl_total") or 0.0),
+        model=str(out.get("active_futures_model_version") or "unknown"),
+    )
+    out["status_line"] = (
+        "good={good} | bad={bad} | flat={flat} | last_closed={last_closed} | "
+        "close_controls=unsupported | reset_session=unsupported"
+    ).format(
+        good=int(out.get("good_results_count") or 0),
+        bad=int(out.get("bad_results_count") or 0),
+        flat=int(out.get("flat_results_count") or 0),
+        last_closed=str(out.get("last_closed_at") or "-"),
+    )
+    return out
+
+
 def dashboard_subprocess_popen_kwargs() -> dict[str, Any]:
     kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL}
     if os.name == "nt":
@@ -2094,6 +2286,7 @@ class BotikGui:
         self.futures_eval_summary_var = tk.StringVar(value="Evaluation Summary: n/a")
         self.futures_checkpoints_summary_var = tk.StringVar(value="Checkpoints: n/a")
         self.futures_paper_summary_var = tk.StringVar(value="Paper Results: n/a")
+        self.futures_paper_status_var = tk.StringVar(value="Paper Status: n/a")
         self.telegram_workspace_summary_var = tk.StringVar(value="Telegram Status Summary: n/a")
         self.telegram_workspace_profile_var = tk.StringVar(value="Bot Profile / Connection: n/a")
         self.telegram_workspace_access_var = tk.StringVar(value="Allowed Chats / Access: n/a")
@@ -2142,6 +2335,7 @@ class BotikGui:
         self.futures_training_checkpoints_tree: ttk.Treeview | None = None
         self.futures_paper_positions_tree: ttk.Treeview | None = None
         self.futures_paper_orders_tree: ttk.Treeview | None = None
+        self.futures_paper_closed_tree: ttk.Treeview | None = None
         self.log_text_full: tk.Text | None = None
         self.telegram_workspace_text: tk.Text | None = None
         self.telegram_workspace_commands_tree: ttk.Treeview | None = None
@@ -2931,8 +3125,9 @@ class BotikGui:
         ttk.Label(
             summary,
             text=(
-                "Paper results stay separate from live execution. Rows here are read-only session snapshots "
-                "until the dedicated paper evaluator layer is expanded."
+                "Paper evaluation stays separate from live execution. This workspace shows training-adjacent "
+                "paper results, open paper positions and pending paper orders without pretending to be a "
+                "live futures trading terminal."
             ),
             style="Body.TLabel",
             justify=tk.LEFT,
@@ -2945,6 +3140,13 @@ class BotikGui:
             justify=tk.LEFT,
             wraplength=1100,
         ).grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(
+            summary,
+            textvariable=self.futures_paper_status_var,
+            style="Muted.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=3, column=0, sticky=tk.W, pady=(4, 0))
         summary.columnconfigure(0, weight=1)
 
         tables_row = ttk.Frame(root, style="Root.TFrame")
@@ -3015,24 +3217,78 @@ class BotikGui:
         self.futures_paper_orders_tree.grid(row=0, column=0, sticky=tk.NSEW)
         ord_scroll.grid(row=0, column=1, sticky=tk.NS)
 
+        closed_card = ttk.Frame(root, style="Card.TFrame", padding=12)
+        closed_card.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        ttk.Label(closed_card, text="Closed Paper Results", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            closed_card,
+            text="Result class is derived from final net PnL after close: good=green, bad=red, flat=neutral.",
+            style="Muted.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).pack(anchor=tk.W, pady=(4, 0))
+        closed_wrap = ttk.Frame(closed_card, style="Card.TFrame")
+        closed_wrap.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        closed_wrap.columnconfigure(0, weight=1)
+        closed_wrap.rowconfigure(0, weight=1)
+        self.futures_paper_closed_tree = ttk.Treeview(
+            closed_wrap,
+            columns=("n", "symbol", "side", "entry", "exit", "net_pnl", "result", "model", "policy", "opened", "closed"),
+            show="headings",
+            height=8,
+        )
+        for col, title, width in [
+            ("n", "№", 44),
+            ("symbol", "Symbol", 120),
+            ("side", "Side", 70),
+            ("entry", "Entry", 92),
+            ("exit", "Exit", 92),
+            ("net_pnl", "Net PnL", 96),
+            ("result", "Result", 76),
+            ("model", "Model", 150),
+            ("policy", "Policy", 96),
+            ("opened", "Opened", 144),
+            ("closed", "Closed", 144),
+        ]:
+            self.futures_paper_closed_tree.heading(col, text=title)
+            self.futures_paper_closed_tree.column(col, width=width, anchor=tk.W, stretch=False)
+        closed_scroll = ttk.Scrollbar(closed_wrap, orient=tk.VERTICAL, command=self.futures_paper_closed_tree.yview)
+        self.futures_paper_closed_tree.configure(yscrollcommand=closed_scroll.set)
+        self.futures_paper_closed_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        closed_scroll.grid(row=0, column=1, sticky=tk.NS)
+        self.futures_paper_closed_tree.tag_configure("paper_good", foreground="#5FE08C")
+        self.futures_paper_closed_tree.tag_configure("paper_bad", foreground="#FF7F7F")
+        self.futures_paper_closed_tree.tag_configure("paper_flat", foreground="#A0B6D8")
+
         actions = ttk.Frame(root, style="Card.TFrame", padding=12)
         actions.pack(fill=tk.X)
-        ttk.Label(actions, text="Paper Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        ttk.Label(actions, text="Paper Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=6, sticky=tk.W)
         ttk.Button(actions, text="Refresh", command=self.refresh_runtime_snapshot).grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+        ttk.Button(actions, text="Close Selected Paper Position", command=self.close_selected_paper_position).grid(
             row=1, column=1, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Open Model Registry", command=lambda: self._open_workspace(self.model_registry_tab)).grid(
+        ttk.Button(actions, text="Close All Paper Positions", command=self.close_all_paper_positions).grid(
             row=1, column=2, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Reset Paper Session", command=self.reset_paper_session).grid(
+            row=1, column=3, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+            row=1, column=4, sticky=tk.EW, padx=4, pady=4
+        )
+        ttk.Button(actions, text="Open Model Registry", command=lambda: self._open_workspace(self.model_registry_tab)).grid(
+            row=1, column=5, sticky=tk.EW, padx=4, pady=4
         )
         ttk.Label(
             actions,
-            text="Close/reset paper session controls arrive in the next Futures stage once paper result lifecycle is separated.",
-            style="Body.TLabel",
-        ).grid(row=1, column=3, sticky=tk.W, padx=4, pady=4)
-        for idx in range(4):
+            text="Close/reset controls are intentionally explicit but remain unsupported until paper execution lifecycle is implemented.",
+            style="Muted.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=2, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(4, 0))
+        for idx in range(6):
             actions.columnconfigure(idx, weight=1)
 
     def _refresh_telegram_workspace_text(self) -> None:
@@ -4933,6 +5189,31 @@ class BotikGui:
             return
         self._enqueue_log(f"[models] artifact copied: {artifact}")
 
+    def _paper_workspace_unsupported_action(self, action_name: str) -> None:
+        message = (
+            f"{action_name} is not supported in the current release.\n\n"
+            "Futures Paper Workspace stays read-only until the dedicated paper execution lifecycle "
+            "is separated from training and evaluation."
+        )
+        self._enqueue_log(
+            f"[futures-paper] {action_name.lower().replace(' ', '_')} unsupported: read-only evaluator workspace"
+        )
+        messagebox.showinfo("Futures Paper Workspace", message)
+
+    def close_selected_paper_position(self) -> None:
+        if self.futures_paper_positions_tree is None:
+            return
+        if not self.futures_paper_positions_tree.selection():
+            messagebox.showwarning("Futures Paper Workspace", "Выберите paper position в таблице.")
+            return
+        self._paper_workspace_unsupported_action("Close Selected Paper Position")
+
+    def close_all_paper_positions(self) -> None:
+        self._paper_workspace_unsupported_action("Close All Paper Positions")
+
+    def reset_paper_session(self) -> None:
+        self._paper_workspace_unsupported_action("Reset Paper Session")
+
     def _telegram_status_text_ui(self) -> str:
         current_version = get_app_version_label()
         mode = self._load_execution_mode()
@@ -5893,6 +6174,11 @@ class BotikGui:
             ml_process_state=str(self.ml.state),
             training_mode=ml_mode,
         )
+        futures_paper_workspace = load_futures_paper_workspace_read_model(
+            db_path,
+            release_manifest=release_manifest,
+            limit=400,
+        )
         model_registry_workspace = load_model_registry_workspace_read_model(
             db_path,
             release_manifest=release_manifest,
@@ -6075,16 +6361,11 @@ class BotikGui:
                 active_model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
             ),
             "futures_training_checkpoints_rows": list(futures_training_workspace.get("checkpoints_rows") or []),
-            "futures_paper_summary_line": (
-                "positions={positions} | pending_orders={orders} | outcomes={outcomes} | "
-                "net_pnl={net_pnl:.6f} | active_model={active_model}"
-            ).format(
-                positions=len(list(futures_positions_rows)),
-                orders=len(list(futures_orders_rows)),
-                outcomes=int(outcomes_summary.get("total", 0)),
-                net_pnl=float(outcomes_summary.get("sum_net_pnl_quote", 0.0)),
-                active_model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
-            ),
+            "futures_paper_summary_line": str(futures_paper_workspace.get("summary_line") or "Paper Results: n/a"),
+            "futures_paper_status_line": str(futures_paper_workspace.get("status_line") or "Paper Status: n/a"),
+            "futures_paper_positions_rows": list(futures_paper_workspace.get("positions_rows") or []),
+            "futures_paper_orders_rows": list(futures_paper_workspace.get("open_orders_rows") or []),
+            "futures_paper_closed_rows": list(futures_paper_workspace.get("closed_results_rows") or []),
             "telegram_workspace_summary_line": (
                 "Telegram Status Summary: {line}"
             ).format(
@@ -7267,6 +7548,15 @@ class BotikGui:
                 tag = self._open_order_row_tag(row)
                 if tag:
                     tags = (tag,)
+            elif tree is self.futures_paper_closed_tree:
+                row_list = list(row)
+                result_class = str(row_list[6] if len(row_list) > 6 else "").strip().lower()
+                if result_class == "good":
+                    tags = ("paper_good",)
+                elif result_class == "bad":
+                    tags = ("paper_bad",)
+                elif result_class == "flat":
+                    tags = ("paper_flat",)
             elif tree is self.models_tree:
                 row_list = list(row)
                 row_text = " | ".join(str(cell or "").lower() for cell in row_list)
@@ -7428,6 +7718,9 @@ class BotikGui:
         self.futures_paper_summary_var.set(
             str(snapshot.get("futures_paper_summary_line") or "Paper Results: n/a")
         )
+        self.futures_paper_status_var.set(
+            str(snapshot.get("futures_paper_status_line") or "Paper Status: n/a")
+        )
         self.telegram_workspace_summary_var.set(
             str(snapshot.get("telegram_workspace_summary_line") or "Telegram Status Summary: n/a")
         )
@@ -7461,12 +7754,17 @@ class BotikGui:
         if self.futures_paper_positions_tree is not None:
             self._set_tree_rows(
                 self.futures_paper_positions_tree,
-                list(snapshot.get("stats_futures_positions_rows") or []),
+                list(snapshot.get("futures_paper_positions_rows") or []),
             )
         if self.futures_paper_orders_tree is not None:
             self._set_tree_rows(
                 self.futures_paper_orders_tree,
-                list(snapshot.get("stats_futures_orders_rows") or []),
+                list(snapshot.get("futures_paper_orders_rows") or []),
+            )
+        if self.futures_paper_closed_tree is not None:
+            self._set_tree_rows(
+                self.futures_paper_closed_tree,
+                list(snapshot.get("futures_paper_closed_rows") or []),
             )
         if self.telegram_workspace_commands_tree is not None:
             self._set_tree_rows(

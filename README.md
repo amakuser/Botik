@@ -98,6 +98,8 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - Futures Paper Workspace:
     - paper positions snapshot,
     - pending futures orders,
+    - closed paper results с `good / bad / flat` по финальному `net_pnl_quote`,
+    - read-only status line с честным `close_controls=unsupported / reset_session=unsupported`,
     - paper-only actions и переход в Model Registry Workspace.
 - Model Registry Workspace: champion/challenger реестр моделей, выбор активной модели и сравнение результатов.
   - summary по spot/futures/unknown model slots,
