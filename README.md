@@ -100,6 +100,7 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - active spot/futures models и active profile,
   - manifest file names и workspace order.
 - Spot Workspace: inventory-aware контроль holdings/orders/fills/exit decisions, safe policy labels.
+  - Spot Strategy Presets теперь живут здесь же, рядом с spot runtime actions, а не в Settings Workspace.
 - Futures Workspace: верхнеуровневое рабочее пространство для futures research/paper-потоков, без маскировки под live trading terminal.
   - Futures Training Workspace:
     - Training Status Summary,
@@ -136,7 +137,12 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - operational cards: `Runtime Services`, `Reconciliation`, `Protection / Risk`, `DB / Freshness`, `Capabilities`
   - quick actions: `Refresh`, `Open Ops Logs`, `Focus Issues`, `Focus Futures Positions`
   - keeps active issues, resolved issues, protection status and freshness visible without overloading Dashboard Home.
-- Settings Workspace: profile/paths/runtime settings.
+- Settings Workspace: technical-only surface для:
+  - `.env` secrets / API keys / Telegram refs,
+  - launcher diagnostics (`source` / `packaged`, runtime executable, config profile),
+  - external manifest paths (`dashboard_release_manifest.yaml`, `dashboard_workspace_manifest.yaml`, `active_models.yaml`),
+  - technical runtime fields (`execution.mode`, `start_paused`, `bybit.host`, `ws_public_host`).
+- Instrument-level knobs (`TP/SL`, `training_source`, strategy presets, policy controls) intentionally removed from Settings Workspace and live in Dashboard Home, Spot Workspace or Futures Workspace.
 
 ## Reconciliation
 

@@ -5,7 +5,7 @@ Features:
 - Start/stop runtime and training processes.
 - Live logs inside the application.
 - Preflight run button.
-- Settings workspace to edit .env and config.yaml directly.
+- Technical Settings Workspace for secrets, manifests, paths and launcher diagnostics.
 """
 from __future__ import annotations
 
@@ -2410,6 +2410,75 @@ def build_dashboard_home_instrument_sections(
     }
 
 
+def build_dashboard_settings_workspace_sections(
+    *,
+    launcher_mode: str,
+    packaged_executable: str | None,
+    python_path: str | None,
+    config_path: str | None,
+    raw_cfg: dict[str, Any] | None,
+    env_data: dict[str, str] | None,
+    release_manifest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cfg = raw_cfg or {}
+    env_map = env_data or {}
+    release = release_manifest or {}
+    execution_cfg = cfg.get("execution") or {}
+    bybit_cfg = cfg.get("bybit") or {}
+    launcher = str(launcher_mode or "").strip().lower() or "source"
+    runtime_name = (
+        Path(str(packaged_executable or sys.executable)).name
+        if launcher == "packaged"
+        else Path(str(python_path or sys.executable)).name
+    ) or ("botik.exe" if launcher == "packaged" else "python")
+    config_name = Path(str(config_path or DEFAULT_CONFIG_PATH)).name or "config.yaml"
+    execution_mode = _component_text(execution_cfg.get("mode"), fallback="paper")
+    start_paused = "yes" if bool(cfg.get("start_paused", True)) else "no"
+    bybit_host = _component_text(bybit_cfg.get("host"), fallback="unknown")
+    ws_host = _component_text(bybit_cfg.get("ws_public_host"), fallback="unknown")
+    shell_version = _component_text(release.get("shell_version"), fallback="unknown")
+    shell_build = _component_text(release.get("shell_build_sha"), fallback="unknown")
+    profile_name = _component_text(
+        release.get("active_config_profile") or Path(str(config_path or DEFAULT_CONFIG_PATH)).name,
+        fallback="unknown",
+    )
+
+    def _secret_status(key: str) -> str:
+        return "configured" if str(env_map.get(key) or "").strip() else "missing"
+
+    return {
+        "diagnostics_line": (
+            f"launcher={launcher} | runtime={runtime_name} | config={config_name} | "
+            f"shell={shell_version} | build={shell_build}"
+        ),
+        "profile_line": (
+            f"execution.mode={execution_mode} | start_paused={start_paused} | "
+            f"bybit.host={bybit_host} | ws_public_host={ws_host} | profile={profile_name}"
+        ),
+        "paths_line": (
+            f".env={ENV_PATH.name} | config={config_name} | release_manifest={DASHBOARD_RELEASE_MANIFEST_PATH.name} | "
+            f"workspace_manifest={DASHBOARD_WORKSPACE_MANIFEST_PATH.name} | active_models={ACTIVE_MODELS_MANIFEST_PATH.name} | "
+            f"gui_log={GUI_LOG_PATH.name}"
+        ),
+        "secrets_line": (
+            f"telegram_token={_secret_status('TELEGRAM_BOT_TOKEN')} | "
+            f"bybit_api_key={_secret_status('BYBIT_API_KEY')} | "
+            f"bybit_api_secret={_secret_status('BYBIT_API_SECRET_KEY')} | "
+            f"rsa_key_path={_secret_status('BYBIT_RSA_PRIVATE_KEY_PATH')}"
+        ),
+        "notice_line": (
+            "Instrument policy and trading knobs live in Dashboard Home, Spot Workspace and Futures Workspace, "
+            "not in Settings Workspace."
+        ),
+        "editable_fields": [
+            "execution.mode",
+            "start_paused",
+            "bybit.host",
+            "ws_public_host",
+        ],
+    }
+
+
 def dashboard_subprocess_popen_kwargs() -> dict[str, Any]:
     kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL}
     if os.name == "nt":
@@ -2673,6 +2742,15 @@ class BotikGui:
         self.ops_db_health_var = tk.StringVar(value="db: n/a")
         self.ops_capabilities_var = tk.StringVar(value="capabilities: n/a")
         self.models_summary_var = tk.StringVar(value="models=0")
+        self.settings_diagnostics_var = tk.StringVar(value="launcher=unknown | runtime=unknown | config=unknown")
+        self.settings_profile_var = tk.StringVar(value="execution.mode=unknown | start_paused=yes")
+        self.settings_paths_var = tk.StringVar(
+            value=".env=.env | config=config.yaml | release_manifest=dashboard_release_manifest.yaml"
+        )
+        self.settings_secrets_var = tk.StringVar(value="telegram_token=missing | bybit_api_key=missing")
+        self.settings_notice_var = tk.StringVar(
+            value="Instrument policy and trading knobs live in Dashboard Home, Spot Workspace and Futures Workspace."
+        )
         self.ml_training_paused = False
         self.ml_runtime_mode = "bootstrap"
         self._ml_progress_running = False
@@ -2857,6 +2935,36 @@ class BotikGui:
         cfg_name = Path(self.config_var.get()).name or "config.yaml"
         self.runtime_python_name_var.set(py_name)
         self.runtime_config_name_var.set(cfg_name)
+        self._refresh_settings_workspace_summary()
+
+    def _refresh_settings_workspace_summary(
+        self,
+        *,
+        raw_cfg: dict[str, Any] | None = None,
+        env_data: dict[str, str] | None = None,
+    ) -> None:
+        try:
+            cfg = raw_cfg if raw_cfg is not None else self._load_yaml()
+        except Exception:
+            cfg = {}
+        try:
+            env_map = env_data if env_data is not None else _read_env_map(ENV_PATH)
+        except Exception:
+            env_map = {}
+        sections = build_dashboard_settings_workspace_sections(
+            launcher_mode=self.launcher_mode,
+            packaged_executable=self.packaged_executable,
+            python_path=self.python_var.get(),
+            config_path=self.config_var.get(),
+            raw_cfg=cfg,
+            env_data=env_map,
+            release_manifest=load_dashboard_release_manifest(),
+        )
+        self.settings_diagnostics_var.set(str(sections.get("diagnostics_line") or "launcher=unknown"))
+        self.settings_profile_var.set(str(sections.get("profile_line") or "execution.mode=unknown"))
+        self.settings_paths_var.set(str(sections.get("paths_line") or ".env=.env"))
+        self.settings_secrets_var.set(str(sections.get("secrets_line") or "telegram_token=missing"))
+        self.settings_notice_var.set(str(sections.get("notice_line") or "Instrument controls live elsewhere."))
 
     def _schedule_autosave_env(self) -> None:
         if self._suspend_autosave:
@@ -2929,9 +3037,7 @@ class BotikGui:
         self.settings_notebook = ttk.Notebook(settings_shell)
         self.settings_notebook.pack(fill=tk.BOTH, expand=True)
         self.settings_main_tab = ttk.Frame(self.settings_notebook, style="Root.TFrame")
-        self.spike_tab = ttk.Frame(self.settings_notebook, style="Root.TFrame")
-        self.settings_notebook.add(self.settings_main_tab, text="Runtime Settings")
-        self.settings_notebook.add(self.spike_tab, text="Strategy Presets")
+        self.settings_notebook.add(self.settings_main_tab, text="Technical Settings")
 
         statistics_shell = ttk.Frame(self.statistics_tab, style="Root.TFrame")
         statistics_shell.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -2947,7 +3053,6 @@ class BotikGui:
         self._build_telegram_workspace_tab()
         self._build_logs_tab()
         self._build_settings_tab()
-        self._build_spike_tab()
         self._build_stats_tab()
         self._build_models_tab()
         self.dashboard_workspace_manifest = load_dashboard_workspace_manifest()
@@ -3030,7 +3135,7 @@ class BotikGui:
                 return
             except Exception:
                 return
-        if workspace in {self.settings_main_tab, self.spike_tab} and self.settings_tab is not None:
+        if workspace is self.settings_main_tab and self.settings_tab is not None:
             try:
                 self.notebook.select(self.settings_tab)
                 if self.settings_notebook is not None:
@@ -3983,6 +4088,8 @@ class BotikGui:
         ).grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=(2, 0))
         strategy_card.columnconfigure(3, weight=1)
 
+        self._build_spot_strategy_presets_panel(left)
+
         account_card = ttk.Frame(left, style="Card.TFrame", padding=10)
         account_card.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
         ttk.Label(account_card, text="Spot Inventory and Orders", style="Section.TLabel").grid(
@@ -4756,24 +4863,23 @@ class BotikGui:
         self.models_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         model_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def _build_spike_tab(self) -> None:
-        spike_root = ttk.Frame(self.spike_tab, style="Root.TFrame")
-        spike_root.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+    def _build_spot_strategy_presets_panel(self, parent: ttk.Frame) -> None:
+        spike_root = ttk.Frame(parent, style="Card.TFrame", padding=10)
+        spike_root.pack(fill=tk.X, pady=(0, 8))
 
-        info_card = ttk.Frame(spike_root, style="Card.TFrame", padding=10)
-        info_card.pack(fill=tk.X)
-        ttk.Label(info_card, text="Strategy Launcher", style="Section.TLabel").pack(anchor=tk.W)
+        ttk.Label(spike_root, text="Spot Strategy Presets", style="Section.TLabel").pack(anchor=tk.W)
         ttk.Label(
-            info_card,
+            spike_root,
             text=(
-                "Выберите режим и запускайте его из Dashboard Shell.\n"
-                "Для каждого пресета автоматически обновляются config-поля рынка и стратегии."
+                "Preset controls stay inside Spot Workspace. Use them to prepare spot-oriented runtime configs "
+                "without turning Settings Workspace into a trading-control surface."
             ),
             style="Body.TLabel",
             justify=tk.LEFT,
+            wraplength=760,
         ).pack(anchor=tk.W, pady=(6, 0))
 
-        mode_card = ttk.Frame(spike_root, style="Card.TFrame", padding=10)
+        mode_card = ttk.Frame(spike_root, style="Card.TFrame")
         mode_card.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(mode_card, text="Preset", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
         ttk.Label(mode_card, text="Trading mode", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
@@ -4792,7 +4898,7 @@ class BotikGui:
         ).grid(row=1, column=2, sticky=tk.W, padx=(16, 0))
         mode_card.columnconfigure(2, weight=1)
 
-        params_card = ttk.Frame(spike_root, style="Card.TFrame", padding=10)
+        params_card = ttk.Frame(spike_root, style="Card.TFrame")
         params_card.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(params_card, text="Spike Preset Params", style="Section.TLabel").grid(
             row=0, column=0, columnspan=4, sticky=tk.W
@@ -4817,7 +4923,7 @@ class BotikGui:
         for i in range(4):
             params_card.columnconfigure(i, weight=1)
 
-        actions_card = ttk.Frame(spike_root, style="Card.TFrame", padding=10)
+        actions_card = ttk.Frame(spike_root, style="Card.TFrame")
         actions_card.pack(fill=tk.X, pady=(8, 0))
         ttk.Button(actions_card, text="Apply Selected Preset", command=self.apply_selected_strategy).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(actions_card, text="Apply Spike Params Only", command=self.apply_spike_preset).pack(side=tk.LEFT, padx=6)
@@ -4831,6 +4937,34 @@ class BotikGui:
         settings_parent = self.settings_main_tab if self.settings_main_tab is not None else self.settings_tab
         settings_root = ttk.Frame(settings_parent, style="Root.TFrame")
         settings_root.pack(fill=tk.BOTH, expand=True, padx=2, pady=4)
+
+        summary_card = ttk.Frame(settings_root, style="Card.TFrame", padding=10)
+        summary_card.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(summary_card, text="Launcher / Profile Diagnostics", style="Section.TLabel").grid(
+            row=0, column=0, sticky=tk.W
+        )
+        ttk.Label(
+            summary_card,
+            textvariable=self.settings_diagnostics_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(
+            summary_card,
+            textvariable=self.settings_profile_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
+        ttk.Label(
+            summary_card,
+            textvariable=self.settings_notice_var,
+            style="Muted.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=3, column=0, sticky=tk.W, pady=(6, 0))
+        summary_card.columnconfigure(0, weight=1)
 
         env_card = ttk.Frame(settings_root, style="Card.TFrame", padding=10)
         env_card.pack(fill=tk.X)
@@ -4847,62 +4981,67 @@ class BotikGui:
 
         cfg_card = ttk.Frame(settings_root, style="Card.TFrame", padding=10)
         cfg_card.pack(fill=tk.X, pady=8)
-        ttk.Label(cfg_card, text="config.yaml Quick Settings", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        ttk.Label(cfg_card, text="Technical Runtime Settings", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=4, sticky=tk.W
+        )
+        ttk.Label(cfg_card, text="config path", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(cfg_card, textvariable=self.config_var, width=38).grid(row=1, column=1, sticky=tk.W)
+        ttk.Label(cfg_card, text="runtime", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(18, 0))
+        ttk.Label(cfg_card, textvariable=self.runtime_python_name_var, style="Body.TLabel").grid(
+            row=1, column=3, sticky=tk.W
+        )
 
-        ttk.Label(cfg_card, text="execution.mode", style="Body.TLabel").grid(row=1, column=0, sticky=tk.W, pady=5)
-        ttk.Combobox(cfg_card, textvariable=self.cfg_execution_mode, values=["paper", "live"], state="readonly", width=14).grid(row=1, column=1, sticky=tk.W)
-
-        ttk.Label(cfg_card, text="start_paused", style="Body.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Checkbutton(cfg_card, variable=self.cfg_start_paused).grid(row=1, column=3, sticky=tk.W)
-
-        ttk.Label(cfg_card, text="bybit.host", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(cfg_card, textvariable=self.cfg_bybit_host, width=28).grid(row=2, column=1, sticky=tk.W)
-        ttk.Label(cfg_card, text="ws_public_host", style="Body.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Entry(cfg_card, textvariable=self.cfg_ws_host, width=28).grid(row=2, column=3, sticky=tk.W)
-
-        ttk.Label(cfg_card, text="bybit.market_category", style="Body.TLabel").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(cfg_card, text="execution.mode", style="Body.TLabel").grid(row=2, column=0, sticky=tk.W, pady=5)
         ttk.Combobox(
             cfg_card,
-            textvariable=self.cfg_market_category,
-            values=["spot", "linear"],
+            textvariable=self.cfg_execution_mode,
+            values=["paper", "live"],
             state="readonly",
             width=14,
-        ).grid(row=3, column=1, sticky=tk.W)
-        ttk.Label(cfg_card, text="strategy.runtime_strategy", style="Body.TLabel").grid(row=3, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Combobox(
+        ).grid(row=2, column=1, sticky=tk.W)
+        ttk.Label(cfg_card, text="start_paused", style="Body.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(18, 0))
+        ttk.Checkbutton(cfg_card, variable=self.cfg_start_paused).grid(row=2, column=3, sticky=tk.W)
+
+        ttk.Label(cfg_card, text="bybit.host", style="Body.TLabel").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(cfg_card, textvariable=self.cfg_bybit_host, width=28).grid(row=3, column=1, sticky=tk.W)
+        ttk.Label(cfg_card, text="ws_public_host", style="Body.TLabel").grid(row=3, column=2, sticky=tk.W, padx=(18, 0))
+        ttk.Entry(cfg_card, textvariable=self.cfg_ws_host, width=28).grid(row=3, column=3, sticky=tk.W)
+
+        ttk.Label(
             cfg_card,
-            textvariable=self.cfg_runtime_strategy,
-            values=["spread_maker", "spike_reversal"],
-            state="readonly",
-            width=18,
-        ).grid(row=3, column=3, sticky=tk.W)
+            text="Instrument policy knobs, TP/SL, training source and strategy presets live in Spot/Futures workspaces.",
+            style="Muted.TLabel",
+            justify=tk.LEFT,
+            wraplength=820,
+        ).grid(row=4, column=0, columnspan=4, sticky=tk.W, pady=(8, 0))
 
-        ttk.Label(cfg_card, text="symbols (comma)", style="Body.TLabel").grid(row=4, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(cfg_card, textvariable=self.cfg_symbols, width=28).grid(row=4, column=1, sticky=tk.W)
-        ttk.Label(cfg_card, text="entry_mode", style="Body.TLabel").grid(row=4, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Label(cfg_card, text="auto by strategy", style="Body.TLabel").grid(row=4, column=3, sticky=tk.W)
-
-        ttk.Label(cfg_card, text="target_profit", style="Body.TLabel").grid(row=5, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(cfg_card, textvariable=self.cfg_target_profit, width=16).grid(row=5, column=1, sticky=tk.W)
-        ttk.Label(cfg_card, text="safety_buffer", style="Body.TLabel").grid(row=5, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Entry(cfg_card, textvariable=self.cfg_safety_buffer, width=16).grid(row=5, column=3, sticky=tk.W)
-
-        ttk.Label(cfg_card, text="stop_loss_pct", style="Body.TLabel").grid(row=6, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(cfg_card, textvariable=self.cfg_stop_loss, width=16).grid(row=6, column=1, sticky=tk.W)
-        ttk.Label(cfg_card, text="take_profit_pct", style="Body.TLabel").grid(row=6, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Entry(cfg_card, textvariable=self.cfg_take_profit, width=16).grid(row=6, column=3, sticky=tk.W)
-
-        ttk.Label(cfg_card, text="hold_timeout_sec", style="Body.TLabel").grid(row=7, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(cfg_card, textvariable=self.cfg_hold_timeout, width=16).grid(row=7, column=1, sticky=tk.W)
-        ttk.Label(cfg_card, text="min_active_position_usdt", style="Body.TLabel").grid(row=7, column=2, sticky=tk.W, padx=(18, 0))
-        ttk.Entry(cfg_card, textvariable=self.cfg_min_active_usdt, width=16).grid(row=7, column=3, sticky=tk.W)
+        manifest_card = ttk.Frame(settings_root, style="Card.TFrame", padding=10)
+        manifest_card.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(manifest_card, text="Externalized Dashboard Paths", style="Section.TLabel").grid(
+            row=0, column=0, sticky=tk.W
+        )
+        ttk.Label(
+            manifest_card,
+            textvariable=self.settings_paths_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 2))
+        ttk.Label(
+            manifest_card,
+            textvariable=self.settings_secrets_var,
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=1100,
+        ).grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
+        manifest_card.columnconfigure(0, weight=1)
 
         btn_card = ttk.Frame(settings_root, style="Card.TFrame", padding=10)
         btn_card.pack(fill=tk.X)
         ttk.Button(btn_card, text="Reload From Files", command=self.load_settings).pack(side=tk.LEFT, padx=4)
         ttk.Label(
             btn_card,
-            text="Auto-save is ON: changes in fields are written to .env/config.yaml automatically.",
+            text="Auto-save is ON for .env and technical runtime fields. Instrument-level controls live outside Settings Workspace.",
             style="Body.TLabel",
         ).pack(side=tk.LEFT, padx=12)
 
@@ -8092,13 +8231,6 @@ class BotikGui:
         if widget is self.logs_tab:
             return "logs"
         if widget is self.settings_tab:
-            if self.settings_notebook is not None:
-                try:
-                    inner = self.settings_notebook.nametowidget(self.settings_notebook.select())
-                    if inner is self.spike_tab:
-                        return "strategies"
-                except Exception:
-                    pass
             return "settings"
         if widget is self.statistics_tab:
             return "ops"
@@ -8582,6 +8714,7 @@ class BotikGui:
             self._set_enabled_strategy_modes_ui(enabled_modes)
         finally:
             self._suspend_autosave = False
+        self._refresh_settings_workspace_summary(raw_cfg=raw, env_data=env_data)
         self._enqueue_log("[settings] loaded from files")
 
     def save_env(self, show_popup: bool = True) -> bool:
@@ -8592,6 +8725,7 @@ class BotikGui:
             if show_popup:
                 messagebox.showerror("Save failed", f".env save error:\n{exc}")
             return False
+        self._refresh_settings_workspace_summary(env_data=updates)
         self._start_telegram_control_if_configured()
         self._enqueue_log(f"[settings] .env auto-saved: {ENV_PATH}")
         if show_popup:
@@ -8635,6 +8769,7 @@ class BotikGui:
                 messagebox.showerror("Save failed", f"config save error:\n{exc}")
             return False
 
+        self._refresh_settings_workspace_summary(raw_cfg=raw)
         self._enqueue_log(f"[settings] config auto-saved: {cfg_path}")
         if show_popup:
             messagebox.showinfo("Saved", f"config.yaml updated:\n{cfg_path}")
