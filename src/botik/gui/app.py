@@ -117,6 +117,29 @@ def dashboard_workspace_labels() -> list[str]:
     return [label for _, label in DASHBOARD_WORKSPACE_TABS]
 
 
+def filter_dashboard_strategy_modes(
+    modes: list[str] | tuple[str, ...] | None,
+    instrument: str,
+) -> list[str]:
+    instrument_key = str(instrument or "").strip().lower()
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in modes or []:
+        mode = str(raw or "").strip().lower()
+        if mode not in STRATEGY_MODE_RUNTIME or mode in seen:
+            continue
+        seen.add(mode)
+        normalized.append(mode)
+
+    if instrument_key == "spot":
+        filtered = [mode for mode in normalized if STRATEGY_MODE_RUNTIME.get(mode, {}).get("category") == "spot"]
+        return filtered or ["spot_spread"]
+    if instrument_key == "futures":
+        filtered = [mode for mode in normalized if STRATEGY_MODE_RUNTIME.get(mode, {}).get("category") != "spot"]
+        return filtered or ["futures_spike_reversal"]
+    return normalized
+
+
 def _normalize_dashboard_workspace_key(raw_key: Any) -> str:
     key = str(raw_key or "").strip().lower()
     alias_map = {
@@ -2060,6 +2083,132 @@ def load_futures_paper_workspace_read_model(
     return out
 
 
+def _dashboard_policy_mode_label(strategy_cfg: dict[str, Any] | None, ml_mode: str) -> str:
+    payload = strategy_cfg or {}
+    bandit_enabled = bool(payload.get("bandit_enabled", True))
+    mode = str(ml_mode or "bootstrap").strip().lower()
+    model_enabled = mode in {"predict", "online"}
+    if model_enabled and bandit_enabled:
+        return "Hybrid"
+    if model_enabled:
+        return "Model-driven"
+    if not bandit_enabled:
+        return "Hard Rules"
+    return "Hybrid"
+
+
+def _dashboard_training_source_label(exec_mode: str, ml_mode: str) -> str:
+    exec_mode_norm = str(exec_mode or "paper").strip().lower()
+    ml_mode_norm = str(ml_mode or "bootstrap").strip().lower()
+    if ml_mode_norm == "bootstrap":
+        return "Training disabled"
+    if exec_mode_norm in {"paper", "paper_only"}:
+        return "Paper only"
+    if exec_mode_norm in {"live", "demo", "real"}:
+        return "Paper + Executed"
+    return f"ml:{ml_mode_norm}"
+
+
+def build_dashboard_home_instrument_sections(
+    *,
+    raw_cfg: dict[str, Any] | None,
+    release_manifest: dict[str, Any] | None,
+    spot_workspace: dict[str, Any] | None,
+    futures_training_workspace: dict[str, Any] | None,
+    futures_paper_workspace: dict[str, Any] | None,
+    exec_mode: str,
+) -> dict[str, str]:
+    cfg = raw_cfg or {}
+    release = release_manifest or {}
+    spot = spot_workspace or {}
+    futures_training = futures_training_workspace or {}
+    futures_paper = futures_paper_workspace or {}
+    strategy_cfg = cfg.get("strategy") or {}
+    ml_cfg = cfg.get("ml") or {}
+    ml_mode = str(ml_cfg.get("mode") or "bootstrap").strip().lower() or "bootstrap"
+    policy_mode = _dashboard_policy_mode_label(strategy_cfg, ml_mode)
+    training_source = _dashboard_training_source_label(exec_mode, ml_mode)
+    max_position_size = _component_text(
+        strategy_cfg.get("max_order_notional_usdt") or strategy_cfg.get("order_notional_quote"),
+        fallback="unknown",
+    )
+    tp = _component_text(strategy_cfg.get("take_profit_pct"), fallback="unknown")
+    sl = _component_text(strategy_cfg.get("stop_loss_pct"), fallback="unknown")
+    dust_threshold = _component_text(strategy_cfg.get("min_active_position_usdt"), fallback="unknown")
+
+    spot_primary_line = (
+        "active_holdings={holdings} | open_orders={orders} | recovered={recovered} | "
+        "stale={stale} | current_mode={mode} | active_model={model}"
+    ).format(
+        holdings=int(spot.get("holdings_count") or 0),
+        orders=int(spot.get("open_orders_count") or 0),
+        recovered=int(spot.get("recovered_holdings_count") or 0),
+        stale=int(spot.get("stale_holdings_count") or 0),
+        mode=str(exec_mode or "paper"),
+        model=str(release.get("active_spot_model_version") or "unknown"),
+    )
+    spot_meta_line = (
+        "runtime={runtime} | policy={policy} | holdings_total={total} | "
+        "protected_manual={manual} | dust_threshold={dust}"
+    ).format(
+        runtime=str(release.get("spot_runtime_version") or "unknown"),
+        policy=policy_mode,
+        total=int(spot.get("holdings_count") or 0),
+        manual=int(spot.get("manual_holdings_count") or 0),
+        dust=dust_threshold,
+    )
+    spot_settings_line = (
+        "TP={tp} | SL={sl} | max_position_size={max_pos} | hard_rules={hard_rules} | "
+        "training_source={training_source} | dust_threshold={dust}"
+    ).format(
+        tp=tp,
+        sl=sl,
+        max_pos=max_position_size,
+        hard_rules=("on" if policy_mode == "Hard Rules" else "off"),
+        training_source=training_source,
+        dust=dust_threshold,
+    )
+
+    futures_primary_line = (
+        "training_status={status} | paper_results={closed} | good={good} bad={bad} | "
+        "active_model={model} | mode=research-only"
+    ).format(
+        status=str(futures_training.get("training_runtime_status") or "unknown"),
+        closed=int(futures_paper.get("closed_results_count") or 0),
+        good=int(futures_paper.get("good_results_count") or 0),
+        bad=int(futures_paper.get("bad_results_count") or 0),
+        model=str(release.get("active_futures_model_version") or "unknown"),
+    )
+    futures_meta_line = (
+        "paper_positions={positions} | pending_orders={orders} | net_pnl={net_pnl:.6f} | "
+        "engine={engine} | best_checkpoint={checkpoint}"
+    ).format(
+        positions=int(futures_paper.get("positions_count") or 0),
+        orders=int(futures_paper.get("open_orders_count") or 0),
+        net_pnl=float(futures_paper.get("net_pnl_total") or 0.0),
+        engine=str(release.get("futures_training_engine_version") or "unknown"),
+        checkpoint=str(futures_training.get("best_checkpoint") or "not available"),
+    )
+    futures_settings_line = (
+        "TP={tp} | SL={sl} | max_position_size={max_pos} | hard_rules={hard_rules} | training_source={training_source}"
+    ).format(
+        tp=tp,
+        sl=sl,
+        max_pos=max_position_size,
+        hard_rules=("on" if policy_mode == "Hard Rules" else "off"),
+        training_source=training_source,
+    )
+
+    return {
+        "spot_primary_line": spot_primary_line,
+        "spot_meta_line": spot_meta_line,
+        "spot_settings_line": spot_settings_line,
+        "futures_primary_line": futures_primary_line,
+        "futures_meta_line": futures_meta_line,
+        "futures_settings_line": futures_settings_line,
+    }
+
+
 def dashboard_subprocess_popen_kwargs() -> dict[str, Any]:
     kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL}
     if os.name == "nt":
@@ -2274,8 +2423,12 @@ class BotikGui:
         self.dashboard_balance_summary_var = tk.StringVar(value="Balance: n/a")
         self.dashboard_pnl_summary_var = tk.StringVar(value="Day PnL: n/a")
         self.dashboard_profile_summary_var = tk.StringVar(value="Profile: unknown")
+        self.dashboard_spot_primary_var = tk.StringVar(value="Spot primary: n/a")
         self.dashboard_spot_meta_var = tk.StringVar(value="Spot meta: n/a")
+        self.dashboard_spot_settings_var = tk.StringVar(value="Spot settings: n/a")
+        self.dashboard_futures_primary_var = tk.StringVar(value="Futures primary: n/a")
         self.dashboard_futures_meta_var = tk.StringVar(value="Futures meta: n/a")
+        self.dashboard_futures_settings_var = tk.StringVar(value="Futures settings: n/a")
         self.models_status_var = tk.StringVar(value="selector=active_models.yaml")
         self.spot_workspace_summary_var = tk.StringVar(value="Spot Summary: n/a")
         self.spot_workspace_policy_var = tk.StringVar(value="Policy: n/a")
@@ -2730,7 +2883,7 @@ class BotikGui:
         )
         ttk.Label(
             spot_card,
-            textvariable=self.spot_workspace_summary_var,
+            textvariable=self.dashboard_spot_primary_var,
             style="Body.TLabel",
             justify=tk.LEFT,
             wraplength=520,
@@ -2756,16 +2909,18 @@ class BotikGui:
         ttk.Entry(spot_settings, textvariable=self.cfg_min_active_usdt, width=10).grid(row=2, column=3, sticky=tk.W, padx=(6, 0))
         ttk.Label(
             spot_settings,
-            text="Hard rules / training source become instrument-level controls in the next step.",
+            textvariable=self.dashboard_spot_settings_var,
             style="BodyAlt.TLabel",
+            justify=tk.LEFT,
+            wraplength=520,
         ).grid(row=3, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
 
         spot_actions = ttk.Frame(spot_card, style="Root.TFrame")
         spot_actions.grid(row=5, column=0, sticky=tk.EW)
-        ttk.Button(spot_actions, text="Start", command=self.start_trading, style="Start.TButton").grid(
+        ttk.Button(spot_actions, text="Start", command=self.start_spot_runtime, style="Start.TButton").grid(
             row=0, column=0, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(spot_actions, text="Stop", command=self.stop_trading, style="Stop.TButton").grid(
+        ttk.Button(spot_actions, text="Stop", command=self.stop_spot_runtime, style="Stop.TButton").grid(
             row=0, column=1, sticky=tk.EW, padx=4, pady=4
         )
         ttk.Button(spot_actions, text="Go To Spot Workspace", command=lambda: self._open_workspace(self.control_tab)).grid(
@@ -2787,7 +2942,7 @@ class BotikGui:
         ).grid(row=1, column=0, sticky=tk.W, pady=(8, 2))
         ttk.Label(
             futures_card,
-            textvariable=self.futures_training_summary_var,
+            textvariable=self.dashboard_futures_primary_var,
             style="Body.TLabel",
             justify=tk.LEFT,
             wraplength=520,
@@ -2815,8 +2970,10 @@ class BotikGui:
         )
         ttk.Label(
             futures_settings,
-            text="Execution stays separated from training/paper until a safe futures execution path exists.",
+            textvariable=self.dashboard_futures_settings_var,
             style="BodyAlt.TLabel",
+            justify=tk.LEFT,
+            wraplength=520,
         ).grid(row=3, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
 
         futures_actions = ttk.Frame(futures_card, style="Root.TFrame")
@@ -5598,8 +5755,17 @@ class BotikGui:
                 self.ml_training_state_var.set("stopped")
         telegram_running = bool(self._telegram_thread is not None and self._telegram_thread.is_alive())
         telegram_state = "RUNNING" if telegram_running else ("DISABLED (no token)" if self._telegram_missing_token_reported else "STOPPED")
+        spot_modes_running = filter_dashboard_strategy_modes(running_modes, "spot")
+        spot_mode_set = set(filter_dashboard_strategy_modes(tuple(self.trading_processes.keys()), "spot"))
+        spot_procs = [proc for mode, proc in self.trading_processes.items() if mode in spot_mode_set]
+        if any(proc.running for proc in spot_procs):
+            spot_state = "running"
+        elif any(proc.state == "error" for proc in spot_procs):
+            spot_state = "error"
+        else:
+            spot_state = "stopped"
         self.dashboard_spot_status_var.set(
-            f"Spot: {trading_state.upper()} | modes={','.join(running_modes) if running_modes else '-'} | mode={exec_mode}"
+            f"Spot: {spot_state.upper()} | modes={','.join(spot_modes_running) if spot_modes_running else '-'} | execution={exec_mode}"
         )
         self.dashboard_futures_status_var.set(
             f"Futures: training={self._status_text(self.ml)} | state={self.ml_training_state_var.get()} | execution=research-only"
@@ -6179,6 +6345,14 @@ class BotikGui:
             release_manifest=release_manifest,
             limit=400,
         )
+        dashboard_home_sections = build_dashboard_home_instrument_sections(
+            raw_cfg=raw_cfg,
+            release_manifest=release_manifest,
+            spot_workspace=spot_workspace,
+            futures_training_workspace=futures_training_workspace,
+            futures_paper_workspace=futures_paper_workspace,
+            exec_mode=mode,
+        )
         model_registry_workspace = load_model_registry_workspace_read_model(
             db_path,
             release_manifest=release_manifest,
@@ -6435,25 +6609,12 @@ class BotikGui:
             "dashboard_balance_summary_line": f"{str('USDT total')} {str('=')} {str('n/a')}",
             "dashboard_pnl_summary_line": f"{float(outcomes_summary.get('sum_net_pnl_quote', 0.0)):.6f} quote",
             "dashboard_profile_summary_line": str(release_manifest.get("active_config_profile") or "unknown"),
-            "dashboard_spot_meta_line": (
-                "active_holdings={holdings} | pending_orders={orders} | recovered={recovered} | stale={stale} | "
-                "model={model} | runtime={runtime}"
-            ).format(
-                holdings=int(spot_workspace.get("holdings_count") or 0),
-                orders=int(spot_workspace.get("open_orders_count") or 0),
-                recovered=int(spot_workspace.get("recovered_holdings_count") or 0),
-                stale=int(spot_workspace.get("stale_holdings_count") or 0),
-                model=str(release_manifest.get("active_spot_model_version") or "unknown"),
-                runtime=str(release_manifest.get("spot_runtime_version") or "unknown"),
-            ),
-            "dashboard_futures_meta_line": (
-                "paper_positions={positions} | paper_orders={orders} | training_model={model} | engine={engine}"
-            ).format(
-                positions=len(list(futures_positions_rows)),
-                orders=len(list(futures_orders_rows)),
-                model=str(futures_training_workspace.get("active_futures_model_version") or "unknown"),
-                engine=str(futures_training_workspace.get("training_engine_version") or "unknown"),
-            ),
+            "dashboard_spot_primary_line": str(dashboard_home_sections.get("spot_primary_line") or "Spot primary: n/a"),
+            "dashboard_spot_meta_line": str(dashboard_home_sections.get("spot_meta_line") or "Spot meta: n/a"),
+            "dashboard_spot_settings_line": str(dashboard_home_sections.get("spot_settings_line") or "Spot settings: n/a"),
+            "dashboard_futures_primary_line": str(dashboard_home_sections.get("futures_primary_line") or "Futures primary: n/a"),
+            "dashboard_futures_meta_line": str(dashboard_home_sections.get("futures_meta_line") or "Futures meta: n/a"),
+            "dashboard_futures_settings_line": str(dashboard_home_sections.get("futures_settings_line") or "Futures settings: n/a"),
             "api_status": f"mode={mode}; modes={','.join(enabled_modes)}",
             "updated_at": datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
             "runtime_capabilities_status": (
@@ -7689,11 +7850,23 @@ class BotikGui:
         self.futures_protection_status_var.set(
             str(snapshot.get("futures_protection_status_line", "protection: n/a"))
         )
+        self.dashboard_spot_primary_var.set(
+            str(snapshot.get("dashboard_spot_primary_line") or "Spot primary: n/a")
+        )
         self.dashboard_spot_meta_var.set(
             str(snapshot.get("dashboard_spot_meta_line") or "Spot meta: n/a")
         )
+        self.dashboard_spot_settings_var.set(
+            str(snapshot.get("dashboard_spot_settings_line") or "Spot settings: n/a")
+        )
+        self.dashboard_futures_primary_var.set(
+            str(snapshot.get("dashboard_futures_primary_line") or "Futures primary: n/a")
+        )
         self.dashboard_futures_meta_var.set(
             str(snapshot.get("dashboard_futures_meta_line") or "Futures meta: n/a")
+        )
+        self.dashboard_futures_settings_var.set(
+            str(snapshot.get("dashboard_futures_settings_line") or "Futures settings: n/a")
         )
         self.spot_workspace_summary_var.set(str(snapshot.get("spot_workspace_summary_line") or "Spot Summary: n/a"))
         self.spot_workspace_policy_var.set(str(snapshot.get("spot_workspace_policy_line") or "Policy: n/a"))
@@ -8426,7 +8599,13 @@ class BotikGui:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _start_trading_impl(self, interactive: bool, start_ml: bool = True) -> str:
+    def _start_trading_modes_impl(
+        self,
+        strategy_modes: list[str] | tuple[str, ...],
+        *,
+        interactive: bool,
+        start_ml: bool,
+    ) -> str:
         self._flush_autosave()
         mode = self._load_execution_mode()
         if interactive and mode == "live":
@@ -8435,7 +8614,9 @@ class BotikGui:
                 "execution.mode=live. This can place real orders.\nContinue?",
             ):
                 return "Start canceled by user."
-        selected_modes = self._enabled_strategy_modes_from_ui()
+        selected_modes = self._normalize_strategy_modes(list(strategy_modes))
+        if not selected_modes:
+            return "Trading start skipped: no enabled modes."
         child_env = os.environ.copy()
         child_env["BOTIK_DISABLE_INTERNAL_TELEGRAM"] = "1"
         started_modes: list[str] = []
@@ -8478,6 +8659,13 @@ class BotikGui:
             return f"Trade start: started=[{started_txt}] already_running=[{already_txt}]. {ml_msg}"
         return f"Trading start: started=[{started_txt}] already_running=[{already_txt}]."
 
+    def _start_trading_impl(self, interactive: bool, start_ml: bool = True) -> str:
+        return self._start_trading_modes_impl(
+            self._enabled_strategy_modes_from_ui(),
+            interactive=interactive,
+            start_ml=start_ml,
+        )
+
     def start_trading(self) -> None:
         mode = self._load_execution_mode()
         if mode == "live":
@@ -8493,9 +8681,17 @@ class BotikGui:
             queued_message="queued start_trading",
         )
 
-    def _stop_trading_impl(self, stop_ml: bool = True) -> str:
+    def _stop_trading_modes_impl(
+        self,
+        strategy_modes: list[str] | tuple[str, ...],
+        *,
+        stop_ml: bool,
+    ) -> str:
+        selected_modes = self._normalize_strategy_modes(list(strategy_modes))
         stopped_modes: list[str] = []
         for mode, proc in self.trading_processes.items():
+            if selected_modes and mode not in selected_modes:
+                continue
             if proc.stop():
                 stopped_modes.append(mode)
         ml_msg = ""
@@ -8506,11 +8702,38 @@ class BotikGui:
             return f"Trade stop: stopped=[{stopped_txt}]. {ml_msg}"
         return f"Trading stop: stopped=[{stopped_txt}]."
 
+    def _stop_trading_impl(self, stop_ml: bool = True) -> str:
+        return self._stop_trading_modes_impl(self._enabled_strategy_modes_from_ui(), stop_ml=stop_ml)
+
     def stop_trading(self) -> None:
         self._run_dashboard_service_action_async(
             "stop_trading",
             lambda: self._stop_trading_impl(stop_ml=True),
             queued_message="queued stop_trading",
+        )
+
+    def start_spot_runtime(self) -> None:
+        mode = self._load_execution_mode()
+        if mode == "live":
+            if not messagebox.askyesno(
+                "Live Mode Warning",
+                "execution.mode=live. This can place real orders.\nContinue?",
+            ):
+                self._enqueue_log("[ui] Spot start canceled by user.")
+                return
+        spot_modes = filter_dashboard_strategy_modes(self._enabled_strategy_modes_from_ui(), "spot")
+        self._run_dashboard_service_action_async(
+            "start_spot_runtime",
+            lambda modes=spot_modes: self._start_trading_modes_impl(modes, interactive=False, start_ml=False),
+            queued_message="queued start_spot_runtime",
+        )
+
+    def stop_spot_runtime(self) -> None:
+        spot_modes = filter_dashboard_strategy_modes(self._enabled_strategy_modes_from_ui(), "spot")
+        self._run_dashboard_service_action_async(
+            "stop_spot_runtime",
+            lambda modes=spot_modes: self._stop_trading_modes_impl(modes, stop_ml=False),
+            queued_message="queued stop_spot_runtime",
         )
 
     def _start_ml_impl(self) -> str:

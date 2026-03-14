@@ -79,7 +79,20 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
 
 ## Dashboard Workspaces (актуально)
 
-- Dashboard Home: статусы, quick actions, блок Loaded Components / Releases.
+- Dashboard Home: статусы, quick actions, блок Loaded Components / Releases и два независимых instrument cards:
+  - Spot block:
+    - runtime status,
+    - active holdings / open orders / recovered / stale,
+    - active spot model,
+    - mini settings snapshot (`TP`, `SL`, `max_position_size`, `hard_rules`, `training_source`, `dust_threshold`),
+    - actions: `Start`, `Stop`, `Go To Spot Workspace`, `Open Spot Logs`.
+  - Futures block:
+    - training status,
+    - paper results summary (`good / bad / closed results`),
+    - active futures model,
+    - mini settings snapshot (`TP`, `SL`, `max_position_size`, `hard_rules`, `training_source`),
+    - actions: `Start Training`, `Pause Training`, `Go To Futures Workspace`, `Open Futures Logs`.
+- Spot start/stop on Home теперь управляют только spot runtime modes и не поднимают futures/training процессы автоматически.
 - Loaded Components / Releases на Home теперь показывает структурированно:
   - release / workspace / active-models manifest statuses,
   - Dashboard Shell version + build SHA + version sources,
