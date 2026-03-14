@@ -101,6 +101,7 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - manifest file names и workspace order.
 - Spot Workspace: inventory-aware контроль holdings/orders/fills/exit decisions, safe policy labels.
   - Spot Strategy Presets теперь живут здесь же, рядом с spot runtime actions, а не в Settings Workspace.
+  - `Start Spot` / `Stop Spot` в Spot Workspace управляют только spot runtime modes и не тянут futures research flow.
 - Futures Workspace: верхнеуровневое рабочее пространство для futures research/paper-потоков, без маскировки под live trading terminal.
   - Futures Training Workspace:
     - Training Status Summary,
@@ -108,7 +109,8 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
     - Feature & Label Pipeline,
     - Training Run Progress,
     - Evaluation / Metrics Summary,
-    - Checkpoints / Active Futures Model.
+    - Checkpoints / Active Futures Model,
+    - Futures Research Preset (`Futures Spike Reversal`) с отдельной apply-path внутри Futures Workspace.
   - Futures Paper Workspace:
     - paper positions snapshot,
     - pending futures orders,

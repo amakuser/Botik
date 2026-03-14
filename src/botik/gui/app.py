@@ -271,6 +271,20 @@ def filter_dashboard_strategy_modes(
     return normalized
 
 
+def dashboard_strategy_preset_labels(instrument: str) -> list[str]:
+    instrument_key = str(instrument or "").strip().lower()
+    labels: list[str] = []
+    for label, mode in STRATEGY_PRESET_LABELS.items():
+        category = STRATEGY_MODE_RUNTIME.get(mode, {}).get("category")
+        if instrument_key == "spot" and category == "spot":
+            labels.append(label)
+        if instrument_key == "futures" and category != "spot":
+            labels.append(label)
+    if labels:
+        return labels
+    return ["Spot Spread (Maker)"] if instrument_key == "spot" else ["Futures Spike Reversal"]
+
+
 def _normalize_dashboard_workspace_key(raw_key: Any) -> str:
     key = str(raw_key or "").strip().lower()
     alias_map = {
@@ -3558,6 +3572,38 @@ class BotikGui:
         cp_scroll_y.grid(row=0, column=1, sticky=tk.NS)
         cp_scroll_x.grid(row=1, column=0, sticky=tk.EW)
 
+        preset_card = ttk.Frame(root, style="Card.TFrame", padding=12)
+        preset_card.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(preset_card, text="Futures Research Preset", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=3, sticky=tk.W
+        )
+        ttk.Label(
+            preset_card,
+            text=(
+                "Futures Workspace stays research-first. The available preset configures the futures paper/training "
+                "flow without pretending to be a live trading terminal."
+            ),
+            style="Body.TLabel",
+            justify=tk.LEFT,
+            wraplength=900,
+        ).grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(6, 2))
+        ttk.Label(
+            preset_card,
+            text="Preset: Futures Spike Reversal (research / paper)",
+            style="Body.TLabel",
+        ).grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
+        ttk.Button(
+            preset_card,
+            text="Apply Futures Research Preset",
+            command=self.apply_futures_research_preset,
+        ).grid(row=2, column=1, sticky=tk.W, padx=(12, 0), pady=(2, 0))
+        ttk.Button(
+            preset_card,
+            text="Open Model Registry",
+            command=self.open_model_registry_workspace,
+        ).grid(row=2, column=2, sticky=tk.W, padx=(12, 0), pady=(2, 0))
+        preset_card.columnconfigure(0, weight=1)
+
         actions = ttk.Frame(root, style="Card.TFrame", padding=12)
         actions.pack(fill=tk.X)
         ttk.Label(actions, text="Training Actions", style="Section.TLabel").grid(
@@ -4026,10 +4072,10 @@ class BotikGui:
         action_card.pack(fill=tk.X, pady=8)
         ttk.Label(action_card, text="Spot Actions", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky=tk.W)
 
-        ttk.Button(action_card, text="Start Spot", command=self.start_trading, style="Start.TButton").grid(
+        ttk.Button(action_card, text="Start Spot", command=self.start_spot_runtime, style="Start.TButton").grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=3
         )
-        ttk.Button(action_card, text="Stop Spot", command=self.stop_trading, style="Stop.TButton").grid(
+        ttk.Button(action_card, text="Stop Spot", command=self.stop_spot_runtime, style="Stop.TButton").grid(
             row=1, column=1, sticky=tk.EW, padx=4, pady=3
         )
         ttk.Button(action_card, text="Refresh", command=self.refresh_runtime_snapshot).grid(
@@ -4076,14 +4122,9 @@ class BotikGui:
         ttk.Checkbutton(strategy_card, text="Spot Spike Burst", variable=self.enable_spot_spike_var).grid(
             row=1, column=1, sticky=tk.W, pady=4, padx=(12, 0)
         )
-        ttk.Checkbutton(
-            strategy_card,
-            text="Futures Spike Reversal",
-            variable=self.enable_futures_spike_var,
-        ).grid(row=1, column=2, sticky=tk.W, pady=4, padx=(12, 0))
         ttk.Label(
             strategy_card,
-            text="Start Spot launches enabled spot presets; Futures training is managed in its own workspace.",
+            text="Start Spot launches enabled spot presets only. Futures research presets are managed in Futures Workspace.",
             style="Body.TLabel",
         ).grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=(2, 0))
         strategy_card.columnconfigure(3, weight=1)
@@ -4886,13 +4927,13 @@ class BotikGui:
         ttk.Combobox(
             mode_card,
             textvariable=self.strategy_mode_var,
-            values=list(STRATEGY_PRESET_LABELS.keys()),
+            values=dashboard_strategy_preset_labels("spot"),
             state="readonly",
             width=30,
         ).grid(row=1, column=1, sticky=tk.W)
         ttk.Label(
             mode_card,
-            text="Spot Spread = классический maker.\nSpot Spike = burst на спайках.\nFutures Spike Reversal = linear + reverse + taker.",
+            text="Spot Spread = классический maker.\nSpot Spike = burst на спайках.\nFutures preset intentionally lives in Futures Workspace.",
             style="Body.TLabel",
             justify=tk.LEFT,
         ).grid(row=1, column=2, sticky=tk.W, padx=(16, 0))
@@ -8972,6 +9013,12 @@ class BotikGui:
         self._flush_autosave()
         mode = self._selected_strategy_mode()
         ok, msg = self._apply_strategy_preset_impl(mode, show_popup=True)
+        if not ok:
+            self._enqueue_log(f"[strategy] {msg}")
+
+    def apply_futures_research_preset(self) -> None:
+        self._flush_autosave()
+        ok, msg = self._apply_strategy_preset_impl("futures_spike_reversal", show_popup=True)
         if not ok:
             self._enqueue_log(f"[strategy] {msg}")
 
