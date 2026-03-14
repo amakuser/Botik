@@ -583,6 +583,7 @@ def load_shell_build_sha() -> str:
             capture_output=True,
             text=True,
             timeout=2.0,
+            **dashboard_subprocess_run_kwargs(),
         )
         if proc.returncode == 0:
             value = str(proc.stdout or "").strip()
@@ -1867,6 +1868,27 @@ def load_futures_training_workspace_read_model(
     return out
 
 
+def dashboard_subprocess_popen_kwargs() -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL}
+    if os.name == "nt":
+        creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+        startupinfo = startupinfo_cls() if callable(startupinfo_cls) else None
+        if startupinfo is not None:
+            startupinfo.dwFlags |= int(getattr(subprocess, "STARTF_USESHOWWINDOW", 0))
+            startupinfo.wShowWindow = int(getattr(subprocess, "SW_HIDE", 0))
+            kwargs["startupinfo"] = startupinfo
+        if creationflags:
+            kwargs["creationflags"] = creationflags
+    return kwargs
+
+
+def dashboard_subprocess_run_kwargs() -> dict[str, Any]:
+    kwargs = dashboard_subprocess_popen_kwargs()
+    kwargs.pop("stdin", None)
+    return kwargs
+
+
 class ManagedProcess:
     def __init__(self, name: str, on_output: Callable[[str], None]) -> None:
         self.name = name
@@ -1884,6 +1906,7 @@ class ManagedProcess:
         if self.running:
             return False
         self.last_exit_code = None
+        self.state = "starting"
         self.proc = subprocess.Popen(
             cmd,
             cwd=str(cwd),
@@ -1892,6 +1915,7 @@ class ManagedProcess:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            **dashboard_subprocess_popen_kwargs(),
         )
         self.state = "running"
         self.on_output(f"[{self.name}] started: {' '.join(cmd)}")
@@ -1912,6 +1936,7 @@ class ManagedProcess:
     def stop(self) -> bool:
         if not self.running or self.proc is None:
             return False
+        self.state = "stopping"
         self.on_output(f"[{self.name}] stopping...")
         self.proc.terminate()
         try:
@@ -2179,6 +2204,7 @@ class BotikGui:
         self._autosave_cfg_after_id: str | None = None
         self._runtime_refresh_lock = threading.Lock()
         self._runtime_refresh_inflight = False
+        self._service_actions_inflight: set[str] = set()
         self._telegram_recent_commands: deque[dict[str, str]] = deque(maxlen=80)
         self._telegram_recent_alerts: deque[dict[str, str]] = deque(maxlen=80)
         self._telegram_recent_errors: deque[dict[str, str]] = deque(maxlen=80)
@@ -4349,6 +4375,7 @@ class BotikGui:
             cwd=str(ROOT_DIR),
             capture_output=True,
             text=True,
+            **dashboard_subprocess_run_kwargs(),
         )
         if proc.returncode != 0:
             return "unknown"
@@ -4361,6 +4388,7 @@ class BotikGui:
             cwd=str(ROOT_DIR),
             capture_output=True,
             text=True,
+            **dashboard_subprocess_run_kwargs(),
         )
         output = ((pull.stdout or "") + "\n" + (pull.stderr or "")).strip()
         after = self._git_short_head()
@@ -8071,6 +8099,35 @@ class BotikGui:
         out_path.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True), encoding="utf-8")
         return out_path
 
+    def _run_dashboard_service_action_async(
+        self,
+        action_key: str,
+        fn: Callable[[], str],
+        *,
+        queued_message: str,
+    ) -> None:
+        if action_key in self._service_actions_inflight:
+            self._enqueue_log(f"[ui] action already in progress: {action_key}")
+            return
+        self._service_actions_inflight.add(action_key)
+        self._enqueue_log(f"[ui] {queued_message}")
+
+        def worker() -> None:
+            try:
+                result = fn()
+            except Exception as exc:  # noqa: BLE001
+                result = f"{action_key} failed: {exc}"
+            finally:
+                self._service_actions_inflight.discard(action_key)
+
+            def finalize() -> None:
+                self._enqueue_log(f"[ui] {result}")
+                self.refresh_runtime_snapshot()
+
+            self.root.after(0, finalize)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _start_trading_impl(self, interactive: bool, start_ml: bool = True) -> str:
         self._flush_autosave()
         mode = self._load_execution_mode()
@@ -8124,7 +8181,19 @@ class BotikGui:
         return f"Trading start: started=[{started_txt}] already_running=[{already_txt}]."
 
     def start_trading(self) -> None:
-        self._enqueue_log(f"[ui] {self._start_trading_impl(interactive=True, start_ml=True)}")
+        mode = self._load_execution_mode()
+        if mode == "live":
+            if not messagebox.askyesno(
+                "Live Mode Warning",
+                "execution.mode=live. This can place real orders.\nContinue?",
+            ):
+                self._enqueue_log("[ui] Start canceled by user.")
+                return
+        self._run_dashboard_service_action_async(
+            "start_trading",
+            lambda: self._start_trading_impl(interactive=False, start_ml=True),
+            queued_message="queued start_trading",
+        )
 
     def _stop_trading_impl(self, stop_ml: bool = True) -> str:
         stopped_modes: list[str] = []
@@ -8140,7 +8209,11 @@ class BotikGui:
         return f"Trading stop: stopped=[{stopped_txt}]."
 
     def stop_trading(self) -> None:
-        self._enqueue_log(f"[ui] {self._stop_trading_impl(stop_ml=True)}")
+        self._run_dashboard_service_action_async(
+            "stop_trading",
+            lambda: self._stop_trading_impl(stop_ml=True),
+            queued_message="queued stop_trading",
+        )
 
     def _start_ml_impl(self) -> str:
         self._flush_autosave()
@@ -8168,10 +8241,18 @@ class BotikGui:
         return "ML process stopped." if stopped else "ML already stopped."
 
     def start_ml(self) -> None:
-        self._enqueue_log(f"[ui] {self._start_ml_impl()}")
+        self._run_dashboard_service_action_async(
+            "start_ml",
+            self._start_ml_impl,
+            queued_message="queued start_ml",
+        )
 
     def stop_ml(self) -> None:
-        self._enqueue_log(f"[ui] {self._stop_ml_impl()}")
+        self._run_dashboard_service_action_async(
+            "stop_ml",
+            self._stop_ml_impl,
+            queued_message="queued stop_ml",
+        )
 
     def start_training(self) -> None:
         self.start_ml()
@@ -8180,22 +8261,25 @@ class BotikGui:
         self.stop_ml()
 
     def pause_training(self) -> None:
-        flag = self._training_pause_flag_path()
-        if flag.exists():
-            try:
-                flag.unlink()
-            except OSError as exc:
-                self._enqueue_log(f"[ui] failed to resume training: {exc}")
-                return
-            self._enqueue_log("[ui] training resumed")
-        else:
+        def toggle_pause() -> str:
+            flag = self._training_pause_flag_path()
+            if flag.exists():
+                try:
+                    flag.unlink()
+                except OSError as exc:
+                    return f"failed to resume training: {exc}"
+                return "training resumed"
             try:
                 flag.write_text("paused\n", encoding="utf-8")
             except OSError as exc:
-                self._enqueue_log(f"[ui] failed to pause training: {exc}")
-                return
-            self._enqueue_log("[ui] training paused")
-        self.refresh_runtime_snapshot()
+                return f"failed to pause training: {exc}"
+            return "training paused"
+
+        self._run_dashboard_service_action_async(
+            "pause_training",
+            toggle_pause,
+            queued_message="queued pause_training toggle",
+        )
 
     def _run_training_workspace_task(self, *, label: str, cmd: list[str]) -> None:
         if self.launcher_mode == "packaged":
@@ -8322,6 +8406,7 @@ class BotikGui:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            **dashboard_subprocess_popen_kwargs(),
         )
         if proc.stdout is not None:
             for line in proc.stdout:
