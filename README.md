@@ -129,6 +129,9 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - Telegram Actions: Refresh, Test Send (intent only), Reload Telegram Status, Open Logs, Open Settings/Profile.
 - Если `TELEGRAM_BOT_TOKEN` не задан, Telegram Workspace показывает `disabled / configuration_missing_token` и не имитирует активный модуль.
 - Logs Workspace: фильтруемые runtime логи.
+  - filters: `channel`, `instrument`, `pair`, `severity`, `query`
+  - quick routes: `Spot`, `Futures`, `Telegram`, `Ops`, `Errors`
+  - `Open Spot Logs` / `Open Futures Logs` / `Open Telegram Logs` теперь открывают Logs Workspace уже с преднастроенными filters, а не просто переводят на пустой общий log view.
 - Ops Workspace: reconciliation/issues/audit/health.
 - Settings Workspace: profile/paths/runtime settings.
 

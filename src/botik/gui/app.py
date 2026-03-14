@@ -112,9 +112,140 @@ TELEGRAM_WORKSPACE_ACTIONS: tuple[str, ...] = (
     "Copy Chat Summary",
 )
 
+DASHBOARD_LOG_CHANNELS: tuple[str, ...] = (
+    "ALL",
+    "spot",
+    "futures_training",
+    "futures_paper",
+    "telegram",
+    "models",
+    "ops",
+    "ui",
+    "system",
+)
+
+DASHBOARD_LOG_INSTRUMENTS: tuple[str, ...] = (
+    "ALL",
+    "spot",
+    "futures",
+    "telegram",
+    "models",
+    "ops",
+)
+
 
 def dashboard_workspace_labels() -> list[str]:
     return [label for _, label in DASHBOARD_WORKSPACE_TABS]
+
+
+def detect_dashboard_log_level(text: str) -> str:
+    upper = str(text or "").upper()
+    if "ERROR" in upper:
+        return "ERROR"
+    if "WARNING" in upper or "WARN" in upper:
+        return "WARNING"
+    if "DEBUG" in upper:
+        return "DEBUG"
+    if "INFO" in upper:
+        return "INFO"
+    return "INFO"
+
+
+def detect_dashboard_log_pair(text: str) -> str:
+    upper = str(text or "").upper()
+    found = re.search(r"\b([A-Z0-9]{2,}(?:USDT|USDC|USD|BTC|ETH))\b", upper)
+    return str(found.group(1) if found else "")
+
+
+def detect_dashboard_log_channel(text: str) -> str:
+    msg = str(text or "").strip()
+    lower = msg.lower()
+    prefix_match = re.match(r"^\s*\[([^\]]+)\]", lower)
+    prefix = str(prefix_match.group(1) if prefix_match else "").strip()
+
+    if prefix.startswith("spot"):
+        return "spot"
+    if prefix.startswith("futures-paper"):
+        return "futures_paper"
+    if prefix.startswith("futures-training") or prefix.startswith("ml"):
+        return "futures_training"
+    if prefix.startswith("telegram"):
+        return "telegram"
+    if prefix.startswith("models"):
+        return "models"
+    if prefix.startswith("ops") or prefix.startswith("reconciliation") or prefix.startswith("protection") or prefix.startswith("risk"):
+        return "ops"
+    if prefix.startswith("ui"):
+        return "ui"
+    if prefix:
+        return "system"
+
+    if "telegram" in lower:
+        return "telegram"
+    if "futures-paper" in lower or "paper session" in lower or "paper results" in lower:
+        return "futures_paper"
+    if "futures" in lower or "training" in lower or "checkpoint" in lower or "evaluation" in lower:
+        return "futures_training"
+    if "model registry" in lower or "champion" in lower or "challenger" in lower:
+        return "models"
+    if "spot" in lower:
+        return "spot"
+    if "reconcile" in lower or "protection" in lower or "issue" in lower or "audit" in lower:
+        return "ops"
+    return "system"
+
+
+def detect_dashboard_log_instrument(text: str) -> str:
+    lower = str(text or "").lower()
+    channel = detect_dashboard_log_channel(text)
+    if channel == "spot":
+        return "spot"
+    if channel in {"futures_training", "futures_paper"}:
+        return "futures"
+    if channel == "telegram":
+        return "telegram"
+    if channel == "models":
+        return "models"
+    if channel in {"ops", "ui"}:
+        return "ops"
+    if "spot" in lower:
+        return "spot"
+    if "futures" in lower or "checkpoint" in lower or "training" in lower:
+        return "futures"
+    if "telegram" in lower:
+        return "telegram"
+    if "model" in lower:
+        return "models"
+    return "ops"
+
+
+def dashboard_log_matches_filters(
+    text: str,
+    *,
+    level_filter: str,
+    pair_filter: str,
+    channel_filter: str,
+    instrument_filter: str,
+    query_filter: str,
+) -> bool:
+    msg = str(text or "")
+    level_value = str(level_filter or "ALL").strip().upper()
+    pair_value = str(pair_filter or "ALL").strip().upper()
+    channel_value = str(channel_filter or "ALL").strip().lower()
+    instrument_value = str(instrument_filter or "ALL").strip().lower()
+    query_value = str(query_filter or "").strip().lower()
+
+    if level_value not in {"", "ALL"} and detect_dashboard_log_level(msg) != level_value:
+        return False
+    if pair_value not in {"", "ALL"} and pair_value not in msg.upper():
+        return False
+    if channel_value not in {"", "all"} and detect_dashboard_log_channel(msg) != channel_value:
+        return False
+    if instrument_value not in {"", "all"} and detect_dashboard_log_instrument(msg) != instrument_value:
+        return False
+    if query_value and query_value not in msg.lower():
+        return False
+    return True
 
 
 def filter_dashboard_strategy_modes(
@@ -2494,12 +2625,16 @@ class BotikGui:
         self.telegram_workspace_commands_tree: ttk.Treeview | None = None
         self.telegram_workspace_alerts_tree: ttk.Treeview | None = None
         self.telegram_workspace_errors_tree: ttk.Treeview | None = None
+        self.log_channel_filter_combo: ttk.Combobox | None = None
+        self.log_instrument_filter_combo: ttk.Combobox | None = None
         self.log_level_filter_combo: ttk.Combobox | None = None
         self.log_pair_filter_combo: ttk.Combobox | None = None
         self.log_jump_main: ttk.Button | None = None
         self.log_jump_full: ttk.Button | None = None
         self.log_scroll_main: ttk.Scrollbar | None = None
         self.log_scroll_full: ttk.Scrollbar | None = None
+        self.log_filter_channel_var = tk.StringVar(value="ALL")
+        self.log_filter_instrument_var = tk.StringVar(value="ALL")
         self.log_filter_level_var = tk.StringVar(value="ALL")
         self.log_filter_pair_var = tk.StringVar(value="ALL")
         self.log_filter_query_var = tk.StringVar(value="")
@@ -2926,7 +3061,7 @@ class BotikGui:
         ttk.Button(spot_actions, text="Go To Spot Workspace", command=lambda: self._open_workspace(self.control_tab)).grid(
             row=1, column=0, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(spot_actions, text="Open Spot Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+        ttk.Button(spot_actions, text="Open Spot Logs", command=self.open_spot_logs_workspace).grid(
             row=1, column=1, sticky=tk.EW, padx=4, pady=4
         )
         for idx in range(2):
@@ -2989,7 +3124,7 @@ class BotikGui:
             text="Go To Futures Workspace",
             command=lambda: self._open_workspace(self.futures_tab),
         ).grid(row=1, column=0, sticky=tk.EW, padx=4, pady=4)
-        ttk.Button(futures_actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+        ttk.Button(futures_actions, text="Open Futures Logs", command=self.open_futures_logs_workspace).grid(
             row=1, column=1, sticky=tk.EW, padx=4, pady=4
         )
         for idx in range(2):
@@ -3266,7 +3401,7 @@ class BotikGui:
         ttk.Button(actions, text="Open Checkpoints", command=self.open_futures_checkpoints_dir).grid(
             row=2, column=2, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+        ttk.Button(actions, text="Open Futures Logs", command=self.open_futures_logs_workspace).grid(
             row=2, column=3, sticky=tk.EW, padx=4, pady=4
         )
         for idx in range(4):
@@ -3432,7 +3567,7 @@ class BotikGui:
         ttk.Button(actions, text="Reset Paper Session", command=self.reset_paper_session).grid(
             row=1, column=3, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Open Futures Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+        ttk.Button(actions, text="Open Futures Logs", command=self.open_futures_logs_workspace).grid(
             row=1, column=4, sticky=tk.EW, padx=4, pady=4
         )
         ttk.Button(actions, text="Open Model Registry", command=lambda: self._open_workspace(self.model_registry_tab)).grid(
@@ -3655,7 +3790,7 @@ class BotikGui:
         ttk.Button(actions, text="Reload Telegram Status", command=self._reload_telegram_workspace_status).grid(
             row=1, column=2, sticky=tk.EW, padx=4, pady=4
         )
-        ttk.Button(actions, text="Open Telegram Logs", command=lambda: self._open_workspace(self.logs_tab)).grid(
+        ttk.Button(actions, text="Open Telegram Logs", command=self.open_telegram_logs_workspace).grid(
             row=1, column=3, sticky=tk.EW, padx=4, pady=4
         )
         ttk.Button(actions, text="Open Settings/Profile", command=lambda: self._open_workspace(self.settings_tab)).grid(
@@ -4098,13 +4233,33 @@ class BotikGui:
         logs_card.pack(fill=tk.BOTH, expand=True)
         head = ttk.Frame(logs_card, style="Card.TFrame")
         head.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(head, text="Торговые логи", style="Section.TLabel").pack(side=tk.LEFT, anchor=tk.W)
+        ttk.Label(head, text="Logs Workspace", style="Section.TLabel").pack(side=tk.LEFT, anchor=tk.W)
+        ttk.Label(
+            head,
+            text="Channel / instrument filters and quick operator routing live here.",
+            style="Body.TLabel",
+            justify=tk.LEFT,
+        ).pack(side=tk.LEFT, anchor=tk.W, padx=(12, 0))
         self.log_jump_full = ttk.Button(head, text="⬇", width=3, command=lambda: self._jump_log_to_end("full"))
         self.log_jump_full.pack(side=tk.RIGHT)
         self.log_jump_full.pack_forget()
 
         filters = ttk.Frame(logs_card, style="Card.TFrame")
         filters.pack(fill=tk.X, pady=(0, 8))
+        self.log_channel_filter_combo = labeled_combobox(
+            filters,
+            label="Channel",
+            variable=self.log_filter_channel_var,
+            values=list(DASHBOARD_LOG_CHANNELS),
+            width=18,
+        )
+        self.log_instrument_filter_combo = labeled_combobox(
+            filters,
+            label="Instrument",
+            variable=self.log_filter_instrument_var,
+            values=list(DASHBOARD_LOG_INSTRUMENTS),
+            width=16,
+        )
         self.log_pair_filter_combo = labeled_combobox(
             filters,
             label="Фильтр пары",
@@ -4126,11 +4281,22 @@ class BotikGui:
             width=32,
         )
         ttk.Button(filters, text="Сброс", command=self._clear_log_filters).pack(side=tk.LEFT, pady=(18, 0))
+        ttk.Button(filters, text="Spot", command=self.open_spot_logs_workspace).pack(side=tk.LEFT, pady=(18, 0), padx=(8, 0))
+        ttk.Button(filters, text="Futures", command=self.open_futures_logs_workspace).pack(side=tk.LEFT, pady=(18, 0), padx=(4, 0))
+        ttk.Button(filters, text="Telegram", command=self.open_telegram_logs_workspace).pack(side=tk.LEFT, pady=(18, 0), padx=(4, 0))
+        ttk.Button(filters, text="Ops", command=self.open_ops_logs_workspace).pack(side=tk.LEFT, pady=(18, 0), padx=(4, 0))
+        ttk.Button(filters, text="Errors", command=self.open_error_logs_workspace).pack(side=tk.LEFT, pady=(18, 0), padx=(4, 0))
 
+        if self.log_channel_filter_combo is not None:
+            self.log_channel_filter_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_log_filter_changed())
+        if self.log_instrument_filter_combo is not None:
+            self.log_instrument_filter_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_log_filter_changed())
         if self.log_pair_filter_combo is not None:
             self.log_pair_filter_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_log_filter_changed())
         if self.log_level_filter_combo is not None:
             self.log_level_filter_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_log_filter_changed())
+        self.log_filter_channel_var.trace_add("write", lambda *_: self._on_log_filter_changed())
+        self.log_filter_instrument_var.trace_add("write", lambda *_: self._on_log_filter_changed())
         self.log_filter_level_var.trace_add("write", lambda *_: self._on_log_filter_changed())
         self.log_filter_pair_var.trace_add("write", lambda *_: self._on_log_filter_changed())
         self.log_filter_query_var.trace_add("write", lambda *_: self._on_log_filter_changed())
@@ -5512,36 +5678,21 @@ class BotikGui:
 
     @staticmethod
     def _detect_log_level(text: str) -> str:
-        upper = str(text or "").upper()
-        if "ERROR" in upper:
-            return "ERROR"
-        if "WARNING" in upper or "WARN" in upper:
-            return "WARNING"
-        if "DEBUG" in upper:
-            return "DEBUG"
-        if "INFO" in upper:
-            return "INFO"
-        return "INFO"
+        return detect_dashboard_log_level(text)
 
     @staticmethod
     def _detect_log_pair(text: str) -> str:
-        upper = str(text or "").upper()
-        found = re.search(r"\b([A-Z0-9]{2,}(?:USDT|USDC|USD|BTC|ETH))\b", upper)
-        return str(found.group(1) if found else "")
+        return detect_dashboard_log_pair(text)
 
     def _log_matches_full_filters(self, text: str) -> bool:
-        msg = str(text or "")
-        level_filter = str(self.log_filter_level_var.get() or "ALL").strip().upper()
-        pair_filter = str(self.log_filter_pair_var.get() or "ALL").strip().upper()
-        query_filter = str(self.log_filter_query_var.get() or "").strip().lower()
-
-        if level_filter not in {"", "ALL"} and self._detect_log_level(msg) != level_filter:
-            return False
-        if pair_filter not in {"", "ALL"} and pair_filter not in msg.upper():
-            return False
-        if query_filter and query_filter not in msg.lower():
-            return False
-        return True
+        return dashboard_log_matches_filters(
+            str(text or ""),
+            level_filter=str(self.log_filter_level_var.get() or "ALL"),
+            pair_filter=str(self.log_filter_pair_var.get() or "ALL"),
+            channel_filter=str(self.log_filter_channel_var.get() or "ALL"),
+            instrument_filter=str(self.log_filter_instrument_var.get() or "ALL"),
+            query_filter=str(self.log_filter_query_var.get() or ""),
+        )
 
     def _sync_log_pair_filter_values(self) -> None:
         if self.log_pair_filter_combo is None:
@@ -5577,10 +5728,45 @@ class BotikGui:
         self._refresh_full_log_filtered_view()
 
     def _clear_log_filters(self) -> None:
+        self.log_filter_channel_var.set("ALL")
+        self.log_filter_instrument_var.set("ALL")
         self.log_filter_level_var.set("ALL")
         self.log_filter_pair_var.set("ALL")
         self.log_filter_query_var.set("")
         self._on_log_filter_changed()
+
+    def open_logs_workspace(
+        self,
+        *,
+        channel: str = "ALL",
+        instrument: str = "ALL",
+        level: str = "ALL",
+        query: str = "",
+    ) -> None:
+        self.log_filter_channel_var.set(str(channel or "ALL").upper() if str(channel or "ALL").upper() == "ALL" else str(channel or "").lower())
+        self.log_filter_instrument_var.set(
+            str(instrument or "ALL").upper() if str(instrument or "ALL").upper() == "ALL" else str(instrument or "").lower()
+        )
+        self.log_filter_level_var.set(str(level or "ALL").upper())
+        self.log_filter_pair_var.set("ALL")
+        self.log_filter_query_var.set(str(query or ""))
+        self._open_workspace(self.logs_tab)
+        self._on_log_filter_changed()
+
+    def open_spot_logs_workspace(self) -> None:
+        self.open_logs_workspace(channel="spot", instrument="spot")
+
+    def open_futures_logs_workspace(self) -> None:
+        self.open_logs_workspace(instrument="futures")
+
+    def open_telegram_logs_workspace(self) -> None:
+        self.open_logs_workspace(channel="telegram", instrument="telegram")
+
+    def open_ops_logs_workspace(self) -> None:
+        self.open_logs_workspace(channel="ops", instrument="ops")
+
+    def open_error_logs_workspace(self) -> None:
+        self.open_logs_workspace(level="ERROR")
 
     def _drain_logs(self) -> None:
         got = False
