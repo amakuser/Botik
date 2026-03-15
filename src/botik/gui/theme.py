@@ -1,4 +1,4 @@
-"""Shared desktop theme for Botik Tk GUI."""
+"""Shared desktop theme for the Botik Dashboard Shell."""
 from __future__ import annotations
 
 import tkinter as tk
@@ -6,18 +6,22 @@ from tkinter import ttk
 
 
 DARK_PALETTE: dict[str, str] = {
-    "bg": "#0B1424",
-    "bg_soft": "#111D33",
-    "card": "#16263F",
-    "card_alt": "#1A2C47",
-    "line": "#2A4063",
-    "text": "#E8F0FF",
-    "text_soft": "#9EB4D8",
-    "accent": "#3B82F6",
-    "accent_hover": "#5A9AFF",
-    "success": "#27AE60",
-    "danger": "#D64545",
-    "warning": "#D9A441",
+    "bg": "#0D1626",
+    "bg_soft": "#131F32",
+    "card": "#17253A",
+    "card_alt": "#1D2C44",
+    "line": "#2A3D59",
+    "line_soft": "#22324B",
+    "text": "#F3F7FF",
+    "text_soft": "#A7B7D0",
+    "text_dim": "#7F90AB",
+    "accent": "#4B8EFF",
+    "accent_hover": "#69A3FF",
+    "accent_soft": "#203A63",
+    "success": "#33C476",
+    "danger": "#EE5E5E",
+    "warning": "#E0B14A",
+    "info": "#6EC3FF",
     "log_bg": "#0F1A2B",
     "log_fg": "#D8E8FF",
 }
@@ -33,14 +37,15 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
 
     style.configure(".", background=colors["bg"], foreground=colors["text"])
     style.configure("Root.TFrame", background=colors["bg"])
-    style.configure("Card.TFrame", background=colors["card"], relief="flat")
-    style.configure("CardAlt.TFrame", background=colors["card_alt"], relief="flat")
+    style.configure("Card.TFrame", background=colors["card"], relief="flat", borderwidth=0)
+    style.configure("CardAlt.TFrame", background=colors["card_alt"], relief="flat", borderwidth=0)
+    style.configure("Hero.TFrame", background=colors["card_alt"], relief="flat", borderwidth=0)
 
     style.configure(
         "Title.TLabel",
         background=colors["bg"],
         foreground=colors["text"],
-        font=("Segoe UI", 22, "bold"),
+        font=("Segoe UI Semibold", 24, "bold"),
     )
     style.configure(
         "Subtitle.TLabel",
@@ -49,10 +54,22 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         font=("Segoe UI", 10),
     )
     style.configure(
+        "HeroTitle.TLabel",
+        background=colors["card_alt"],
+        foreground=colors["text"],
+        font=("Segoe UI Semibold", 18, "bold"),
+    )
+    style.configure(
+        "HeroBody.TLabel",
+        background=colors["card_alt"],
+        foreground=colors["text_soft"],
+        font=("Segoe UI", 10),
+    )
+    style.configure(
         "Section.TLabel",
         background=colors["card"],
         foreground=colors["text"],
-        font=("Segoe UI", 12, "bold"),
+        font=("Segoe UI Semibold", 13, "bold"),
     )
     style.configure(
         "Body.TLabel",
@@ -61,10 +78,22 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         font=("Segoe UI", 10),
     )
     style.configure(
+        "Meta.TLabel",
+        background=colors["card"],
+        foreground=colors["text_dim"],
+        font=("Segoe UI", 9),
+    )
+    style.configure(
+        "Muted.TLabel",
+        background=colors["card"],
+        foreground=colors["text_dim"],
+        font=("Segoe UI", 10),
+    )
+    style.configure(
         "SectionAlt.TLabel",
         background=colors["card_alt"],
         foreground=colors["text"],
-        font=("Segoe UI", 11, "bold"),
+        font=("Segoe UI Semibold", 11, "bold"),
     )
     style.configure(
         "BodyAlt.TLabel",
@@ -76,7 +105,7 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         "MetricValue.TLabel",
         background=colors["card_alt"],
         foreground=colors["text"],
-        font=("Segoe UI", 14, "bold"),
+        font=("Segoe UI Semibold", 16, "bold"),
     )
 
     style.configure(
@@ -89,8 +118,8 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         "TNotebook.Tab",
         background=colors["bg_soft"],
         foreground=colors["text_soft"],
-        padding=(16, 8),
-        font=("Segoe UI", 10, "bold"),
+        padding=(18, 10),
+        font=("Segoe UI Semibold", 10, "bold"),
         borderwidth=1,
     )
     style.map(
@@ -101,7 +130,7 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
 
     style.configure(
         "TButton",
-        padding=(10, 5),
+        padding=(12, 7),
         font=("Segoe UI", 10),
         background=colors["bg_soft"],
         foreground=colors["text"],
@@ -130,7 +159,7 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         font=("Segoe UI", 11, "bold"),
         background=colors["success"],
         foreground="#FFFFFF",
-        padding=(12, 8),
+        padding=(14, 9),
     )
     style.map(
         "Start.TButton",
@@ -142,11 +171,33 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         font=("Segoe UI", 11, "bold"),
         background=colors["danger"],
         foreground="#FFFFFF",
-        padding=(12, 8),
+        padding=(14, 9),
     )
     style.map(
         "Stop.TButton",
         background=[("active", "#E85D5D"), ("pressed", "#B73737")],
+    )
+    style.configure(
+        "Secondary.TButton",
+        font=("Segoe UI", 10),
+        background=colors["card_alt"],
+        foreground=colors["text"],
+        padding=(11, 7),
+    )
+    style.map(
+        "Secondary.TButton",
+        background=[("active", colors["accent_soft"]), ("pressed", colors["bg_soft"])],
+    )
+    style.configure(
+        "DangerSecondary.TButton",
+        font=("Segoe UI", 10, "bold"),
+        background="#4A2024",
+        foreground="#FFD8D8",
+        padding=(11, 7),
+    )
+    style.map(
+        "DangerSecondary.TButton",
+        background=[("active", "#64282E"), ("pressed", "#3E171B")],
     )
 
     style.configure(
@@ -186,16 +237,33 @@ def apply_dark_theme(root: tk.Tk) -> dict[str, str]:
         fieldbackground=colors["bg_soft"],
         foreground=colors["text"],
         bordercolor=colors["line"],
-        rowheight=24,
+        rowheight=28,
     )
     style.configure(
         "Treeview.Heading",
         background=colors["card_alt"],
         foreground=colors["text"],
         relief="flat",
-        font=("Segoe UI", 10, "bold"),
+        font=("Segoe UI Semibold", 10, "bold"),
     )
     style.map("Treeview.Heading", background=[("active", colors["accent"])])
-    style.configure("Vertical.TScrollbar", background=colors["bg_soft"], bordercolor=colors["line"])
-    style.configure("Horizontal.TScrollbar", background=colors["bg_soft"], bordercolor=colors["line"])
+    style.map(
+        "Treeview",
+        background=[("selected", colors["accent_soft"])],
+        foreground=[("selected", colors["text"])],
+    )
+    style.configure(
+        "Vertical.TScrollbar",
+        background=colors["bg_soft"],
+        troughcolor=colors["card"],
+        bordercolor=colors["line"],
+        arrowcolor=colors["text_soft"],
+    )
+    style.configure(
+        "Horizontal.TScrollbar",
+        background=colors["bg_soft"],
+        troughcolor=colors["card"],
+        bordercolor=colors["line"],
+        arrowcolor=colors["text_soft"],
+    )
     return colors

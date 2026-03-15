@@ -7,7 +7,7 @@ shell:
   version_source: VERSION
   build_source: version.txt
 components:
-  workspace_pack: 0.0.18
+  workspace_pack: 0.0.19
   spot_runtime: 1.0.0
   futures_training_engine: 0.1.1
   telegram_bot_module: 1.1.0

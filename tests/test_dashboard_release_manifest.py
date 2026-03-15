@@ -91,7 +91,7 @@ def test_build_dashboard_release_home_sections_formats_structured_lines() -> Non
             "manifest_path": "dashboard_release_manifest.yaml",
             "workspace_manifest_path": "dashboard_workspace_manifest.yaml",
             "active_models_manifest_path": "active_models.yaml",
-            "workspace_order_line": "Dashboard Home / Spot Workspace / Futures Workspace",
+            "workspace_order_line": "Главная / Спот / Фьючерсы",
         }
     )
     assert "release=loaded" in sections["status_line"]
@@ -99,7 +99,7 @@ def test_build_dashboard_release_home_sections_formats_structured_lines() -> Non
     assert "workspace_pack=0.0.8" in sections["components_line"]
     assert "spot_model=spot-model-a" in sections["models_line"]
     assert "active_models=active_models.yaml" in sections["manifests_line"]
-    assert "Futures Workspace" in sections["workspace_line"]
+    assert "Фьючерсы" in sections["workspace_line"]
 
 
 def test_format_dashboard_release_panel_contains_required_lines() -> None:
@@ -126,7 +126,7 @@ def test_format_dashboard_release_panel_contains_required_lines() -> None:
             "manifest_path": "dashboard_release_manifest.yaml",
             "workspace_manifest_path": "dashboard_workspace_manifest.yaml",
             "active_models_manifest_path": "active_models.yaml",
-            "workspace_order_line": "Dashboard Home / Spot Workspace",
+            "workspace_order_line": "Главная / Спот",
         }
     )
     assert "Release Manifest Status: loaded" in panel

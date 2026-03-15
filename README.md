@@ -6,6 +6,12 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
 
 Проект работает как единое desktop-приложение (single window Dashboard) и как headless runtime для server/systemd.
 
+Текущее состояние оболочки:
+- современный dark Dashboard Shell с более мягкой визуальной иерархией;
+- русифицированные top-level labels (`Главная`, `Спот`, `Фьючерсы`, `Модели`, `Логи`, `Состояние`, `Настройки`);
+- scrollable text/log/status areas с нормальной прокруткой колесом мыши;
+- hidden subprocess path без видимых cmd/console окон.
+
 ## Что сейчас поддерживается
 
 - Dual-domain storage и runtime wiring (shared + spot + futures).
@@ -79,30 +85,30 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
 
 ## Dashboard Workspaces (актуально)
 
-- Dashboard Home: статусы, quick actions, блок Loaded Components / Releases и два независимых instrument cards:
+- Главная: статусы, quick actions, блок `Компоненты и релизы` и два независимых instrument cards:
   - Spot block:
     - runtime status,
     - active holdings / open orders / recovered / stale,
     - active spot model,
     - mini settings snapshot (`TP`, `SL`, `max_position_size`, `hard_rules`, `training_source`, `dust_threshold`),
-    - actions: `Start`, `Stop`, `Go To Spot Workspace`, `Open Spot Logs`.
+    - actions: `Старт`, `Стоп`, `Открыть спот`, `Логи спота`.
   - Futures block:
     - training status,
     - paper results summary (`good / bad / closed results`),
     - active futures model,
     - mini settings snapshot (`TP`, `SL`, `max_position_size`, `hard_rules`, `training_source`),
-    - actions: `Start Training`, `Pause Training`, `Go To Futures Workspace`, `Open Futures Logs`.
+    - actions: `Старт обучения`, `Пауза обучения`, `Открыть фьючерсы`, `Логи фьючерсов`.
 - Spot start/stop on Home теперь управляют только spot runtime modes и не поднимают futures/training процессы автоматически.
-- Loaded Components / Releases на Home теперь показывает структурированно:
+- Блок `Компоненты и релизы` на Главной теперь показывает структурированно:
   - release / workspace / active-models manifest statuses,
   - Dashboard Shell version + build SHA + version sources,
   - component versions,
   - active spot/futures models и active profile,
   - manifest file names и workspace order.
-- Spot Workspace: inventory-aware контроль holdings/orders/fills/exit decisions, safe policy labels.
+- Спот: inventory-aware контроль holdings/orders/fills/exit decisions, safe policy labels.
   - Spot Strategy Presets теперь живут здесь же, рядом с spot runtime actions, а не в Settings Workspace.
   - `Start Spot` / `Stop Spot` в Spot Workspace управляют только spot runtime modes и не тянут futures research flow.
-- Futures Workspace: верхнеуровневое рабочее пространство для futures research/paper-потоков, без маскировки под live trading terminal.
+- Фьючерсы: верхнеуровневое рабочее пространство для futures research/paper-потоков, без маскировки под live trading terminal.
   - Futures Training Workspace:
     - Training Status Summary,
     - Dataset / Candles,
@@ -117,14 +123,14 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
     - closed paper results с `good / bad / flat` по финальному `net_pnl_quote`,
     - read-only status line с честным `close_controls=unsupported / reset_session=unsupported`,
     - paper-only actions и переход в Model Registry Workspace.
-- Model Registry Workspace: champion/challenger реестр моделей, выбор активной модели и сравнение результатов.
+- Модели: champion/challenger реестр моделей, выбор активной модели и сравнение результатов.
   - summary по spot/futures/unknown model slots,
   - role-aware view (`champion:spot`, `champion:futures`, `legacy-active`, `candidate`),
   - instrument / policy / source / outcomes / net PnL / artifact path,
   - selector summary line теперь отдельно подсказывает `hold / review / prefer` для spot и futures champion slots,
   - actions: `Promote Selected to Active`, `Compare Selected Models`, `Open Model Stats`, `Copy Artifact Path`.
   - source of truth для champion pointers — `active_models.yaml`; legacy `model_registry.is_active` удерживается только для compatibility.
-- Telegram Workspace: отдельный operational module Dashboard (не buried toggle в Settings):
+- Telegram: отдельный operational module Dashboard (не buried toggle в Settings):
   - Telegram Status Summary (enabled/connected/profile/module version),
   - Bot Profile / Connection (token configured yes/no, startup status),
   - Allowed Chats / Access (masked IDs, restrictions),
@@ -132,20 +138,27 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - Recent Incoming Commands / Recent Alerts / Telegram Errors,
   - Telegram Actions: Refresh, Test Send (intent only), Reload Telegram Status, Open Logs, Open Settings/Profile.
 - Если `TELEGRAM_BOT_TOKEN` не задан, Telegram Workspace показывает `disabled / configuration_missing_token` и не имитирует активный модуль.
-- Logs Workspace: фильтруемые runtime логи.
+- Логи: фильтруемые runtime логи.
   - filters: `channel`, `instrument`, `pair`, `severity`, `query`
   - quick routes: `Spot`, `Futures`, `Telegram`, `Ops`, `Errors`
   - `Open Spot Logs` / `Open Futures Logs` / `Open Telegram Logs` теперь открывают Logs Workspace уже с преднастроенными filters, а не просто переводят на пустой общий log view.
-- Ops Workspace: reconciliation/issues/audit/health.
+- Состояние: reconciliation/issues/audit/health.
   - operational cards: `Runtime Services`, `Reconciliation`, `Protection / Risk`, `DB / Freshness`, `Capabilities`
   - quick actions: `Refresh`, `Open Ops Logs`, `Focus Issues`, `Focus Futures Positions`
   - keeps active issues, resolved issues, protection status and freshness visible without overloading Dashboard Home.
-- Settings Workspace: technical-only surface для:
+- Настройки: technical-only surface для:
   - `.env` secrets / API keys / Telegram refs,
   - launcher diagnostics (`source` / `packaged`, runtime executable, config profile),
   - external manifest paths (`dashboard_release_manifest.yaml`, `dashboard_workspace_manifest.yaml`, `active_models.yaml`),
   - technical runtime fields (`execution.mode`, `start_paused`, `bybit.host`, `ws_public_host`).
 - Instrument-level knobs (`TP/SL`, `training_source`, strategy presets, policy controls) intentionally removed from Settings Workspace and live in Dashboard Home, Spot Workspace or Futures Workspace.
+
+## Visual / UX polish
+
+- Dashboard Shell использует более чистую dark palette, крупные cards и более мягкие отступы.
+- Длинные status/release/model panels разбиты на более читаемые строки вместо плотных multi-line blobs.
+- Колесо мыши работает в логах, таблицах и scrollable text/status panels через единый shell-level wiring.
+- Визуальный polish не меняет runtime/business logic и не ломает hidden subprocess path.
 
 ## Reconciliation
 

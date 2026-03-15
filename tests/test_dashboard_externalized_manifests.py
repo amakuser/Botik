@@ -36,7 +36,7 @@ def test_load_dashboard_workspace_manifest_reads_order_and_visibility(tmp_path: 
                 "    visible: true",
                 "    order: 1",
                 "  - key: home",
-                "    label: Dashboard Home",
+                "    label: Главная",
                 "    enabled: true",
                 "    visible: true",
                 "    order: 2",
@@ -67,9 +67,9 @@ def test_resolve_dashboard_workspace_tabs_normalizes_legacy_keys_and_labels() ->
         }
     )
     assert tabs == [
-        ("home", "Dashboard Home"),
-        ("futures", "Futures Workspace"),
-        ("model_registry", "Model Registry Workspace"),
+        ("home", "Главная"),
+        ("futures", "Фьючерсы"),
+        ("model_registry", "Модели"),
     ]
 
 
@@ -154,7 +154,7 @@ def test_release_manifest_overrides_active_models_from_external_pointer(tmp_path
                 "manifest_version: 1",
                 "workspaces:",
                 "  - key: home",
-                "    label: Dashboard Home",
+                "    label: Главная",
                 "    enabled: true",
                 "    visible: true",
                 "    order: 1",
@@ -211,16 +211,16 @@ def test_apply_workspace_manifest_to_notebook_uses_external_order_visibility() -
     manifest_data = {
         "workspaces": [
             {"key": "logs", "label": "Logs First", "enabled": True, "visible": True, "order": 1},
-            {"key": "home", "label": "Dashboard Home", "enabled": True, "visible": True, "order": 2},
+            {"key": "home", "label": "Главная", "enabled": True, "visible": True, "order": 2},
             {"key": "telegram", "label": "Telegram Hidden", "enabled": True, "visible": False, "order": 3},
-            {"key": "spot", "label": "Spot Workspace", "enabled": True, "visible": True, "order": 4},
+            {"key": "spot", "label": "Спот", "enabled": True, "visible": True, "order": 4},
         ]
     }
 
     gui._apply_workspace_manifest_to_notebook(manifest_data)
     labels = [label for _, label in gui.notebook.added]
     assert gui.notebook.forgotten == ["old-1", "old-2"]
-    assert labels == ["Logs First", "Dashboard Home", "Spot Workspace"]
+    assert labels == ["Logs First", "Главная", "Спот"]
 
 
 def test_external_active_models_pointer_wires_into_futures_training_read_model(tmp_path: Path) -> None:
@@ -257,7 +257,7 @@ def test_external_active_models_pointer_wires_into_futures_training_read_model(t
                 "manifest_version: 1",
                 "workspaces:",
                 "  - key: home",
-                "    label: Dashboard Home",
+                "    label: Главная",
                 "    enabled: true",
                 "    visible: true",
                 "    order: 1",
