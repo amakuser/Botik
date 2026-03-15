@@ -6286,6 +6286,9 @@ class BotikGui:
             except Exception:
                 pass
 
+    def open_model_registry_workspace(self) -> None:
+        self._open_workspace(self.model_registry_tab)
+
     def _drain_logs(self) -> None:
         got = False
         dropped = 0
