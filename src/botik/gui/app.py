@@ -664,6 +664,141 @@ def _infer_model_registry_source(metrics: dict[str, Any] | None = None) -> str:
     )
 
 
+def _float_or_zero(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _parse_win_rate_fraction(raw_value: Any) -> float:
+    text = str(raw_value or "").strip().replace("%", "")
+    try:
+        value = float(text or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(min(value / 100.0, 1.0), 0.0)
+
+
+def build_model_registry_comparison(left: dict[str, Any], right: dict[str, Any]) -> dict[str, str]:
+    left_id = _component_text(left.get("model_id"), fallback="left")
+    right_id = _component_text(right.get("model_id"), fallback="right")
+    left_outcomes = max(int(_float_or_zero(left.get("outcomes"))), 0)
+    right_outcomes = max(int(_float_or_zero(right.get("outcomes"))), 0)
+    left_win = _float_or_zero(left.get("win_rate"))
+    right_win = _float_or_zero(right.get("win_rate"))
+    left_pnl = _float_or_zero(left.get("net_pnl"))
+    right_pnl = _float_or_zero(right.get("net_pnl"))
+    left_edge = _float_or_zero(left.get("edge"))
+    right_edge = _float_or_zero(right.get("edge"))
+
+    left_score = 0
+    right_score = 0
+    reasons: list[str] = []
+    if left_pnl > right_pnl + 1e-9:
+        left_score += 2
+        reasons.append(f"net_pnl favors {left_id}")
+    elif right_pnl > left_pnl + 1e-9:
+        right_score += 2
+        reasons.append(f"net_pnl favors {right_id}")
+    if left_win > right_win + 0.005:
+        left_score += 1
+        reasons.append(f"win_rate favors {left_id}")
+    elif right_win > left_win + 0.005:
+        right_score += 1
+        reasons.append(f"win_rate favors {right_id}")
+    if left_edge > right_edge + 0.01:
+        left_score += 1
+        reasons.append(f"edge favors {left_id}")
+    elif right_edge > left_edge + 0.01:
+        right_score += 1
+        reasons.append(f"edge favors {right_id}")
+    if left_outcomes >= max(5, right_outcomes) and left_outcomes > right_outcomes:
+        left_score += 1
+        reasons.append(f"sample_size favors {left_id}")
+    elif right_outcomes >= max(5, left_outcomes) and right_outcomes > left_outcomes:
+        right_score += 1
+        reasons.append(f"sample_size favors {right_id}")
+
+    left_status = str(left.get("status") or "").strip().lower()
+    right_status = str(right.get("status") or "").strip().lower()
+    if left_status in {"regressed", "rejected"}:
+        right_score += 1
+        reasons.append(f"status penalizes {left_id}")
+    if right_status in {"regressed", "rejected"}:
+        left_score += 1
+        reasons.append(f"status penalizes {right_id}")
+
+    left_ready = left_outcomes >= 5
+    right_ready = right_outcomes >= 5
+    if left_score >= right_score + 2 and left_ready:
+        verdict = f"prefer:{left_id}"
+        summary = f"prefer {left_id}"
+    elif right_score >= left_score + 2 and right_ready:
+        verdict = f"prefer:{right_id}"
+        summary = f"prefer {right_id}"
+    elif left_score > right_score:
+        verdict = f"review:{left_id}"
+        summary = f"manual review leaning {left_id}"
+    elif right_score > left_score:
+        verdict = f"review:{right_id}"
+        summary = f"manual review leaning {right_id}"
+    else:
+        verdict = "hold"
+        summary = "hold / no clear winner"
+
+    if not reasons:
+        reasons = ["metrics too close or insufficient data"]
+    return {
+        "verdict": verdict,
+        "summary": summary,
+        "reason_line": " | ".join(reasons),
+        "left_score": str(left_score),
+        "right_score": str(right_score),
+    }
+
+
+def build_model_registry_selector_summary(
+    entries: list[dict[str, Any]],
+    *,
+    instrument: str,
+    champion_model_id: str,
+) -> str:
+    instrument_key = str(instrument or "").strip().lower()
+    scoped = [entry for entry in entries if str(entry.get("instrument") or "").strip().lower() == instrument_key]
+    if not scoped:
+        return f"{instrument_key}=no-models"
+    champion = next((entry for entry in scoped if str(entry.get("model_id") or "") == champion_model_id), None)
+    challengers = [entry for entry in scoped if entry is not champion]
+    if champion is None:
+        leader = max(
+            scoped,
+            key=lambda entry: (
+                _float_or_zero(entry.get("net_pnl")),
+                _float_or_zero(entry.get("win_rate")),
+                _float_or_zero(entry.get("edge")),
+                _float_or_zero(entry.get("outcomes")),
+            ),
+        )
+        return f"{instrument_key}=review:{leader.get('model_id', 'unknown')} | no champion pointer"
+    if not challengers:
+        return f"{instrument_key}=hold:{champion_model_id} | champion-only"
+    best = max(
+        challengers,
+        key=lambda entry: (
+            _float_or_zero(entry.get("net_pnl")),
+            _float_or_zero(entry.get("win_rate")),
+            _float_or_zero(entry.get("edge")),
+            _float_or_zero(entry.get("outcomes")),
+        ),
+    )
+    comparison = build_model_registry_comparison(best, champion)
+    verdict = str(comparison.get("verdict") or "hold")
+    if verdict.startswith(f"prefer:{best.get('model_id', '')}") or verdict.startswith(f"review:{best.get('model_id', '')}"):
+        return f"{instrument_key}={verdict} | champion={champion_model_id}"
+    return f"{instrument_key}=hold:{champion_model_id}"
+
+
 def write_active_model_pointer(
     model_id: str,
     instrument: str,
@@ -1057,6 +1192,7 @@ def load_model_registry_workspace_read_model(
         futures_models = 0
         unknown_models = 0
         out_rows: list[tuple[str, ...]] = []
+        entry_payloads: list[dict[str, Any]] = []
         for model_id_raw, path_or_payload, metrics_json_raw, created_at, is_active in rows:
             model_id = str(model_id_raw or "").strip()
             metrics = _parse_json_dict(metrics_json_raw)
@@ -1098,6 +1234,24 @@ def load_model_registry_workspace_read_model(
                     edge_value = float(metrics.get("quality_score") or 0.0)
                 except (TypeError, ValueError):
                     edge_value = 0.0
+            net_pnl_value = float(outcome_payload.get("net_pnl") or 0.0)
+            win_rate_fraction = float(win_rate or 0.0)
+            entry_payloads.append(
+                {
+                    "model_id": model_id,
+                    "instrument": instrument,
+                    "policy": policy,
+                    "source_mode": source_mode,
+                    "role": role,
+                    "status": status,
+                    "created": str(created_at or ""),
+                    "outcomes": outcomes_total,
+                    "win_rate": win_rate_fraction,
+                    "net_pnl": net_pnl_value,
+                    "edge": edge_value,
+                    "artifact": str(path_or_payload or "-"),
+                }
+            )
             out_rows.append(
                 (
                     model_id,
@@ -1108,25 +1262,38 @@ def load_model_registry_workspace_read_model(
                     status,
                     str(created_at or ""),
                     str(outcomes_total),
-                    f"{win_rate * 100.0:.1f}%",
-                    f"{float(outcome_payload.get('net_pnl') or 0.0):.6f}",
+                    f"{win_rate_fraction * 100.0:.1f}%",
+                    f"{net_pnl_value:.6f}",
                     f"{edge_value:.3f}",
                     str(path_or_payload or "-"),
                 )
             )
 
         compare_source = "outcomes/model_stats" if has_outcomes and has_signals else "model_registry metrics only"
+        spot_selector = build_model_registry_selector_summary(
+            entry_payloads,
+            instrument="spot",
+            champion_model_id=active_spot_model,
+        )
+        futures_selector = build_model_registry_selector_summary(
+            entry_payloads,
+            instrument="futures",
+            champion_model_id=active_futures_model,
+        )
         out["rows"] = out_rows
         out["total_models"] = total_models
         out["spot_models"] = spot_models
         out["futures_models"] = futures_models
         out["unknown_models"] = unknown_models
+        out["spot_selector_line"] = spot_selector
+        out["futures_selector_line"] = futures_selector
         out["summary_line"] = (
             f"total={total_models} | spot={spot_models} | futures={futures_models} | unknown={unknown_models} | "
             f"champion_spot={active_spot_model} | champion_futures={active_futures_model}"
         )
         out["status_line"] = (
-            f"selector=active_models.yaml | legacy_db_slot=compatibility_only | compare source={compare_source}"
+            f"selector=active_models.yaml | legacy_db_slot=compatibility_only | compare source={compare_source} | "
+            f"{spot_selector} | {futures_selector}"
         )
         return out
     except sqlite3.Error:
@@ -5789,9 +5956,41 @@ class BotikGui:
             return
         left = rows[0]
         right = rows[1]
+        comparison = build_model_registry_comparison(
+            {
+                "model_id": left[0] if len(left) > 0 else "left",
+                "instrument": left[1] if len(left) > 1 else "unknown",
+                "policy": left[2] if len(left) > 2 else "unknown",
+                "source_mode": left[3] if len(left) > 3 else "unknown",
+                "role": left[4] if len(left) > 4 else "unknown",
+                "status": left[5] if len(left) > 5 else "unknown",
+                "created": left[6] if len(left) > 6 else "-",
+                "outcomes": left[7] if len(left) > 7 else "0",
+                "win_rate": _parse_win_rate_fraction(left[8] if len(left) > 8 else "0%"),
+                "net_pnl": left[9] if len(left) > 9 else "0.000000",
+                "edge": left[10] if len(left) > 10 else "0.000",
+            },
+            {
+                "model_id": right[0] if len(right) > 0 else "right",
+                "instrument": right[1] if len(right) > 1 else "unknown",
+                "policy": right[2] if len(right) > 2 else "unknown",
+                "source_mode": right[3] if len(right) > 3 else "unknown",
+                "role": right[4] if len(right) > 4 else "unknown",
+                "status": right[5] if len(right) > 5 else "unknown",
+                "created": right[6] if len(right) > 6 else "-",
+                "outcomes": right[7] if len(right) > 7 else "0",
+                "win_rate": _parse_win_rate_fraction(right[8] if len(right) > 8 else "0%"),
+                "net_pnl": right[9] if len(right) > 9 else "0.000000",
+                "edge": right[10] if len(right) > 10 else "0.000",
+            },
+        )
         lines = [
             f"Left:  {left[0]} | role={left[4] if len(left) > 4 else 'unknown'} | outcomes={left[7] if len(left) > 7 else '0'} | win={left[8] if len(left) > 8 else '0.0%'} | pnl={left[9] if len(left) > 9 else '0.000000'}",
             f"Right: {right[0]} | role={right[4] if len(right) > 4 else 'unknown'} | outcomes={right[7] if len(right) > 7 else '0'} | win={right[8] if len(right) > 8 else '0.0%'} | pnl={right[9] if len(right) > 9 else '0.000000'}",
+            "",
+            f"Verdict: {comparison.get('summary', 'hold / no clear winner')}",
+            f"Why: {comparison.get('reason_line', 'metrics too close or insufficient data')}",
+            f"Scores: left={comparison.get('left_score', '0')} right={comparison.get('right_score', '0')}",
             "",
             "Champion selection stays externalized through active_models.yaml.",
         ]

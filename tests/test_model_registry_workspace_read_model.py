@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from src.botik.gui.app import (
+    build_model_registry_comparison,
     load_model_registry_workspace_read_model,
     promote_model_registry_model,
     write_active_model_pointer,
@@ -41,7 +42,7 @@ def _seed_model_registry(db_path: Path) -> None:
                     "policy": "model",
                     "source_mode": "paper",
                     "status": "candidate",
-                    "quality_score": 0.74,
+                    "quality_score": 0.92,
                 }
             ),
             created_at_utc="2026-03-14T10:00:00Z",
@@ -85,6 +86,8 @@ def test_model_registry_workspace_read_model_builds_roles_and_counts(tmp_path: P
     assert read_model["futures_models"] == 1
     assert "champion_spot=spot-champion-v1" in read_model["summary_line"]
     assert "champion_futures=futures-paper-v3" in read_model["summary_line"]
+    assert "spot=review:spot-challenger-v2" in read_model["status_line"]
+    assert "futures=hold:futures-paper-v3" in read_model["status_line"]
     rows = list(read_model["rows"])
     assert any(row[0] == "spot-champion-v1" and row[4] == "champion:spot" for row in rows)
     assert any(row[0] == "futures-paper-v3" and row[4] == "champion:futures" for row in rows)
@@ -148,3 +151,27 @@ def test_model_registry_workspace_read_model_safe_fallback_when_db_missing(tmp_p
     assert read_model["total_models"] == 0
     assert "champion_spot=spot-x" in read_model["summary_line"]
     assert list(read_model["rows"]) == []
+
+
+def test_build_model_registry_comparison_prefers_stronger_candidate() -> None:
+    comparison = build_model_registry_comparison(
+        {
+            "model_id": "challenger-a",
+            "status": "candidate",
+            "outcomes": 18,
+            "win_rate": 0.64,
+            "net_pnl": 2.75,
+            "edge": 0.91,
+        },
+        {
+            "model_id": "champion-b",
+            "status": "candidate",
+            "outcomes": 12,
+            "win_rate": 0.55,
+            "net_pnl": 1.10,
+            "edge": 0.42,
+        },
+    )
+    assert comparison["verdict"] == "prefer:challenger-a"
+    assert "prefer challenger-a" in comparison["summary"]
+    assert "net_pnl favors challenger-a" in comparison["reason_line"]

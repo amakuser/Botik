@@ -121,6 +121,7 @@ Botik — торговый бот с Dashboard Shell и ML-сервисом дл
   - summary по spot/futures/unknown model slots,
   - role-aware view (`champion:spot`, `champion:futures`, `legacy-active`, `candidate`),
   - instrument / policy / source / outcomes / net PnL / artifact path,
+  - selector summary line теперь отдельно подсказывает `hold / review / prefer` для spot и futures champion slots,
   - actions: `Promote Selected to Active`, `Compare Selected Models`, `Open Model Stats`, `Copy Artifact Path`.
   - source of truth для champion pointers — `active_models.yaml`; legacy `model_registry.is_active` удерживается только для compatibility.
 - Telegram Workspace: отдельный operational module Dashboard (не buried toggle в Settings):
