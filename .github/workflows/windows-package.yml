@@ -29,6 +29,8 @@ jobs:
           $v = ($raw | Select-String "version=(.+)").Matches[0].Groups[1].Value.Trim()
           "VERSION=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Building version: $v"
+          # version.txt used by installer.iss
+          (git rev-parse HEAD).Trim() | Set-Content -Path version.txt -Encoding utf8
 
       - uses: actions/setup-python@v5
         with:

@@ -41,7 +41,6 @@ Source: ".env.example"; DestDir: "{app}"; DestName: ".env"; Flags: onlyifdoesnte
 Source: "config.example.yaml"; DestDir: "{app}"; DestName: "config.yaml"; Flags: onlyifdoesntexist
 Source: "version.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db-shm,*.db-wal"
 
 [Icons]
 Name: "{group}\Запустить Botik (GUI)"; Filename: "{app}\{#MyAppExeName}"
