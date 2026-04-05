@@ -1,5 +1,7 @@
 #define MyAppName "Botik"
-#define MyAppVersion "1.0.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0"
+#endif
 #define MyAppPublisher "Botik"
 #define MyAppExeName "botik.exe"
 

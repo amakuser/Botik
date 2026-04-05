@@ -1,0 +1,3897 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Botik Dashboard — Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         #03070F;
+    --bg2:        #060D1C;
+    --bg3:        #0A1628;
+    --glass:      rgba(12, 22, 44, 0.55);
+    --glass2:     rgba(18, 32, 60, 0.7);
+    --border:     rgba(64, 120, 220, 0.18);
+    --border2:    rgba(64, 120, 220, 0.35);
+    --accent:     #3D8BFF;
+    --accent2:    #5FA3FF;
+    --teal:       #00D4C8;
+    --teal2:      #00FFF5;
+    --green:      #00E599;
+    --red:        #FF4D6A;
+    --yellow:     #FFB830;
+    --purple:     #8B5CF6;
+    --text:       #E8F0FF;
+    --text2:      #8FA8D0;
+    --text3:      #4A6080;
+    --glow-blue:  0 0 30px rgba(61,139,255,0.25);
+    --glow-teal:  0 0 30px rgba(0,212,200,0.2);
+    --glow-green: 0 0 20px rgba(0,229,153,0.3);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .bg-mesh {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 60% at 10% 0%, rgba(30,60,160,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 100%, rgba(0,180,160,0.12) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 40% at 50% 50%, rgba(20,40,100,0.08) 0%, transparent 70%);
+  }
+  .bg-grid {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(64,120,220,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(64,120,220,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 80%);
+  }
+
+  #particles { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.5; }
+
+  .shell {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+  }
+
+  /* TOP BAR */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 24px;
+    background: rgba(6,13,28,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 17px;
+    background: linear-gradient(135deg, var(--accent), var(--teal));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: 0.5px;
+  }
+  .topbar-logo span { opacity: 0.6; }
+  .topbar-sep { width: 1px; height: 20px; background: var(--border2); margin: 0 4px; }
+  .topbar-status {
+    display: flex; align-items: center; gap: 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--green);
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  .dot.green  { background: var(--green);  box-shadow: 0 0 8px var(--green); }
+  .dot.yellow { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .dot.accent { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); animation: pulse-dot 2s infinite; }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(0.85); }
+  }
+  .topbar-spacer { flex: 1; }
+  .topbar-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; color: var(--text2);
+    letter-spacing: 0.5px;
+  }
+  .topbar-badge {
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 500;
+    background: rgba(0,229,153,0.12); color: var(--green);
+    border: 1px solid rgba(0,229,153,0.25);
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    background: rgba(6,13,28,0.6);
+    backdrop-filter: blur(16px);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .sidebar-section {
+    padding: 6px 16px 4px;
+    font-size: 9.5px; font-weight: 600; letter-spacing: 1.2px;
+    text-transform: uppercase; color: var(--text3);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; margin: 0 8px; border-radius: 8px;
+    font-size: 13px; color: var(--text2);
+    cursor: pointer; transition: all 0.18s ease;
+    position: relative;
+  }
+  .nav-item:hover { background: rgba(61,139,255,0.08); color: var(--text); }
+  .nav-item.active {
+    background: rgba(61,139,255,0.12);
+    color: var(--accent2);
+  }
+  .nav-item.active::before {
+    content: '';
+    position: absolute; left: 0; top: 20%; bottom: 20%;
+    width: 2px; border-radius: 2px;
+    background: linear-gradient(to bottom, var(--accent), var(--teal));
+  }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+  .nav-badge {
+    margin-left: auto; padding: 1px 6px; border-radius: 10px;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    background: rgba(255,75,106,0.2); color: var(--red);
+  }
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 12px 16px 0;
+    border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .sidebar-footer div { margin-bottom: 3px; }
+  .sidebar-footer span { color: var(--text2); }
+
+  /* MAIN */
+  .main { padding: 24px; overflow-y: auto; }
+  .main::-webkit-scrollbar { width: 5px; }
+  .main::-webkit-scrollbar-track { background: transparent; }
+  .main::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* PAGE HEADER */
+  .page-header { margin-bottom: 22px; }
+  .page-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 22px;
+    background: linear-gradient(135deg, var(--text) 0%, var(--text2) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .page-sub { font-size: 12.5px; color: var(--text3); margin-top: 4px; }
+
+  /* GLASS CARD */
+  .card {
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    position: relative; overflow: hidden;
+    transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+  }
+  .card::before {
+    content: '';
+    position: absolute; inset: 0; border-radius: 14px;
+    background: linear-gradient(135deg, rgba(61,139,255,0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .card:hover {
+    border-color: var(--border2);
+    box-shadow: var(--glow-blue);
+    transform: translateY(-1px);
+  }
+  .card-glow-green { box-shadow: 0 0 0 1px rgba(0,229,153,0.3), var(--glow-green); }
+
+  /* GRIDS */
+  .grid-4  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .grid-3  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid-21 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+  .mb-14 { margin-bottom: 14px; }
+
+  /* METRIC */
+  .metric-label {
+    font-size: 11px; color: var(--text3); letter-spacing: 0.5px;
+    text-transform: uppercase; font-weight: 500; margin-bottom: 8px;
+  }
+  .metric-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 26px; font-weight: 700; line-height: 1.1;
+  }
+  .metric-value.green { color: var(--green); text-shadow: 0 0 20px rgba(0,229,153,0.3); }
+  .metric-value.red   { color: var(--red);   text-shadow: 0 0 20px rgba(255,77,106,0.3); }
+  .metric-value.blue  { color: var(--accent2); }
+  .metric-value.teal  { color: var(--teal); }
+  .metric-value.plain { color: var(--text); }
+  .metric-change { font-size: 12px; margin-top: 5px; font-family: 'JetBrains Mono', monospace; }
+  .metric-change.up   { color: var(--green); }
+  .metric-change.muted { color: var(--text3); }
+  .metric-icon { position: absolute; right: 16px; top: 16px; font-size: 22px; opacity: 0.25; }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px; font-weight: 700;
+    color: var(--text2); letter-spacing: 0.3px;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(to right, var(--border2), transparent);
+  }
+
+  /* BUTTONS */
+  .btn {
+    padding: 8px 18px; border-radius: 8px; border: none;
+    font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.18s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-accent {
+    background: linear-gradient(135deg, var(--accent), #2A6FDD);
+    color: #fff; box-shadow: 0 4px 16px rgba(61,139,255,0.3);
+  }
+  .btn-accent:hover { box-shadow: 0 4px 24px rgba(61,139,255,0.5); filter: brightness(1.1); }
+  .btn-green {
+    background: linear-gradient(135deg, #00C98A, #00A870);
+    color: #fff; box-shadow: 0 4px 16px rgba(0,200,140,0.3);
+  }
+  .btn-green:hover { filter: brightness(1.1); box-shadow: 0 4px 24px rgba(0,200,140,0.45); }
+  .btn-red {
+    background: linear-gradient(135deg, #E8344A, #C42035);
+    color: #fff; box-shadow: 0 4px 16px rgba(232,52,74,0.3);
+  }
+  .btn-red:hover { filter: brightness(1.1); }
+  .btn-ghost {
+    background: rgba(255,255,255,0.04); color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+
+  .ctrl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  .select-field {
+    background: rgba(10,22,40,0.8); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; font-family: 'Inter', sans-serif;
+    outline: none; cursor: pointer; transition: border-color 0.18s;
+  }
+  .select-field:hover, .select-field:focus { border-color: var(--accent); }
+
+  /* TABLE */
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .tbl th {
+    padding: 8px 12px; text-align: left;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text3); border-bottom: 1px solid var(--border);
+  }
+  .tbl td {
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    border-bottom: 1px solid rgba(64,120,220,0.06);
+    color: var(--text2);
+  }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl tr:hover td { background: rgba(61,139,255,0.04); }
+  .col-green { color: var(--green); }
+  .col-red   { color: var(--red); }
+  .col-blue  { color: var(--accent2); }
+  .col-dim   { color: var(--text3); }
+
+  /* STATUS ROW */
+  .status-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 0; border-bottom: 1px solid rgba(64,120,220,0.07);
+    font-size: 13px;
+  }
+  .status-row:last-child { border-bottom: none; }
+  .status-key { color: var(--text2); }
+  .status-val { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text); }
+  .status-val.ok   { color: var(--green); }
+  .status-val.warn { color: var(--yellow); }
+
+  /* LOG BOX */
+  .log-box {
+    background: rgba(3,7,15,0.85); border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 14px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px; line-height: 1.6; color: var(--text2);
+    max-height: 280px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .log-box::-webkit-scrollbar { width: 4px; }
+  .log-box::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .log-line { display: flex; gap: 12px; }
+  .log-ts  { color: var(--text3); white-space: nowrap; flex-shrink: 0; }
+  .log-ch  { width: 70px; flex-shrink: 0; }
+  .ch-spot    { color: var(--accent2); }
+  .ch-futures { color: var(--teal); }
+  .ch-ml      { color: var(--purple); }
+  .ch-sys     { color: var(--text3); }
+  .lm-ok   { color: #90EFC0; }
+  .lm-warn { color: var(--yellow); }
+  .lm-err  { color: var(--red); }
+  .lm-norm { color: var(--text2); }
+
+  /* CHART */
+  .chart-area {
+    position: relative; height: 140px;
+    display: flex; align-items: flex-end; gap: 3px;
+    padding: 12px 0 0;
+  }
+  .chart-bar {
+    flex: 1; border-radius: 4px 4px 0 0;
+    background: linear-gradient(to top, var(--accent), rgba(61,139,255,0.3));
+    transition: height 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    min-height: 4px;
+  }
+  .chart-bar.bar-green {
+    background: linear-gradient(to top, var(--green), rgba(0,229,153,0.3));
+  }
+
+  /* TICKER */
+  .ticker {
+    display: flex; gap: 24px; overflow: hidden;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    padding: 10px 0; border-top: 1px solid var(--border); margin-top: 14px;
+  }
+  .ticker-item { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .tick-sym { color: var(--text3); }
+  .tick-price { color: var(--text); }
+  .tick-up    { color: var(--green); }
+  .tick-down  { color: var(--red); }
+  .tick-stale { color: var(--text3); }
+  .ticker-item.ticker-stale { opacity: 0.45; }
+
+  /* ANALYTICS PAGE */
+  .mini-stat {
+    display: flex; flex-direction: column; gap: 2px;
+    background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 8px;
+  }
+  .mini-stat span { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .4px; }
+  .mini-stat b    { font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+  .badge {
+    display: inline-block; padding: 2px 6px; border-radius: 4px;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    background: rgba(255,255,255,0.08); color: var(--text2);
+  }
+
+  /* MARKET PAGE — price cards */
+  .market-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .price-card {
+    background: var(--glass); backdrop-filter: blur(20px);
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px;
+    position: relative; overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  }
+  .price-card::before {
+    content: ''; position: absolute; inset: 0; border-radius: 14px;
+    background: linear-gradient(135deg, rgba(61,139,255,0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .price-card:hover { border-color: var(--border2); box-shadow: var(--glow-blue); transform: translateY(-1px); }
+  .price-card.up  { border-color: rgba(0,229,153,0.28); }
+  .price-card.down { border-color: rgba(255,77,106,0.22); }
+  .price-card.stale { opacity: 0.45; }
+  .price-card-sym  { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text3); margin-bottom:6px; }
+  .price-card-value {
+    font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; letter-spacing:-0.5px;
+    color:var(--text); margin-bottom:5px; transition: color 0.3s;
+  }
+  .price-card.up .price-card-value   { color: var(--green); }
+  .price-card.down .price-card-value { color: var(--red); }
+  .price-card-chg {
+    font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600;
+    padding: 2px 7px; border-radius:5px; display:inline-block;
+  }
+  .price-card.up .price-card-chg   { background:rgba(0,229,153,0.12); color:var(--green); }
+  .price-card.down .price-card-chg { background:rgba(255,77,106,0.12); color:var(--red); }
+  .price-card.stale .price-card-chg { background: rgba(255,255,255,0.05); color:var(--text3); }
+  .price-card-range { margin-top:10px; height:3px; background:var(--border); border-radius:2px; position:relative; overflow:hidden; }
+  .price-card-range-fill { position:absolute; left:0; top:0; height:100%; border-radius:2px; transition:width 0.5s ease; background:var(--accent); }
+  .price-card.up .price-card-range-fill   { background: var(--green); }
+  .price-card.down .price-card-range-fill { background: var(--red); }
+  .price-card-hl { display:flex; justify-content:space-between; font-size:10px; color:var(--text3); margin-top:4px; font-family:'JetBrains Mono',monospace; }
+  @keyframes flash-up   { 0%{background:rgba(0,229,153,0.18)} 100%{background:transparent} }
+  @keyframes flash-down { 0%{background:rgba(255,77,106,0.18)} 100%{background:transparent} }
+  .price-card.flash-up   { animation: flash-up   0.55s ease-out forwards; }
+  .price-card.flash-down { animation: flash-down 0.55s ease-out forwards; }
+  .market-live-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--green); padding: 3px 10px; border-radius: 20px;
+    background: rgba(0,229,153,0.08); border: 1px solid rgba(0,229,153,0.2);
+  }
+  .market-live-badge .dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+  /* SUBTABS */
+  .subtabs {
+    display: flex; gap: 2px; margin-bottom: 16px;
+    background: rgba(10,22,40,0.6);
+    border: 1px solid var(--border); border-radius: 10px; padding: 4px;
+    width: fit-content;
+  }
+  .subtab {
+    padding: 6px 16px; border-radius: 7px;
+    font-size: 12.5px; font-weight: 500; cursor: pointer;
+    color: var(--text2); transition: all 0.18s;
+  }
+  .subtab.active {
+    background: linear-gradient(135deg, var(--accent), #2A6FDD);
+    color: #fff; box-shadow: 0 2px 12px rgba(61,139,255,0.35);
+  }
+  .subtab:not(.active):hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+  /* MODELS */
+  .model-card { display: flex; flex-direction: column; gap: 8px; cursor: pointer; transition: border-color .2s; }
+  .model-card:hover { border-color: var(--accent2); }
+  #model-detail-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1000; justify-content:center; align-items:center; }
+  #model-detail-overlay.open { display:flex; }
+  #model-detail-box { background:var(--surface1); border:1px solid var(--border2); border-radius:12px; padding:28px; max-width:680px; width:90%; max-height:80vh; overflow-y:auto; position:relative; }
+  .model-name {
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; color: var(--text);
+  }
+  .model-meta { font-size: 11px; color: var(--text3); }
+  .progress-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+  .progress-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(to right, var(--accent), var(--teal));
+    transition: width 1.5s ease;
+  }
+  .model-stats { display: flex; gap: 14px; }
+  .model-stat-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; }
+  .model-stat-val { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; }
+
+  /* TAGS */
+  .tag {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .tag-active  { background: rgba(0,229,153,0.15); color: var(--green); border: 1px solid rgba(0,229,153,0.25); }
+  .tag-idle    { background: rgba(255,184,48,0.12); color: var(--yellow); border: 1px solid rgba(255,184,48,0.2); }
+  .tag-loading { background: rgba(61,139,255,0.12); color: var(--accent2); border: 1px solid rgba(61,139,255,0.25); }
+  .tag-risk    { background: rgba(255,77,106,0.12); color: var(--red); border: 1px solid rgba(255,77,106,0.22); }
+
+  /* PAGES */
+  .page { display: none; animation: fadeIn 0.25s ease; }
+  .page.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* INPUT */
+  .text-input {
+    width: 100%; padding: 8px 12px;
+    background: rgba(10,22,40,0.8); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; outline: none;
+  }
+  .text-input:focus { border-color: var(--accent); }
+
+  /* CMD BADGE */
+  .cmd-badge {
+    padding: 4px 10px; border-radius: 6px;
+    background: rgba(61,139,255,0.1); border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent2);
+    display: inline-block;
+  }
+
+  /* ALERT */
+  .alert-ok {
+    background: rgba(0,229,153,0.06); border: 1px solid rgba(0,229,153,0.15);
+    border-radius: 8px; padding: 10px;
+    font-size: 12px; color: var(--green);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* SETTINGS */
+  .settings-label {
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 5px;
+  }
+  .settings-input {
+    width: 100%; background: rgba(6,13,28,0.8); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; padding: 8px 36px 8px 10px;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  .settings-input:focus { border-color: var(--accent); }
+  .settings-input-wrap { position: relative; }
+  .settings-section-title {
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px;
+    color: var(--text2); margin-bottom: 14px; text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="particles"></canvas>
+<div class="bg-mesh"></div>
+<div class="bg-grid"></div>
+
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-logo">BOTIK <span id="topbar-version">v2.0</span></div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-status" id="topbar-live">
+      <div class="dot yellow" id="topbar-dot"></div>
+      <span id="topbar-live-text">INIT</span>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-status" style="color:var(--accent2)" id="topbar-mode-row">
+      <div class="dot accent"></div>
+      <span id="topbar-mode-text">—</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-badge" id="topbar-badge">Botik</div>
+    <div class="topbar-time" id="clock">00:00:00</div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-section">Основное</div>
+    <div class="nav-item active" data-page="home">
+      <span class="nav-icon">⬡</span> Главная
+    </div>
+    <div class="nav-item" data-page="spot">
+      <span class="nav-icon">◈</span> Спот
+    </div>
+    <div class="nav-item" data-page="futures">
+      <span class="nav-icon">◇</span> Фьючерсы
+    </div>
+    <div class="sidebar-section" style="margin-top:10px">Аналитика</div>
+    <div class="nav-item" data-page="analytics">
+      <span class="nav-icon">📈</span> PnL
+    </div>
+    <div class="nav-item" data-page="data">
+      <span class="nav-icon">⬦</span> Данные
+    </div>
+    <div class="nav-item" data-page="market">
+      <span class="nav-icon">◎</span> Рынок
+    </div>
+    <div class="nav-item" data-page="models">
+      <span class="nav-icon">⬡</span> Модели
+    </div>
+    <div class="nav-item" data-page="logs">
+      <span class="nav-icon">≡</span> Логи
+      <span class="nav-badge">3</span>
+    </div>
+    <div class="sidebar-section" style="margin-top:10px">Система</div>
+    <div class="nav-item" data-page="ops">
+      <span class="nav-icon">⬡</span> Состояние
+    </div>
+    <div class="nav-item" data-page="telegram">
+      <span class="nav-icon">✈</span> Telegram
+    </div>
+    <div class="nav-item" data-page="backtest">
+      <span class="nav-icon">◫</span> Бэктест
+    </div>
+    <div class="nav-item" data-page="settings">
+      <span class="nav-icon">⚙</span> Настройки
+    </div>
+    <div class="sidebar-footer">
+      <div>Bybit <span>Spot + Linear</span></div>
+      <div>Uptime <span id="uptime">02:14:37</span></div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ГЛАВНАЯ -->
+    <div class="page active" id="page-home">
+      <div class="page-header">
+        <div class="page-title">Главная</div>
+        <div class="page-sub">Обзор торгового бота · обновлено сейчас</div>
+      </div>
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-icon">💰</div>
+          <div class="metric-label">PnL сегодня</div>
+          <div class="metric-value green" id="pnl-today">+$24.18</div>
+          <div class="metric-change up">↑ +2.4% vs вчера</div>
+        </div>
+        <div class="card">
+          <div class="metric-icon">📊</div>
+          <div class="metric-label">Баланс USDT</div>
+          <div class="metric-value blue" id="balance-val">—</div>
+          <div class="metric-change muted" id="balance-sub">Spot wallet</div>
+        </div>
+        <div class="card">
+          <div class="metric-icon">🔁</div>
+          <div class="metric-label">Сделок сегодня</div>
+          <div class="metric-value plain" id="trades-val">—</div>
+          <div class="metric-change up" id="trades-sub">WR —</div>
+        </div>
+        <div class="card">
+          <div class="metric-icon">⚡</div>
+          <div class="metric-label">Открытые позиции</div>
+          <div class="metric-value teal" id="open-pos-val">—</div>
+          <div class="metric-change muted" id="open-pos-sub">Spot: — · Fut: —</div>
+        </div>
+      </div>
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">PnL за неделю</div>
+          <div class="chart-area" id="pnl-chart"></div>
+          <div class="ticker" id="ticker-row"></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:14px">
+          <div class="section-title">Управление</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:11.5px;color:var(--text3);margin-bottom:2px">Стратегия</div>
+            <select class="select-field" style="width:100%">
+              <option>Spot Spread (Maker)</option>
+              <option>Spot Spike Burst</option>
+              <option>Futures Spike Reversal</option>
+            </select>
+          </div>
+          <div class="ctrl-row">
+            <button class="btn btn-green" id="btn-start" style="flex:1" onclick="apiStartTrading()">▶ Запустить</button>
+            <button class="btn btn-red" id="btn-stop" style="flex:1" onclick="apiStopTrading()">■ Стоп</button>
+          </div>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiPreflight()">⚡ Preflight Check</button>
+          <div class="alert-ok" id="preflight-status">✓ Ожидание данных…</div>
+        </div>
+      </div>
+      <div class="card mb-14">
+        <div class="section-title">Активные холдинги</div>
+        <table class="tbl" id="holdings-table"></table>
+      </div>
+    </div>
+
+    <!-- СПОТ -->
+    <div class="page" id="page-spot">
+      <div class="page-header">
+        <div class="page-title">Спот торговля</div>
+        <div class="page-sub">Spot runtime · Bybit Spot</div>
+      </div>
+      <div class="subtabs">
+        <div class="subtab active" data-spot-view="positions">Позиции</div>
+        <div class="subtab" data-spot-view="orders">Ордера</div>
+        <div class="subtab" data-spot-view="history">История</div>
+      </div>
+      <div class="grid-3 mb-14">
+        <div class="card">
+          <div class="metric-label">Spot uPnL</div>
+          <div class="metric-value plain" id="spot-pnl-val">—</div>
+          <div class="metric-change muted" id="spot-pnl-sub">Ожидание данных spot_holdings</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Активных холдингов</div>
+          <div class="metric-value plain" id="spot-open-val">—</div>
+          <div class="metric-change muted" id="spot-open-sub">Ожидание данных</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Открытых ордеров</div>
+          <div class="metric-value teal" id="spot-orders-val">—</div>
+          <div class="metric-change muted" id="spot-orders-sub">Последний снимок очереди</div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div class="section-title" id="spot-table-title">Открытые позиции</div>
+          <button class="btn btn-red" id="spot-sell-all-btn" style="display:none;font-size:12px;padding:4px 12px"
+                  onclick="apiSellAllSpot()">Продать всё → USDT</button>
+        </div>
+        <div id="spot-empty-state" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
+          Загрузка spot-данных…
+        </div>
+        <table class="tbl" id="spot-table" style="display:none"></table>
+      </div>
+    </div>
+
+    <!-- ФЬЮЧЕРСЫ -->
+    <div class="page" id="page-futures">
+      <div class="page-header">
+        <div class="page-title">Фьючерсы</div>
+        <div class="page-sub">Futures training &amp; paper trading</div>
+      </div>
+      <div class="grid-3 mb-14">
+        <div class="card">
+          <div class="metric-label">Paper PnL</div>
+          <div class="metric-value green" id="futures-pnl-val">—</div>
+          <div class="metric-change muted" id="futures-pnl-sub">uPnL по открытым позициям</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Позиций открыто</div>
+          <div class="metric-value plain" id="futures-pos-val">—</div>
+          <div class="metric-change muted" id="futures-pos-sub">Linear USDT · ожидание данных</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Training статус</div>
+          <div class="metric-value" id="ml-status-val" style="font-size:16px;color:var(--yellow)">—</div>
+          <div class="metric-change muted" id="ml-status-sub">—</div>
+        </div>
+      </div>
+      <div class="grid-21">
+        <div class="card">
+          <div class="section-title">Futures позиции (paper)</div>
+          <div id="futures-empty-state" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
+            Загрузка futures-позиций…
+          </div>
+          <table class="tbl" id="futures-table" style="display:none"></table>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:12px">
+          <div class="section-title">Управление</div>
+          <button class="btn btn-accent" id="btn-train-start" style="width:100%;justify-content:center" onclick="apiStartTraining()">▶ Training</button>
+          <button class="btn btn-red" id="btn-train-stop" style="width:100%;justify-content:center;display:none" onclick="apiStopTraining()">■ Стоп обучение</button>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiStartPaper()">▶ Paper mode</button>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center">⬡ Результаты</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- МОДЕЛИ -->
+    <div class="page" id="page-models">
+      <div class="page-header">
+        <div class="page-title">ML Модели</div>
+        <div class="page-sub">Статус bootstrap, обучения и готовности моделей</div>
+      </div>
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-label">Готовые scope</div>
+          <div class="metric-value blue" id="models-ready-val">—</div>
+          <div class="metric-change muted" id="models-ready-sub">Ожидание статуса моделей</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Активные указатели</div>
+          <div class="metric-value teal" id="models-active-val">—</div>
+          <div class="metric-change muted" id="models-active-sub">active_models.yaml</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Последний run</div>
+          <div class="metric-value plain" id="models-run-val">—</div>
+          <div class="metric-change muted" id="models-run-sub">История обучения загружается</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Источники</div>
+          <div class="metric-value plain" id="models-source-val" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="models-source-sub">manifest / БД</div>
+        </div>
+      </div>
+      <div id="models-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px"></div>
+      <div class="section-title" style="margin:14px 0 8px">Детали по моделям</div>
+      <div id="models-per-model-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px"></div>
+      <div class="card mb-14">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="section-title">ML Логи</div>
+          <div class="subtabs" id="ml-log-scope-tabs">
+            <div class="subtab active" data-ml-scope="futures">Фьючерсы</div>
+            <div class="subtab" data-ml-scope="spot">Спот</div>
+          </div>
+        </div>
+        <div class="log-box" id="ml-log-box" style="max-height:200px"></div>
+      </div>
+      <div class="card mb-14">
+        <div class="section-title" style="margin-bottom:12px">Управление обучением</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="min-width:90px;font-size:13px;font-weight:500">Фьючерсы</div>
+            <span class="tag tag-idle" id="train-futures-state-tag">STOPPED</span>
+            <div style="flex:1;font-size:11px;color:var(--text3)" id="train-futures-data-hint"></div>
+            <button class="btn" id="train-futures-start-btn" onclick="apiStartTrainingScope('futures')" disabled>▶ Старт</button>
+            <button class="btn btn-ghost" id="train-futures-stop-btn" onclick="apiStopTrainingScope('futures')" disabled>■ Стоп</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="min-width:90px;font-size:13px;font-weight:500">Спот</div>
+            <span class="tag tag-idle" id="train-spot-state-tag">STOPPED</span>
+            <div style="flex:1;font-size:11px;color:var(--text3)" id="train-spot-data-hint"></div>
+            <button class="btn" id="train-spot-start-btn" onclick="apiStartTrainingScope('spot')" disabled>▶ Старт</button>
+            <button class="btn btn-ghost" id="train-spot-stop-btn" onclick="apiStopTrainingScope('spot')" disabled>■ Стоп</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Последние training runs</div>
+        <div id="models-empty-state" style="padding:36px;text-align:center;color:var(--text3);font-size:13px">
+          Загрузка статуса моделей…
+        </div>
+        <table class="tbl" id="models-table" style="display:none"></table>
+      </div>
+    </div>
+
+    <!-- ЛОГИ -->
+    <div class="page" id="page-logs">
+      <div class="page-header">
+        <div class="page-title">Логи</div>
+        <div class="page-sub">Живые потоки событий по каналам</div>
+      </div>
+      <div class="card mb-14">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="subtabs" id="log-subtabs">
+            <div class="subtab active" data-log-ch="sys">⬡ Приложение</div>
+            <div class="subtab" data-log-ch="spot">◈ Спот</div>
+            <div class="subtab" data-log-ch="futures">◇ Фьючерсы</div>
+            <div class="subtab" data-log-ch="ml">⬟ ML</div>
+            <div class="subtab" data-log-ch="telegram">✉ Telegram</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" onclick="logsClearActive()">✕ Очистить</button>
+            <button class="btn btn-ghost" onclick="logsScrollBottom()">↓ В конец</button>
+          </div>
+        </div>
+        <div class="log-box" id="log-ch-sys"></div>
+        <div class="log-box" id="log-ch-spot"   style="display:none"></div>
+        <div class="log-box" id="log-ch-futures" style="display:none"></div>
+        <div class="log-box" id="log-ch-ml"      style="display:none"></div>
+        <div class="log-box" id="log-ch-telegram" style="display:none"></div>
+        <!-- legacy alias for old polling code -->
+        <div id="log-container" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- СОСТОЯНИЕ -->
+    <div class="page" id="page-ops">
+      <div class="page-header">
+        <div class="page-title">Состояние системы</div>
+        <div class="page-sub">Процессы · Диагностика · БД</div>
+      </div>
+
+      <!-- Карточки процессов — генерируются JS -->
+      <div id="ops-processes" class="grid-3 mb-14"></div>
+
+      <!-- Системные ресурсы: RAM / CPU / DB -->
+      <div class="grid-3 mb-14">
+        <div class="card">
+          <div class="metric-label">RAM</div>
+          <div id="ops-ram-bar-wrap" style="margin-top:8px;background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+            <div id="ops-ram-bar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width .4s"></div>
+          </div>
+          <div id="ops-ram-text" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);margin-top:6px">—</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">CPU</div>
+          <div id="ops-cpu-bar-wrap" style="margin-top:8px;background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+            <div id="ops-cpu-bar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width .4s"></div>
+          </div>
+          <div id="ops-cpu-text" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);margin-top:6px">—</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">DB Ping</div>
+          <div id="ops-db-ping" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;margin-top:8px;color:var(--green)">—</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">SQLite latency</div>
+        </div>
+      </div>
+
+      <!-- .env статус + конфиг окружения -->
+      <div class="grid-3 mb-14">
+        <div class="card">
+          <div class="metric-label">Bybit API Key</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <div class="dot" id="ops-env-api-dot"></div>
+            <div id="ops-env-api-text" style="font-family:'JetBrains Mono',monospace;font-size:13px">—</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Telegram Token</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <div class="dot" id="ops-env-tg-dot"></div>
+            <div id="ops-env-tg-text" style="font-family:'JetBrains Mono',monospace;font-size:13px">—</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Аптайм / Версия</div>
+          <div id="ops-uptime" style="font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:6px;color:var(--text2)">—</div>
+          <div id="ops-version" style="font-size:11px;color:var(--text3);margin-top:2px">—</div>
+        </div>
+      </div>
+
+      <!-- Диагностика + Статистика БД -->
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">Диагностика</div>
+          <table id="ops-diag-table" style="width:100%;border-collapse:collapse;margin-top:8px"></table>
+        </div>
+        <div class="card">
+          <div class="section-title">Статистика БД</div>
+          <table id="ops-db-table" style="width:100%;border-collapse:collapse;margin-top:8px"></table>
+        </div>
+      </div>
+
+      <!-- Последние ошибки -->
+      <div class="card">
+        <div class="section-title">Последние ошибки и предупреждения</div>
+        <div id="ops-errors" style="margin-top:8px;font-size:12px;font-family:'JetBrains Mono',monospace;
+             max-height:200px;overflow-y:auto;color:var(--text2)">
+          <span style="color:var(--text3)">Загрузка…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TELEGRAM -->
+    <div class="page" id="page-telegram">
+      <div class="page-header">
+        <div class="page-title">Telegram</div>
+        <div class="page-sub">Управление ботом уведомлений</div>
+      </div>
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">Доступные команды</div>
+          <div id="cmd-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:8px">
+          <div class="section-title">Действия</div>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiReloadConfig()">⟳ Обновить конфиг</button>
+          <button class="btn btn-accent" style="width:100%;justify-content:center" onclick="apiTelegramTest()">✉ Test Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- НАСТРОЙКИ -->
+    <div class="page" id="page-settings">
+      <div class="page-header">
+        <div class="page-title">Настройки</div>
+        <div class="page-sub">API ключи, Telegram, База данных</div>
+      </div>
+
+      <!-- Статус-баннеры -->
+      <div id="settings-saved-banner" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:8px;background:rgba(0,229,153,0.08);border:1px solid rgba(0,229,153,0.2);color:var(--green);font-size:13px;font-family:'JetBrains Mono',monospace">✓ Настройки сохранены</div>
+      <div id="settings-err-banner" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:8px;background:rgba(255,77,106,0.08);border:1px solid rgba(255,77,106,0.2);color:var(--red);font-size:13px;font-family:'JetBrains Mono',monospace"></div>
+
+      <!-- Панель управления -->
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+        <button class="btn btn-accent" id="btn-settings-save" onclick="settingsSave()">💾 Сохранить</button>
+        <div style="display:flex;gap:4px;align-items:center;margin-left:auto">
+          <button class="btn btn-ghost" id="btn-settings-load" onclick="settingsLoad()">↺ Загрузить</button>
+          <!-- Кнопка формата .env — круглый ? в стиле дашборда -->
+          <button onclick="settingsShowFormat()" title="Формат файла .env"
+            style="width:32px;height:32px;padding:0;border-radius:8px;cursor:pointer;flex-shrink:0;
+                   background:rgba(255,255,255,0.04);border:1px solid rgba(64,120,220,0.25);
+                   display:flex;align-items:center;justify-content:center;
+                   transition:background 0.18s,border-color 0.18s"
+            onmouseover="this.style.background='rgba(255,255,255,0.09)';this.style.borderColor='rgba(64,120,220,0.5)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(64,120,220,0.25)'">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="9" r="7.5" stroke="#4A6080" stroke-width="1.2"/>
+              <text x="9" y="13.2" text-anchor="middle" fill="#8FA8D0"
+                    font-size="9.5" font-family="Inter,sans-serif" font-weight="700">?</text>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:14px" id="settings-env-path"></div>
+
+      <!-- Подсказка формата .env -->
+      <div id="settings-format-hint" style="display:none;margin-bottom:14px;padding:14px 16px;border-radius:8px;background:var(--surface2);border:1px solid var(--border2)">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:600">Формат файла .env</div>
+        <pre style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);margin:0;line-height:1.7">BYBIT_API_KEY=ВАШ_DEMO_КЛЮЧ
+BYBIT_API_SECRET=ВАШ_DEMO_СЕКРЕТ
+BYBIT_MAINNET_API_KEY=ВАШ_MAINNET_КЛЮЧ
+BYBIT_MAINNET_API_SECRET=ВАШ_MAINNET_СЕКРЕТ
+TELEGRAM_BOT_TOKEN=123456789:AABBccddEEff...
+TELEGRAM_CHAT_ID=-100123456789
+DB_URL=sqlite:///data/botik.db</pre>
+      </div>
+
+      <!-- Bybit Demo + MainNet рядом -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+        <!-- Bybit Demo -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-title" style="margin-bottom:0">Bybit Demo</div>
+            <span style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace">api-demo.bybit.com</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">API Key</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-key" class="text-input" placeholder="Demo API Key" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-key',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div>
+              <div class="settings-label">API Secret</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-secret" class="text-input" placeholder="Demo API Secret" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-secret',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-bybit-demo-test" onclick="apiTestBybit('demo')" style="font-size:11px;padding:4px 10px">▶ Проверить</button>
+              <div id="s-bybit-key-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bybit MainNet -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-title" style="margin-bottom:0">Bybit MainNet</div>
+            <span style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace">api.bybit.com</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">API Key</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-mainnet-key" class="text-input" placeholder="MainNet API Key" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-mainnet-key',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div>
+              <div class="settings-label">API Secret</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-mainnet-secret" class="text-input" placeholder="MainNet API Secret" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-mainnet-secret',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-bybit-mainnet-test" onclick="apiTestBybit('mainnet')" style="font-size:11px;padding:4px 10px">▶ Проверить</button>
+              <div id="s-bybit-mainnet-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Telegram + DB рядом -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+        <!-- Telegram -->
+        <div class="card">
+          <div class="section-title">Telegram</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">Bot Token</div>
+              <div style="position:relative">
+                <input type="password" id="s-tg-token" class="text-input" placeholder="123456789:AABBccdd…" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-tg-token',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div>
+              <div class="settings-label">Chat ID</div>
+              <input type="text" id="s-tg-chatid" class="text-input" placeholder="-100123456789" autocomplete="off" />
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-tg-test" onclick="apiTelegramTest()" style="font-size:11px;padding:4px 10px">▶ Отправить тест</button>
+              <div id="s-tg-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- База данных -->
+        <div class="card">
+          <div class="section-title">База данных</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">DB_URL</div>
+              <input type="text" id="s-db-url" class="text-input" placeholder="sqlite:///data/botik.db" autocomplete="off" />
+              <div style="font-size:10px;color:var(--text3);margin-top:3px">Пусто = SQLite по умолчанию. После изменения — перезапуск.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-db-check" onclick="apiCheckDb()" style="font-size:11px;padding:4px 10px">▶ Проверить</button>
+              <div id="s-db-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+            <div id="s-db-detail" style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text2);display:none"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Стратегия -->
+      <div style="margin-top:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <div class="section-title" style="margin-bottom:0">Параметры стратегии</div>
+          <span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace">Применяются при следующем перезапуске торговли</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+          <!-- Фьючерсы -->
+          <div class="card">
+            <div class="section-title" style="margin-bottom:12px">Фьючерсы</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div>
+                <div class="settings-label">Виртуальный баланс (USDT)</div>
+                <input type="number" id="s-fut-balance" class="text-input" placeholder="10000" min="100" step="100" />
+              </div>
+              <div>
+                <div class="settings-label">Риск на сделку (%)</div>
+                <input type="number" id="s-fut-risk-pct" class="text-input" placeholder="1.0" min="0.1" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель SL</div>
+                <input type="number" id="s-fut-atr-sl" class="text-input" placeholder="1.5" min="0.5" max="5" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель TP</div>
+                <input type="number" id="s-fut-atr-tp" class="text-input" placeholder="2.5" min="0.5" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">Макс. позиция (% баланса)</div>
+                <input type="number" id="s-fut-max-pos-pct" class="text-input" placeholder="15" min="1" max="100" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Таймаут позиции (ч)</div>
+                <input type="number" id="s-fut-timeout-h" class="text-input" placeholder="4" min="1" max="72" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Порог спайка (bps, 1bps=0.01%)</div>
+                <input type="number" id="s-fut-spike-bps" class="text-input" placeholder="80" min="10" max="500" step="5" />
+              </div>
+              <div>
+                <div class="settings-label">Макс. открытых позиций</div>
+                <input type="number" id="s-fut-max-positions" class="text-input" placeholder="3" min="1" max="20" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Символы (через запятую)</div>
+                <input type="text" id="s-fut-symbols" class="text-input" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Спот -->
+          <div class="card">
+            <div class="section-title" style="margin-bottom:12px">Спот</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div>
+                <div class="settings-label">Виртуальный баланс (USDT)</div>
+                <input type="number" id="s-spot-balance" class="text-input" placeholder="10000" min="100" step="100" />
+              </div>
+              <div>
+                <div class="settings-label">Риск на сделку (%)</div>
+                <input type="number" id="s-spot-risk-pct" class="text-input" placeholder="0.8" min="0.1" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель SL</div>
+                <input type="number" id="s-spot-atr-sl" class="text-input" placeholder="1.2" min="0.5" max="5" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель TP</div>
+                <input type="number" id="s-spot-atr-tp" class="text-input" placeholder="2.0" min="0.5" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">Макс. позиция (% баланса)</div>
+                <input type="number" id="s-spot-max-pos-pct" class="text-input" placeholder="10" min="1" max="100" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Таймаут позиции (ч)</div>
+                <input type="number" id="s-spot-timeout-h" class="text-input" placeholder="8" min="1" max="72" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Порог спайка (bps, 1bps=0.01%)</div>
+                <input type="number" id="s-spot-spike-bps" class="text-input" placeholder="20" min="5" max="200" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Символы (через запятую)</div>
+                <input type="text" id="s-spot-symbols" class="text-input" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" />
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ДАННЫЕ (M4) -->
+    <div class="page" id="page-data">
+      <div class="page-header">
+        <div class="page-title">Данные</div>
+        <div class="page-sub">Сбор исторических и live OHLCV данных · symbol registry</div>
+      </div>
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-label">Linear (futures)</div>
+          <div class="metric-value blue" id="data-linear-val">—</div>
+          <div class="metric-change muted" id="data-linear-sub">ready / total</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Spot</div>
+          <div class="metric-value teal" id="data-spot-val">—</div>
+          <div class="metric-change muted" id="data-spot-sub">ready / total</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">WS активных</div>
+          <div class="metric-value green" id="data-ws-val">—</div>
+          <div class="metric-change muted" id="data-ws-sub">WebSocket подключений</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Свечей всего</div>
+          <div class="metric-value plain" id="data-candles-val">—</div>
+          <div class="metric-change muted" id="data-candles-sub">в price_history (все TF)</div>
+        </div>
+      </div>
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">Символы (symbol_registry)</div>
+          <div id="data-empty-state" style="padding:36px;text-align:center;color:var(--text3);font-size:13px">
+            Загрузка символов…
+          </div>
+          <table class="tbl" id="data-table" style="display:none"></table>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:12px">
+          <div class="section-title">Управление сбором</div>
+          <div style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:2px">СИМВОЛЫ</div>
+          <button class="btn" style="width:100%;justify-content:center" onclick="apiSeedSymbols()">＋ Загрузить все монеты с Bybit</button>
+          <div class="divider" style="margin:4px 0"></div>
+          <div style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px">BACKFILL — история через REST</div>
+          <button class="btn btn-accent" id="btn-backfill-start" style="width:100%;justify-content:center" onclick="apiStartBackfill()">▶ Запустить Backfill</button>
+          <button class="btn btn-red" id="btn-backfill-stop" style="width:100%;justify-content:center;display:none" onclick="apiStopBackfill()">■ Стоп Backfill</button>
+          <div style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px;margin-top:6px">LIVE — WebSocket kline</div>
+          <button class="btn btn-accent" id="btn-live-start" style="width:100%;justify-content:center" onclick="apiStartLiveData()">▶ Запустить Live Data</button>
+          <button class="btn btn-red" id="btn-live-stop" style="width:100%;justify-content:center;display:none" onclick="apiStopLiveData()">■ Стоп Live Data</button>
+          <div id="data-status-msg" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);min-height:16px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- АНАЛИТИКА PnL -->
+    <div class="page" id="page-analytics">
+      <div class="page-header">
+        <div>
+          <div class="page-title">PnL Аналитика</div>
+          <div class="page-sub">Equity curve · Drawdown · Win rate · История сделок</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select class="select-field" id="analytics-scope" onchange="_loadAnalytics()" style="width:110px">
+            <option value="all">Все</option>
+            <option value="futures">Фьючерсы</option>
+            <option value="spot">Спот</option>
+          </select>
+          <select class="select-field" id="analytics-days" onchange="_loadAnalytics()" style="width:90px">
+            <option value="7">7 дней</option>
+            <option value="30" selected>30 дней</option>
+            <option value="90">90 дней</option>
+            <option value="0">Всё время</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Сводные карточки -->
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-label">Итого PnL</div>
+          <div class="metric-value" id="an-total-pnl">—</div>
+          <div class="metric-change muted" id="an-today-pnl">Сегодня —</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Win Rate</div>
+          <div class="metric-value blue" id="an-win-rate">—</div>
+          <div class="metric-change muted" id="an-trade-count">— сделок</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Max Drawdown</div>
+          <div class="metric-value red" id="an-drawdown">—</div>
+          <div class="metric-change muted" id="an-avg-pnl">Avg —</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Лучшая / Худшая</div>
+          <div class="metric-value plain" id="an-best-worst">—</div>
+          <div class="metric-change muted" id="an-scope-split">—</div>
+        </div>
+      </div>
+
+      <!-- Equity curve -->
+      <div class="card mb-14">
+        <div class="section-title">Equity Curve (накопленный PnL)</div>
+        <div id="an-chart-empty" style="padding:36px;text-align:center;color:var(--text3);font-size:13px">
+          Нет данных по закрытым сделкам за выбранный период
+        </div>
+        <canvas id="an-equity-canvas" style="display:none;width:100%;height:200px"></canvas>
+      </div>
+
+      <!-- По типам + таблица сделок -->
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">Последние сделки</div>
+          <div id="an-trades-empty" style="padding:24px;text-align:center;color:var(--text3);font-size:13px">
+            Нет данных
+          </div>
+          <table class="tbl" id="an-trades-table" style="display:none">
+            <thead><tr>
+              <th>Символ</th><th>Тип</th><th>PnL</th><th>Закрыта</th>
+            </tr></thead>
+            <tbody id="an-trades-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:14px">
+          <div class="section-title">По типам</div>
+          <div id="an-by-scope"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- БЭКТЕСТ -->
+    <div class="page" id="page-backtest">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Бэктест</div>
+          <div class="page-sub">Симуляция стратегии на исторических данных</div>
+        </div>
+      </div>
+
+      <!-- Форма параметров -->
+      <div class="card mb-14">
+        <div class="section-title" style="margin-bottom:14px">Параметры запуска</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Тип рынка</label>
+            <select class="select-field" id="bt-scope" style="width:130px">
+              <option value="futures">Фьючерсы</option>
+              <option value="spot">Спот</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Символ</label>
+            <select class="select-field" id="bt-symbol" style="width:140px">
+              <option value="BTCUSDT">BTCUSDT</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Интервал</label>
+            <select class="select-field" id="bt-interval" style="width:100px">
+              <option value="1">1м</option>
+              <option value="5">5м</option>
+              <option value="15" selected>15м</option>
+              <option value="60">1ч</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Дней назад</label>
+            <input class="select-field" id="bt-days" type="number" min="7" max="365" value="30"
+                   style="width:90px;font-family:'JetBrains Mono',monospace">
+          </div>
+          <button id="bt-run-btn" onclick="_runBacktest()"
+                  style="padding:9px 22px;background:linear-gradient(135deg,var(--accent),var(--teal));
+                         border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;
+                         cursor:pointer;white-space:nowrap;transition:opacity .2s">
+            &#9654; Запустить бэктест
+          </button>
+        </div>
+      </div>
+
+      <!-- Спиннер / статус -->
+      <div id="bt-spinner" style="display:none;text-align:center;padding:32px;color:var(--text2);font-size:14px">
+        <span style="display:inline-block;width:22px;height:22px;border:3px solid var(--border2);
+                     border-top-color:var(--accent);border-radius:50%;
+                     animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:10px"></span>
+        Считаем…
+      </div>
+
+      <!-- Результаты (скрыты до запуска) -->
+      <div id="bt-results" style="display:none">
+
+        <!-- Сетка метрик 2×4 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
+          <div class="card">
+            <div class="metric-label">Сделок</div>
+            <div class="metric-value plain" id="bt-m-trades">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Win Rate</div>
+            <div class="metric-value blue" id="bt-m-winrate">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">PnL итого</div>
+            <div class="metric-value" id="bt-m-pnl">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Max Drawdown</div>
+            <div class="metric-value red" id="bt-m-drawdown">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Sharpe</div>
+            <div class="metric-value plain" id="bt-m-sharpe">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Avg Win</div>
+            <div class="metric-value green" id="bt-m-avgwin">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Avg Loss</div>
+            <div class="metric-value red" id="bt-m-avgloss">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Profit Factor</div>
+            <div class="metric-value plain" id="bt-m-pf">—</div>
+          </div>
+        </div>
+
+        <!-- Мета-строка -->
+        <div class="card mb-14" style="padding:10px 18px">
+          <span style="font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace" id="bt-meta-row">—</span>
+        </div>
+
+        <!-- Таблица сделок -->
+        <div class="card">
+          <div class="section-title" style="margin-bottom:12px">Сделки (последние 50)</div>
+          <div id="bt-trades-empty" style="display:none;padding:24px;text-align:center;color:var(--text3);font-size:13px">
+            Нет сделок за выбранный период
+          </div>
+          <div style="overflow-x:auto">
+            <table class="tbl" id="bt-trades-table">
+              <thead>
+                <tr>
+                  <th>Открыта</th><th>Закрыта</th><th>Символ</th><th>Сторона</th>
+                  <th>Вход</th><th>Выход</th><th>PnL</th><th>Причина</th>
+                </tr>
+              </thead>
+              <tbody id="bt-trades-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /bt-results -->
+
+      <!-- Блок ошибки -->
+      <div id="bt-error" style="display:none;margin-bottom:14px" class="card">
+        <div style="color:var(--red);font-size:13px" id="bt-error-msg">—</div>
+      </div>
+
+    </div><!-- /page-backtest -->
+
+    <!-- РЫНОК -->
+    <div class="page" id="page-market">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Рынок</div>
+          <div class="page-sub">Live цены · Bybit Linear Perpetuals · обновление каждые 3 сек</div>
+        </div>
+        <span class="market-live-badge"><div class="dot"></div> LIVE</span>
+      </div>
+      <div class="market-grid" id="market-grid"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+/* ─── PARTICLES ─────────────────────────────────────────── */
+(function() {
+  var canvas = document.getElementById('particles');
+  var ctx = canvas.getContext('2d');
+  var W, H, particles = [];
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  resize(); window.addEventListener('resize', resize);
+  for (var i = 0; i < 80; i++) {
+    particles.push({
+      x: Math.random()*W, y: Math.random()*H,
+      vx: (Math.random()-0.5)*0.25, vy: (Math.random()-0.5)*0.25,
+      r: Math.random()*1.2+0.3,
+      alpha: Math.random()*0.4+0.1,
+      color: Math.random() > 0.5 ? '61,139,255' : '0,212,200'
+    });
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(function(p) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(' + p.color + ',' + p.alpha + ')';
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ─── CLOCK & UPTIME ────────────────────────────────────── */
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8);
+}
+setInterval(updateClock, 1000); updateClock();
+
+var uptimeSecs = 8077;
+setInterval(function() {
+  uptimeSecs++;
+  var h = String(Math.floor(uptimeSecs/3600)).padStart(2,'0');
+  var m = String(Math.floor((uptimeSecs%3600)/60)).padStart(2,'0');
+  var s = String(uptimeSecs%60).padStart(2,'0');
+  document.getElementById('uptime').textContent = h+':'+m+':'+s;
+}, 1000);
+
+/* ─── NAVIGATION ────────────────────────────────────────── */
+document.querySelectorAll('.nav-item').forEach(function(item) {
+  item.addEventListener('click', function() {
+    var pageId = this.getAttribute('data-page');
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    var target = document.getElementById('page-' + pageId);
+    if (target) target.classList.add('active');
+    this.classList.add('active');
+  });
+});
+
+/* ─── SUBTABS ───────────────────────────────────────────── */
+document.querySelectorAll('.subtab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    this.closest('.subtabs').querySelectorAll('.subtab').forEach(function(t) { t.classList.remove('active'); });
+    this.classList.add('active');
+  });
+});
+
+/* ─── PNL CHART ─────────────────────────────────────────── */
+var pnlData = [4.2, 11.8, 7.4, 18.2, 22.1, 15.6, 24.2];
+var maxVal = Math.max.apply(null, pnlData);
+var chartEl = document.getElementById('pnl-chart');
+pnlData.forEach(function(v, i) {
+  var bar = document.createElement('div');
+  bar.className = 'chart-bar' + (i === pnlData.length-1 ? ' bar-green' : '');
+  bar.style.height = '4px';
+  chartEl.appendChild(bar);
+  setTimeout(function() { bar.style.height = Math.round((v/maxVal)*110)+'px'; }, 100 + i*80);
+});
+
+/* ─── LIVE TICKER ───────────────────────────────────────── */
+function _fmtTickerPrice(price) {
+  if (!price) return '—';
+  var v = parseFloat(price);
+  if (isNaN(v)) return String(price);
+  if (v >= 10000) return v.toLocaleString('en-US', {maximumFractionDigits: 0});
+  if (v >= 100)   return v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  if (v >= 1)     return v.toFixed(4);
+  return v.toFixed(6);
+}
+function _fmtTickerChg(pct) {
+  if (pct === null || pct === undefined || pct === '') return '—';
+  var v = parseFloat(pct) * 100;
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+}
+function _renderTickerRow(tickers) {
+  var el = document.getElementById('ticker-row');
+  if (!el) return;
+  el.innerHTML = '';
+  tickers.forEach(function(t) {
+    var sym = (t.symbol || '').replace('USDT', '/USDT');
+    var stale = !!t.stale;
+    var up = !stale && t.change_pct !== null && parseFloat(t.change_pct) >= 0;
+    var item = document.createElement('div');
+    item.className = 'ticker-item' + (stale ? ' ticker-stale' : '');
+    var symEl   = document.createElement('span'); symEl.className = 'tick-sym';   symEl.textContent = sym;
+    var priceEl = document.createElement('span'); priceEl.className = 'tick-price'; priceEl.textContent = _fmtTickerPrice(t.price);
+    var chgEl   = document.createElement('span'); chgEl.className = stale ? 'tick-stale' : (up ? 'tick-up' : 'tick-down');
+    chgEl.textContent = stale ? '···' : _fmtTickerChg(t.change_pct);
+    item.appendChild(symEl); item.appendChild(priceEl); item.appendChild(chgEl);
+    el.appendChild(item);
+  });
+}
+/* ─── MARKET PAGE CARDS ─────────────────────────────────── */
+var _marketPrevPrices = {};
+function _renderMarketPage(tickers) {
+  var grid = document.getElementById('market-grid');
+  if (!grid) return;
+  tickers.forEach(function(t) {
+    var sym = t.symbol || '';
+    var stale = !!t.stale;
+    var chgVal = t.change_pct !== null && t.change_pct !== undefined ? parseFloat(t.change_pct) : null;
+    var dir = (!stale && chgVal !== null) ? (chgVal >= 0 ? 'up' : 'down') : '';
+
+    var card = document.getElementById('mc-' + sym);
+    if (!card) {
+      card = document.createElement('div');
+      card.id = 'mc-' + sym;
+      card.className = 'price-card';
+      card.innerHTML =
+        '<div class="price-card-sym">' + sym.replace('USDT','') + '<span style="opacity:.5">/USDT</span></div>' +
+        '<div class="price-card-value" id="mcv-' + sym + '">—</div>' +
+        '<div class="price-card-chg" id="mcc-' + sym + '">—</div>' +
+        '<div class="price-card-range"><div class="price-card-range-fill" id="mcr-' + sym + '" style="width:50%"></div></div>' +
+        '<div class="price-card-hl"><span id="mcl-' + sym + '">Low —</span><span id="mch-' + sym + '">High —</span></div>';
+      grid.appendChild(card);
+    }
+
+    // direction classes
+    card.className = 'price-card' + (dir ? ' ' + dir : '') + (stale ? ' stale' : '');
+
+    // flash on price change
+    var prev = _marketPrevPrices[sym];
+    var curPrice = t.price ? parseFloat(t.price) : null;
+    if (!stale && curPrice !== null && prev !== undefined && curPrice !== prev) {
+      var flashCls = curPrice > prev ? 'flash-up' : 'flash-down';
+      card.classList.add(flashCls);
+      setTimeout(function() { card.classList.remove('flash-up', 'flash-down'); }, 600);
+    }
+    if (curPrice !== null) _marketPrevPrices[sym] = curPrice;
+
+    document.getElementById('mcv-' + sym).textContent = stale ? '···' : _fmtTickerPrice(t.price);
+    document.getElementById('mcc-' + sym).textContent = stale ? '···' : _fmtTickerChg(t.change_pct);
+
+    // high/low + range fill
+    var low  = t.low  ? parseFloat(t.low)  : null;
+    var high = t.high ? parseFloat(t.high) : null;
+    if (low && high && curPrice !== null && high > low) {
+      var pct = Math.round(((curPrice - low) / (high - low)) * 100);
+      pct = Math.max(0, Math.min(100, pct));
+      document.getElementById('mcr-' + sym).style.width = pct + '%';
+      document.getElementById('mcl-' + sym).textContent = 'L ' + _fmtTickerPrice(String(low));
+      document.getElementById('mch-' + sym).textContent = 'H ' + _fmtTickerPrice(String(high));
+    }
+  });
+}
+
+function _pollTickers() {
+  var api = _getAPI();
+  if (!api || typeof api.get_live_tickers !== 'function') { setTimeout(_pollTickers, 3000); return; }
+  api.get_live_tickers().then(function(raw) {
+    try {
+      var d = JSON.parse(raw);
+      if (d.tickers) {
+        _renderTickerRow(d.tickers);
+        _renderMarketPage(d.tickers);
+      }
+    } catch(e) {}
+  }).catch(function(){});
+  setTimeout(_pollTickers, 3000);
+}
+
+/* ─── HOLDINGS TABLE ────────────────────────────────────── */
+function buildTable(tableEl, headers, rows) {
+  var thead = document.createElement('thead');
+  var trh = document.createElement('tr');
+  headers.forEach(function(h) {
+    var th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  var tbody = document.createElement('tbody');
+  rows.forEach(function(row) {
+    var tr = document.createElement('tr');
+    row.forEach(function(cell) {
+      var td = document.createElement('td');
+      if (cell.html !== undefined) {
+        td.innerHTML = cell.html;
+      } else if (cell.text !== undefined) {
+        td.textContent = cell.text;
+        if (cell.cls) td.className = cell.cls;
+        if (cell.tag) {
+          var sp = document.createElement('span');
+          sp.className = 'tag ' + cell.tag;
+          sp.textContent = cell.text;
+          td.textContent = '';
+          td.appendChild(sp);
+        }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  tableEl.appendChild(thead);
+  tableEl.appendChild(tbody);
+}
+
+var holdingsHeaders = ['Символ','Кол-во','Цена входа','Текущая','PnL','Статус'];
+var holdingsRows = [
+  [{text:'BTC/USDT',cls:'col-blue'},{text:'0.00124'},{text:'103 800'},{text:'104 280'},{text:'+$0.59',cls:'col-green'},{text:'OPEN',tag:'tag-active'}],
+  [{text:'ETH/USDT',cls:'col-blue'},{text:'0.0521'},{text:'3 860'},{text:'3 841'},{text:'-$0.99',cls:'col-red'},{text:'OPEN',tag:'tag-active'}],
+  [{text:'SOL/USDT',cls:'col-blue'},{text:'1.22'},{text:'180.1'},{text:'182.5'},{text:'+$2.93',cls:'col-green'},{text:'OPEN',tag:'tag-active'}]
+];
+buildTable(document.getElementById('holdings-table'), holdingsHeaders, holdingsRows);
+
+var spotPositionHeaders = ['Символ','Base','Free','Locked','Avg entry','uPnL','Причина','Обновлено',''];
+var spotOrderHeaders = ['Символ','Сторона','Тип','Цена','Qty','Filled','Статус','Обновлено'];
+var spotHistoryHeaders = ['Символ','Сторона','Цена','Qty','Fee','Время'];
+var _spotActiveView = 'positions';
+
+var futuresHeaders = ['Символ','Сторона','Размер','Вход','Mark','Liq','uPnL','Защита','Обновлено',''];
+var modelRunHeaders = ['Scope','Версия','Режим','Статус','Epoch','Accuracy','Sharpe','Trades','Обновлено'];
+var _modelsPayloadSignature = '';
+
+/* ─── MODELS ────────────────────────────────────────────── */
+function _modelsFormatPercent(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  var num = Number(value);
+  if (!isFinite(num)) return '—';
+  if (Math.abs(num) <= 1) num = num * 100;
+  return num.toFixed(1) + '%';
+}
+
+function _modelsFormatFixed(value, digits) {
+  if (value === null || value === undefined || value === '') return '—';
+  var num = Number(value);
+  if (!isFinite(num)) return '—';
+  return num.toFixed(digits);
+}
+
+function _modelsTagByRun(status, isTrained) {
+  var normalized = String(status || '').trim().toLowerCase();
+  if (isTrained || normalized === 'completed' || normalized === 'ready' || normalized === 'trained' || normalized === 'active') return 'tag-active';
+  if (normalized === 'running' || normalized === 'training' || normalized === 'pending' || normalized === 'bootstrap' || normalized === 'started') return 'tag-loading';
+  if (normalized === 'failed' || normalized === 'error' || normalized === 'rejected') return 'tag-risk';
+  return 'tag-idle';
+}
+
+function _modelsStatusTone(status) {
+  var normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'active' || normalized === 'ready' || normalized === 'completed' || normalized === 'trained' || normalized === 'loaded') return 'ok';
+  if (normalized === 'running' || normalized === 'training' || normalized === 'pending' || normalized === 'bootstrap' || normalized === 'missing' || normalized === 'failed') return 'warn';
+  return '';
+}
+
+function _modelsFormatEpoch(card) {
+  if (card.training_epoch === null || card.training_epoch === undefined) return '—';
+  if (card.training_max_epochs === null || card.training_max_epochs === undefined) return String(card.training_epoch);
+  return String(card.training_epoch) + '/' + String(card.training_max_epochs);
+}
+
+function _modelsCardMeta(card) {
+  var parts = [];
+  parts.push('Активная: ' + (card.has_active_model ? card.active_model : 'не выбрана'));
+  if (card.model_version) parts.push('run: ' + card.model_version);
+  if (card.updated_at && card.updated_at !== '-') parts.push('обновлено ' + _fmtTimeText(card.updated_at));
+  return parts.join(' · ');
+}
+
+function _modelsCardStats(card) {
+  var primaryLabel = 'Accuracy';
+  var primaryValue = _modelsFormatPercent(card.accuracy);
+  var primaryClass = (card.accuracy !== null && card.accuracy !== undefined && Number(card.accuracy) >= 0.6) ? 'col-green' : '';
+  if (primaryValue === '—') {
+    primaryLabel = (card.training_epoch !== null && card.training_epoch !== undefined) ? 'Epoch' : 'Win rate';
+    primaryValue = (card.training_epoch !== null && card.training_epoch !== undefined) ? _modelsFormatEpoch(card) : _modelsFormatPercent(card.win_rate);
+    primaryClass = (primaryLabel === 'Epoch') ? 'col-blue' : '';
+  }
+  return [
+    { l: primaryLabel, v: primaryValue, c: primaryClass },
+    { l: 'Sharpe', v: _modelsFormatFixed(card.sharpe_ratio, 2), c: 'col-blue' },
+    { l: 'Trades', v: card.trade_count === null || card.trade_count === undefined ? '—' : String(card.trade_count), c: '' }
+  ];
+}
+
+function _renderModelsCards(cards, allRuns) {
+  var grid = document.getElementById('models-grid');
+  if (!grid) return;
+  _clearEl(grid);
+  if (!cards || !cards.length) {
+    var emptyCard = document.createElement('div');
+    emptyCard.className = 'card';
+    emptyCard.textContent = 'Нет данных по моделям';
+    grid.appendChild(emptyCard);
+    return;
+  }
+
+  cards.forEach(function(card) {
+    var wrap = document.createElement('div'); wrap.className = 'card model-card';
+    wrap.title = 'Нажмите для деталей';
+    wrap.addEventListener('click', function() { _showModelDetail(card, allRuns); });
+
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:12px';
+    var name = document.createElement('div'); name.className = 'model-name'; name.textContent = card.scope_label;
+    var tag = document.createElement('span'); tag.className = 'tag ' + (card.tag_class || 'tag-idle'); tag.textContent = card.tag_text || 'IDLE';
+    header.appendChild(name); header.appendChild(tag);
+
+    var meta = document.createElement('div'); meta.className = 'model-meta'; meta.textContent = _modelsCardMeta(card);
+
+    var stats = document.createElement('div'); stats.className = 'model-stats';
+    _modelsCardStats(card).forEach(function(metric) {
+      var st = document.createElement('div'); st.className = 'model-stat';
+      var sl = document.createElement('div'); sl.className = 'model-stat-label'; sl.textContent = metric.l;
+      var sv = document.createElement('div'); sv.className = 'model-stat-val ' + (metric.c || ''); sv.textContent = metric.v;
+      st.appendChild(sl); st.appendChild(sv); stats.appendChild(st);
+    });
+
+    var progressWrap = document.createElement('div');
+    var progressLabel = document.createElement('div');
+    progressLabel.style.cssText = 'font-size:10px;color:var(--text3);margin-bottom:4px';
+    progressLabel.textContent = card.progress_label || 'Статус';
+    var bar = document.createElement('div'); bar.className = 'progress-bar';
+    var fill = document.createElement('div'); fill.className = 'progress-fill';
+    fill.style.width = Math.max(0, Math.min(100, Number(card.progress_pct || 0))) + '%';
+    if (card.state === 'bootstrap') fill.style.cssText += ';background:linear-gradient(to right,var(--yellow),rgba(255,184,48,0.35))';
+    if (card.state === 'missing') fill.style.cssText += ';background:linear-gradient(to right,var(--red),rgba(255,77,106,0.35))';
+    bar.appendChild(fill);
+    progressWrap.appendChild(progressLabel); progressWrap.appendChild(bar);
+
+    wrap.appendChild(header);
+    wrap.appendChild(meta);
+    wrap.appendChild(stats);
+    wrap.appendChild(progressWrap);
+
+    [
+      { key: 'Training', value: (card.training_status || card.metrics_status || card.state || '—').toUpperCase(), state: _modelsStatusTone(card.training_status || card.metrics_status || card.state) },
+      { key: 'Режим', value: card.training_mode ? String(card.training_mode).toUpperCase() : '—', state: '' },
+      { key: 'Checkpoint', value: card.checkpoint_name || '—', state: card.checkpoint_name ? 'ok' : 'warn' },
+      { key: 'Manifest', value: String(card.manifest_status || 'missing').toUpperCase(), state: _modelsStatusTone(card.manifest_status) }
+    ].forEach(function(row) {
+      var line = document.createElement('div'); line.className = 'status-row';
+      var key = document.createElement('span'); key.className = 'status-key'; key.textContent = row.key;
+      var val = document.createElement('span'); val.className = 'status-val ' + (row.state || ''); val.textContent = row.value;
+      line.appendChild(key); line.appendChild(val); wrap.appendChild(line);
+    });
+
+    if (card.latest_notes) {
+      var note = document.createElement('div');
+      note.className = 'model-meta';
+      note.textContent = card.latest_notes;
+      wrap.appendChild(note);
+    }
+    grid.appendChild(wrap);
+  });
+}
+
+function _applyModelsRunsTable(runs, notes) {
+  var tbl = document.getElementById('models-table');
+  var empty = document.getElementById('models-empty-state');
+  if (!tbl || !empty) return;
+
+  if (!runs || !runs.length) {
+    tbl.style.display = 'none';
+    _clearEl(tbl);
+    empty.style.display = '';
+    empty.textContent = (notes && notes.length) ? notes.join(' ') : 'История training runs пока пуста';
+    return;
+  }
+
+  empty.style.display = 'none';
+  tbl.style.display = '';
+  _clearEl(tbl);
+  buildTable(tbl, modelRunHeaders, runs.map(function(run) {
+    var statusText = String(run.status || '—').toUpperCase();
+    return [
+      { text: String(run.scope || '—').toUpperCase(), cls: 'col-blue' },
+      { text: run.version || '—' },
+      { text: String(run.mode || '—').toUpperCase(), cls: 'col-dim' },
+      { text: statusText, tag: _modelsTagByRun(run.status, run.is_trained) },
+      { text: run.epoch === null || run.epoch === undefined ? '—' : (run.max_epochs === null || run.max_epochs === undefined ? String(run.epoch) : String(run.epoch) + '/' + String(run.max_epochs)) },
+      { text: _modelsFormatPercent(run.accuracy), cls: (run.accuracy !== null && run.accuracy !== undefined && Number(run.accuracy) >= 0.6) ? 'col-green' : '' },
+      { text: _modelsFormatFixed(run.sharpe_ratio, 2), cls: 'col-blue' },
+      { text: run.trade_count === null || run.trade_count === undefined ? '—' : String(run.trade_count) },
+      { text: _fmtTimeText(run.updated_at), cls: 'col-dim' }
+    ];
+  }));
+}
+
+function _applyModelsSummary(payload) {
+  var summary = payload.summary || {};
+  var cards = payload.cards || [];
+  var sources = payload.sources || [];
+
+  var readyVal = document.getElementById('models-ready-val');
+  if (readyVal) readyVal.textContent = String(summary.ready_scopes || 0) + '/' + String(summary.total_scopes || cards.length || 2);
+  var readySub = document.getElementById('models-ready-sub');
+  if (readySub) {
+    readySub.textContent = cards.map(function(card) {
+      return card.scope_label + ': ' + (card.tag_text || '—');
+    }).join(' · ') || 'Ожидание данных';
+  }
+
+  var activeVal = document.getElementById('models-active-val');
+  if (activeVal) activeVal.textContent = String(summary.active_declared_count || 0);
+  var activeSub = document.getElementById('models-active-sub');
+  if (activeSub) {
+    activeSub.textContent = cards.map(function(card) {
+      return card.scope + '=' + (card.has_active_model ? card.active_model : 'unknown');
+    }).join(' · ') || 'active_models.yaml';
+  }
+
+  var runVal = document.getElementById('models-run-val');
+  if (runVal) runVal.textContent = summary.latest_run_scope ? String(summary.latest_run_scope).toUpperCase() : '—';
+  var runSub = document.getElementById('models-run-sub');
+  if (runSub) {
+    if (summary.latest_run_scope) {
+      runSub.textContent = 'mode=' + String(summary.latest_run_mode || '—') + ' · status=' + String(summary.latest_run_status || '—');
+    } else {
+      runSub.textContent = 'История запусков пока не найдена';
+    }
+  }
+
+  var sourceVal = document.getElementById('models-source-val');
+  if (sourceVal) sourceVal.textContent = summary.db_available ? 'DB + YAML' : 'YAML';
+  var sourceSub = document.getElementById('models-source-sub');
+  if (sourceSub) {
+    var sourceParts = sources.map(function(source) {
+      return source.name + '=' + source.status;
+    });
+    if (summary.manifest_loaded_at && summary.manifest_loaded_at !== '-') sourceParts.push('loaded=' + _fmtTimeText(summary.manifest_loaded_at));
+    sourceSub.textContent = sourceParts.join(' · ') || 'manifest / БД';
+  }
+}
+
+function _applyModelsPayload(payload) {
+  var signature = JSON.stringify(payload || {});
+  if (_modelsPayloadSignature === signature) return;
+  _modelsPayloadSignature = signature;
+  _currentModelsPayload = payload;
+  _applyModelsSummary(payload || {});
+  _renderModelsCards((payload || {}).cards || [], (payload || {}).recent_runs || []);
+  _applyModelsRunsTable((payload || {}).recent_runs || [], (payload || {}).notes || []);
+}
+
+/* ─── PER-MODEL CARDS (M5) ──────────────────────────────── */
+var _activeMlLogScope = 'futures';
+var _mlLogSignature   = '';
+
+function _renderPerModelCards(cards) {
+  var grid = document.getElementById('models-per-model-grid');
+  if (!grid) return;
+  _clearEl(grid);
+  if (!cards || !cards.length) return;
+  cards.forEach(function(card) {
+    var wrap = document.createElement('div'); wrap.className = 'card';
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:8px';
+    var nameEl = document.createElement('div'); nameEl.className = 'model-name';
+    nameEl.textContent = (card.model_label || card.name || '?') + ' · ' + (card.scope_label || card.scope || '?');
+    var tag = document.createElement('span'); tag.className = 'tag ' + (card.tag_class || 'tag-idle');
+    tag.textContent = card.tag_text || 'IDLE';
+    header.appendChild(nameEl); header.appendChild(tag);
+
+    var desc = document.createElement('div'); desc.className = 'model-meta';
+    desc.textContent = card.description || '';
+
+    var meta = document.createElement('div'); meta.className = 'model-meta';
+    var metaParts = [card.version || '—'];
+    if (card.has_file) metaParts.push('✓ ' + (card.latest_file || 'file'));
+    else metaParts.push('нет файла');
+    meta.textContent = metaParts.join(' · ');
+
+    var stats = document.createElement('div'); stats.className = 'model-stats';
+    var accStat = document.createElement('div'); accStat.className = 'model-stat';
+    var accLabel = document.createElement('div'); accLabel.className = 'model-stat-label'; accLabel.textContent = 'Accuracy';
+    var accVal = document.createElement('div'); accVal.className = 'model-stat-val';
+    if (card.accuracy !== null && card.accuracy !== undefined && card.accuracy !== '') {
+      var pct = Number(card.accuracy);
+      if (Math.abs(pct) <= 1) pct = pct * 100;
+      accVal.textContent = pct.toFixed(1) + '%';
+      if (pct >= 60) accVal.classList.add('col-green');
+    } else {
+      accVal.textContent = '—';
+    }
+    accStat.appendChild(accLabel); accStat.appendChild(accVal); stats.appendChild(accStat);
+
+    wrap.appendChild(header);
+    wrap.appendChild(desc);
+    wrap.appendChild(meta);
+    wrap.appendChild(stats);
+
+    if (card.updated_at && card.updated_at !== '—') {
+      var updated = document.createElement('div'); updated.className = 'model-meta';
+      updated.textContent = 'обновлено ' + _fmtTimeText(card.updated_at);
+      wrap.appendChild(updated);
+    }
+    grid.appendChild(wrap);
+  });
+}
+
+function _renderMlLogs(logs) {
+  var box = document.getElementById('ml-log-box');
+  if (!box) return;
+  var sig = JSON.stringify(logs);
+  if (_mlLogSignature === sig) return;
+  _mlLogSignature = sig;
+  _clearEl(box);
+  if (!logs || !logs.length) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'color:var(--text3);font-size:12px;padding:8px';
+    empty.textContent = 'ML логи отсутствуют';
+    box.appendChild(empty);
+    return;
+  }
+  logs.forEach(function(entry) {
+    var line = document.createElement('div'); line.className = 'log-line';
+    var ts = document.createElement('span'); ts.className = 'log-ts';
+    ts.textContent = entry.ts ? String(entry.ts).slice(11, 19) : '';
+    var lvl = document.createElement('span'); lvl.className = 'log-ch ch-ml';
+    lvl.textContent = '[' + (entry.level || 'INFO') + ']';
+    var msg = document.createElement('span');
+    var lvlLower = String(entry.level || '').toLowerCase();
+    if (lvlLower === 'error' || lvlLower === 'warning') msg.className = 'lm-warn';
+    msg.textContent = entry.msg || '';
+    line.appendChild(ts); line.appendChild(lvl); line.appendChild(msg);
+    box.appendChild(line);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+function _loadModelCards() {
+  var api = _getAPI();
+  if (!api || !api.get_model_cards) return;
+  api.get_model_cards().then(function(raw) {
+    try {
+      var d = JSON.parse(raw) || {};
+      _renderPerModelCards(d.cards || []);
+      _applyTrainingControls(d.training_states, d.data_ready);
+    } catch(e) { console.warn('[botik] model_cards parse error', e); }
+  }).catch(function(e) { console.warn('[botik] model_cards error', e); });
+}
+
+function _loadMlLogs(scope) {
+  var api = _getAPI();
+  if (!api || !api.get_model_logs) return;
+  api.get_model_logs(scope || _activeMlLogScope).then(function(raw) {
+    try { _renderMlLogs((JSON.parse(raw) || {}).logs || []); }
+    catch(e) { console.warn('[botik] ml_logs parse error', e); }
+  }).catch(function(e) { console.warn('[botik] ml_logs error', e); });
+}
+
+/* ─── PAGE NAVIGATION HELPER ───────────────────────────── */
+function _navigateToPage(pageId) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+  var target = document.getElementById('page-' + pageId);
+  if (target) target.classList.add('active');
+  var navItem = document.querySelector('.nav-item[data-page="' + pageId + '"]');
+  if (navItem) navItem.classList.add('active');
+}
+
+/* ─── TRAINING CONTROLS (M6) ────────────────────────────── */
+function _applyTrainingControls(trainingStates, dataReady) {
+  ['futures', 'spot'].forEach(function(scope) {
+    var state   = String((trainingStates || {})[scope] || 'stopped').toLowerCase();
+    var hasData = Boolean((dataReady || {})[scope]);
+    var running = state === 'running';
+
+    var tag = document.getElementById('train-' + scope + '-state-tag');
+    if (tag) {
+      tag.className = 'tag ' + (running ? 'tag-loading' : 'tag-idle');
+      tag.textContent = state.toUpperCase();
+    }
+    var startBtn = document.getElementById('train-' + scope + '-start-btn');
+    if (startBtn) startBtn.disabled = !hasData || running;
+    var stopBtn = document.getElementById('train-' + scope + '-stop-btn');
+    if (stopBtn) stopBtn.disabled = !running;
+    var hint = document.getElementById('train-' + scope + '-data-hint');
+    if (hint) {
+      _clearEl(hint);
+      if (!hasData) {
+        hint.appendChild(document.createTextNode('Нет данных — '));
+        var lnk = document.createElement('button');
+        lnk.className = 'btn btn-ghost';
+        lnk.textContent = '→ Данные';
+        lnk.style.cssText = 'padding:2px 8px;font-size:10px;height:auto;line-height:1.4';
+        lnk.onclick = function() { _navigateToPage('data'); };
+        hint.appendChild(lnk);
+      } else if (running) {
+        hint.textContent = 'Обучение запущено…';
+      }
+    }
+  });
+}
+
+function apiStartTrainingScope(scope) {
+  var api = _getAPI();
+  if (!api) return;
+  api.start_training_scope(scope).then(function(r) {
+    try {
+      var res = JSON.parse(r);
+      if (!res.ok) console.warn('[botik] start_training_scope', scope, res.error);
+    } catch(e) {}
+    _mlLogSignature = '';
+    _loadMlLogs(scope === 'futures' || scope === 'spot' ? scope : _activeMlLogScope);
+  }).catch(function(e) { console.warn('[botik] start_training_scope error', e); });
+}
+
+function apiStopTrainingScope(scope) {
+  var api = _getAPI();
+  if (!api) return;
+  api.stop_training_scope(scope).then(function(r) {
+    console.log('[botik] stop_training_scope', scope, r);
+  }).catch(function(e) { console.warn('[botik] stop_training_scope error', e); });
+}
+
+function _initMlLogScopeTabs() {
+  var tabs = document.querySelectorAll('#ml-log-scope-tabs .subtab');
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      this.classList.add('active');
+      _activeMlLogScope = this.getAttribute('data-ml-scope') || 'futures';
+      _mlLogSignature = '';
+      _loadMlLogs(_activeMlLogScope);
+    });
+  });
+}
+document.addEventListener('DOMContentLoaded', _initMlLogScopeTabs);
+if (document.readyState !== 'loading') { setTimeout(_initMlLogScopeTabs, 0); }
+
+function _loadModelsData() {
+  var api = _getAPI();
+  var empty = document.getElementById('models-empty-state');
+  if (!api) {
+    if (empty) empty.textContent = 'Страница моделей доступна после запуска через pywebview';
+    return;
+  }
+  api.get_models().then(function(raw) {
+    try { _applyModelsPayload(JSON.parse(raw)); } catch(e) { console.warn('[botik] models parse error', e); }
+  }).catch(function(e) {
+    if (empty) empty.textContent = 'Не удалось загрузить статус моделей';
+    console.warn('[botik] models error', e);
+  });
+  _loadModelCards();
+  _loadMlLogs(_activeMlLogScope);
+}
+
+/* ─── LOGS ──────────────────────────────────────────────── */
+var logData = [
+  { ts:'14:22:31', ch:'spot',    chCls:'ch-spot',    msg:'BTC/USDT spread order placed @ 104 100', msgCls:'lm-ok'   },
+  { ts:'14:22:29', ch:'spot',    chCls:'ch-spot',    msg:'SOL/USDT fill confirmed, qty=1.22',       msgCls:'lm-ok'   },
+  { ts:'14:22:18', ch:'futures', chCls:'ch-futures', msg:'Paper position closed @ 3 840',           msgCls:'lm-norm' },
+  { ts:'14:22:10', ch:'ml',      chCls:'ch-ml',      msg:'epoch 14/50 loss=0.312',                  msgCls:'lm-norm' },
+  { ts:'14:22:05', ch:'spot',    chCls:'ch-spot',    msg:'ETH/USDT stop-loss triggered',            msgCls:'lm-warn' },
+  { ts:'14:21:58', ch:'sys',     chCls:'ch-sys',     msg:'Reconciliation OK — no issues',           msgCls:'lm-ok'   },
+  { ts:'14:21:45', ch:'spot',    chCls:'ch-spot',    msg:'BTC/USDT spread order placed @ 103 800',  msgCls:'lm-ok'   },
+  { ts:'14:21:30', ch:'ml',      chCls:'ch-ml',      msg:'Training checkpoint saved',               msgCls:'lm-ok'   },
+  { ts:'14:21:10', ch:'sys',     chCls:'ch-sys',     msg:'DB vacuum completed',                     msgCls:'lm-norm' },
+  { ts:'14:20:55', ch:'futures', chCls:'ch-futures', msg:'Spike signal detected, entering paper',   msgCls:'lm-norm' }
+];
+var logContainer = document.getElementById('log-container');
+logData.forEach(function(l) {
+  var line = document.createElement('div'); line.className = 'log-line';
+  var ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = l.ts;
+  var ch = document.createElement('span'); ch.className = 'log-ch ' + l.chCls; ch.textContent = '[' + l.ch + ']';
+  var msg = document.createElement('span'); msg.className = l.msgCls; msg.textContent = l.msg;
+  line.appendChild(ts); line.appendChild(ch); line.appendChild(msg);
+  logContainer.appendChild(line);
+});
+
+/* ─── DIAGNOSTICS TABLE ─────────────────────────────────── */
+var diagData = [
+  ['База данных','SQLite OK','ok'], ['Схема БД','v14 актуальна','ok'],
+  ['Bybit API','Подключено','ok'], ['Spot модель','Spread v3 загружена','ok'],
+  ['Futures модель','Training…','warn'], ['Config','config.yaml','ok'],
+  ['Сверка','Нет расхождений','ok'], ['Проблемы','0','ok']
+];
+var diagCard = document.getElementById('diag-card');
+diagData.forEach(function(row) {
+  var r = document.createElement('div'); r.className = 'status-row';
+  var k = document.createElement('span'); k.className = 'status-key'; k.textContent = row[0];
+  var v = document.createElement('span'); v.className = 'status-val ' + row[2]; v.textContent = row[1];
+  r.appendChild(k); r.appendChild(v); diagCard.appendChild(r);
+});
+var verData = [
+  ['Версия','2.0.0-rc4'], ['Build SHA','a3f9d12e'],
+  ['Релиз','stable'], ['Python','3.11.8'], ['ОС','Windows 11']
+];
+var verCard = document.getElementById('ver-card');
+verData.forEach(function(row) {
+  var r = document.createElement('div'); r.className = 'status-row';
+  var k = document.createElement('span'); k.className = 'status-key'; k.textContent = row[0];
+  var v = document.createElement('span'); v.className = 'status-val'; v.textContent = row[1];
+  r.appendChild(k); r.appendChild(v); verCard.appendChild(r);
+});
+
+/* ─── TELEGRAM COMMANDS ─────────────────────────────────── */
+var cmds = ['/status','/balance','/orders','/starttrading','/stoptrading','/pull','/help'];
+var cmdList = document.getElementById('cmd-list');
+cmds.forEach(function(c) {
+  var badge = document.createElement('span'); badge.className = 'cmd-badge'; badge.textContent = c;
+  cmdList.appendChild(badge);
+});
+
+/* ─── LIVE PNL (demo fallback) ───────────────────────────── */
+var pnlBase = 0;
+var _pnlDemoActive = true;
+setInterval(function() {
+  if (!_pnlDemoActive) return;
+  pnlBase += (Math.random() - 0.42) * 0.15;
+  var el = document.getElementById('pnl-today');
+  if (!el) return;
+  var sign = pnlBase >= 0 ? '+' : '';
+  el.textContent = sign + '$' + pnlBase.toFixed(2);
+  el.className = 'metric-value ' + (pnlBase >= 0 ? 'green' : 'red');
+}, 3000);
+
+/* ─── UTILS ─────────────────────────────────────────────── */
+function _clearEl(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function _fmt(v, d) {
+  if (v === null || v === undefined) return '\u2014';
+  return Number(v).toLocaleString('ru-RU', {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+
+/* ─── PYWEBVIEW API BRIDGE ───────────────────────────────── */
+var _api = null;
+var _apiReady = false;
+var _logSeenCount = 0;
+
+function _getAPI() {
+  if (_api) return _api;
+  if (window.pywebview && window.pywebview.api) {
+    _api = window.pywebview.api;
+  }
+  return _api;
+}
+
+function _activePageKey() {
+  var active = document.querySelector('.page.active');
+  if (!active || !active.id) return '';
+  return active.id.replace('page-', '');
+}
+
+/* ─── API BRIDGE INIT ────────────────────────────────────── */
+// pywebviewready event (standard) + polling fallback for frozen exe
+var _apiInitDone = false;
+function _initAPI() {
+  if (_apiInitDone) return;
+  if (window.pywebview && window.pywebview.api) {
+    _apiInitDone = true;
+    _api = window.pywebview.api;
+    _apiReady = true;
+    _pnlDemoActive = false;
+    document.getElementById('topbar-live-text').textContent = 'CONNECTING…';
+    _pollSnapshot();
+    _pollLogs();
+    _pollTickers();
+    settingsLoad();
+  }
+}
+window.addEventListener('pywebviewready', _initAPI);
+// Polling fallback — fires if event never comes (common in frozen/exe mode)
+(function _waitAPI(attempt) {
+  if (_apiInitDone) return;
+  _initAPI();
+  if (!_apiInitDone && attempt < 50) setTimeout(function(){ _waitAPI(attempt+1); }, 200);
+})(0);
+
+/* ─── SNAPSHOT POLLING ───────────────────────────────────── */
+function _pollSnapshot() {
+  var api = _getAPI();
+  if (!api) return;
+  api.get_snapshot().then(function(raw) {
+    try {
+      _applySnapshot(JSON.parse(raw));
+      var activePage = _activePageKey();
+      if (activePage === 'spot') _loadSpotPageData();
+      if (activePage === 'futures') _loadFuturesPositions();
+      if (activePage === 'models') _loadModelsData();
+      if (activePage === 'ops') _loadOpsPage();
+      if (activePage === 'data') _loadDataPage();
+      if (activePage === 'analytics') _loadAnalytics();
+    } catch(e) { console.warn('[botik] parse error', e); }
+  }).catch(function(e) { console.warn('[botik] snapshot error', e); });
+  setTimeout(_pollSnapshot, 2000);
+}
+
+function _applySnapshot(d) {
+  var running = d.trading_state === 'running';
+  var state = d.trading_state || 'stopped';
+
+  var dot = document.getElementById('topbar-dot');
+  if (dot) {
+    dot.className = 'dot ' + (running ? 'green' : (state === 'error' ? '' : 'yellow'));
+    dot.style.background = state === 'error' ? 'var(--red)' : '';
+    dot.style.boxShadow = state === 'error' ? '0 0 8px var(--red)' : '';
+  }
+  var liveText = document.getElementById('topbar-live-text');
+  if (liveText) liveText.textContent = running ? 'LIVE' : (state === 'error' ? 'ERROR' : 'IDLE');
+
+  var modeText = document.getElementById('topbar-mode-text');
+  if (modeText) {
+    var modes = (d.running_modes || []).join(', ').toUpperCase().replace(/_/g, ' ') || '\u2014';
+    modeText.textContent = d.execution_mode ? d.execution_mode + ' \u00B7 ' + modes : modes;
+  }
+  var badge = document.getElementById('topbar-badge');
+  if (badge) badge.textContent = d.execution_mode === 'LIVE' ? 'Bybit MainNet' : 'Paper / Demo';
+
+  var verEl = document.getElementById('topbar-version');
+  if (verEl && d.version) verEl.textContent = d.version;
+
+  if (d.uptime) {
+    var ut = document.getElementById('uptime');
+    if (ut) ut.textContent = d.uptime;
+  }
+
+  var pnl = typeof d.pnl_today === 'number' ? d.pnl_today : null;
+  var pnlEl = document.getElementById('pnl-today');
+  if (pnlEl && pnl !== null) {
+    _pnlDemoActive = false;
+    pnlEl.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+    pnlEl.className = 'metric-value ' + (pnl >= 0 ? 'green' : 'red');
+  }
+
+  var balEl = document.getElementById('balance-val');
+  if (balEl) balEl.textContent = d.balance_total !== null && d.balance_total !== undefined ? _fmt(d.balance_total, 2) : '\u2014';
+
+  var tradesEl = document.getElementById('trades-val');
+  if (tradesEl) tradesEl.textContent = d.trades_today !== undefined ? d.trades_today : '\u2014';
+  var tradesSub = document.getElementById('trades-sub');
+  if (tradesSub && d.win_rate !== null && d.win_rate !== undefined)
+    tradesSub.textContent = '\u2191 WR ' + d.win_rate + '%';
+
+  var spotC = d.spot_open_count;
+  var futC = d.futures_open_count;
+  var posEl = document.getElementById('open-pos-val');
+  if (posEl) posEl.textContent = (typeof spotC === 'number' && typeof futC === 'number') ? (spotC + futC) : '\u2014';
+  var posSub = document.getElementById('open-pos-sub');
+  if (posSub) posSub.textContent = 'Spot: ' + (spotC !== undefined ? spotC : '\u2014') + ' \u00B7 Fut: ' + (futC !== undefined ? futC : '\u2014');
+
+  var spotPnl = typeof d.spot_unrealized_pnl === 'number' ? d.spot_unrealized_pnl : null;
+  var spotPnlEl = document.getElementById('spot-pnl-val');
+  if (spotPnlEl) {
+    if (spotPnl === null) {
+      spotPnlEl.textContent = '\u2014';
+      spotPnlEl.className = 'metric-value plain';
+    } else {
+      spotPnlEl.textContent = (spotPnl >= 0 ? '+' : '') + '$' + spotPnl.toFixed(2);
+      spotPnlEl.className = 'metric-value ' + (spotPnl > 0 ? 'green' : (spotPnl < 0 ? 'red' : 'plain'));
+    }
+  }
+  var spotPnlSub = document.getElementById('spot-pnl-sub');
+  if (spotPnlSub) {
+    if (spotPnl === null) {
+      spotPnlSub.className = 'metric-change muted';
+      spotPnlSub.textContent = 'uPnL недоступен в текущей схеме spot_holdings';
+    } else {
+      spotPnlSub.className = 'metric-change ' + (spotPnl >= 0 ? 'up' : 'muted');
+      spotPnlSub.textContent = 'Суммарный unrealized PnL по активным холдингам';
+    }
+  }
+
+  var spotOpenEl = document.getElementById('spot-open-val');
+  if (spotOpenEl) spotOpenEl.textContent = spotC !== undefined ? spotC : '\u2014';
+  var spotOpenSub = document.getElementById('spot-open-sub');
+  if (spotOpenSub) {
+    spotOpenSub.textContent =
+      'qty=' + (typeof d.spot_total_qty === 'number' ? d.spot_total_qty.toFixed(6) : '\u2014') +
+      ' \u00B7 recovered=' + (d.spot_recovered_count !== undefined ? d.spot_recovered_count : '\u2014');
+  }
+
+  var spotOrdersEl = document.getElementById('spot-orders-val');
+  if (spotOrdersEl) spotOrdersEl.textContent = d.spot_open_orders_count !== undefined ? d.spot_open_orders_count : '\u2014';
+  var spotOrdersSub = document.getElementById('spot-orders-sub');
+  if (spotOrdersSub) {
+    spotOrdersSub.textContent =
+      'auto-sell=' + (d.spot_auto_sell_count !== undefined ? d.spot_auto_sell_count : '\u2014') +
+      ' \u00B7 active orders snapshot';
+  }
+
+  var mlState = d.ml_state || 'stopped';
+  var mlEl = document.getElementById('ml-status-val');
+  if (mlEl) {
+    mlEl.textContent = mlState.charAt(0).toUpperCase() + mlState.slice(1);
+    mlEl.style.color = mlState === 'running' ? 'var(--green)' : (mlState === 'error' ? 'var(--red)' : 'var(--yellow)');
+  }
+  var mlSub = document.getElementById('ml-status-sub');
+  if (mlSub && d.ml_training) {
+    var mt = d.ml_training;
+    mlSub.textContent = (mt.epoch && mt.max_epochs) ? 'Epoch ' + mt.epoch + '/' + mt.max_epochs : (mt.status || '\u2014');
+  }
+
+  var futPosEl = document.getElementById('futures-pos-val');
+  if (futPosEl) futPosEl.textContent = futC !== undefined ? futC : '\u2014';
+  var futPosSub = document.getElementById('futures-pos-sub');
+  if (futPosSub) {
+    var protectedCount = d.futures_protected_count;
+    var attentionCount = d.futures_attention_count;
+    if (protectedCount !== undefined || attentionCount !== undefined) {
+      futPosSub.textContent =
+        'protected: ' + (protectedCount !== undefined ? protectedCount : '\u2014') +
+        ' \u00B7 attention: ' + (attentionCount !== undefined ? attentionCount : '\u2014');
+    } else {
+      futPosSub.textContent = 'Linear USDT · ожидание данных';
+    }
+  }
+
+  var futuresPnl = typeof d.futures_unrealised_pnl === 'number' ? d.futures_unrealised_pnl : null;
+  var futuresPnlEl = document.getElementById('futures-pnl-val');
+  if (futuresPnlEl && futuresPnl !== null) {
+    futuresPnlEl.textContent = (futuresPnl >= 0 ? '+' : '') + '$' + futuresPnl.toFixed(2);
+    futuresPnlEl.className = 'metric-value ' + (futuresPnl > 0 ? 'green' : (futuresPnl < 0 ? 'red' : 'plain'));
+  }
+  var futuresPnlSub = document.getElementById('futures-pnl-sub');
+  if (futuresPnlSub) {
+    futuresPnlSub.className = 'metric-change ' + (futuresPnl === null ? 'muted' : (futuresPnl >= 0 ? 'up' : 'muted'));
+    futuresPnlSub.textContent = futuresPnl === null ? 'uPnL по открытым позициям' : 'Суммарный unrealised PnL';
+  }
+
+  if (d.pnl_chart && d.pnl_chart.length) _rebuildChart(d.pnl_chart);
+  if (d.diag_rows) _applyDiagRows(d.diag_rows);
+
+  var btnStart = document.getElementById('btn-start');
+  if (btnStart) btnStart.disabled = running;
+  var btnStop = document.getElementById('btn-stop');
+  if (btnStop) btnStop.disabled = !running;
+
+  var btnTrainStart = document.getElementById('btn-train-start');
+  if (btnTrainStart) btnTrainStart.style.display = (mlState === 'running') ? 'none' : '';
+  var btnTrainStop = document.getElementById('btn-train-stop');
+  if (btnTrainStop) btnTrainStop.style.display = (mlState === 'running') ? '' : 'none';
+}
+
+function _rebuildChart(vals) {
+  var el = document.getElementById('pnl-chart');
+  if (!el) return;
+  _clearEl(el);
+  var maxVal = Math.max.apply(null, vals.map(Math.abs)) || 1;
+  vals.forEach(function(v, i) {
+    var bar = document.createElement('div');
+    bar.className = 'chart-bar' + (v >= 0 ? ' bar-green' : '');
+    if (v < 0) bar.style.background = 'linear-gradient(to top, var(--red), rgba(255,77,106,0.3))';
+    bar.style.height = '4px';
+    el.appendChild(bar);
+    setTimeout(function() { bar.style.height = Math.round((Math.abs(v)/maxVal)*110) + 'px'; }, 100 + i*80);
+  });
+}
+
+function _applyDiagRows(rows) {
+  var card = document.getElementById('diag-card');
+  if (!card) return;
+  var title = card.querySelector('.section-title');
+  _clearEl(card);
+  if (title) card.appendChild(title);
+  rows.forEach(function(row) {
+    var r = document.createElement('div'); r.className = 'status-row';
+    var k = document.createElement('span'); k.className = 'status-key'; k.textContent = row.key;
+    var v = document.createElement('span'); v.className = 'status-val ' + (row.state || ''); v.textContent = row.val;
+    r.appendChild(k); r.appendChild(v); card.appendChild(r);
+  });
+}
+
+/* ─── DATA PAGE (M4) ─────────────────────────────────────── */
+function _loadDataPage() {
+  var api = _getAPI(); if (!api) return;
+  api.get_data_status().then(function(raw) {
+    try { _applyDataStatus(JSON.parse(raw)); } catch(e) { console.warn('[botik] data parse', e); }
+  });
+}
+
+function _applyDataStatus(d) {
+  var summary  = d.summary  || {};
+  var symbols  = d.symbols  || [];
+  var bfState  = d.backfill_state  || 'stopped';
+  var ldState  = d.livedata_state  || 'stopped';
+  var lin      = summary['linear'] || {};
+  var spot     = summary['spot']   || {};
+
+  // ── Summary cards ──
+  var linEl = document.getElementById('data-linear-val');
+  if (linEl) linEl.textContent = lin.total ? (lin.ready || 0) + ' / ' + lin.total : '\u2014';
+  var linSub = document.getElementById('data-linear-sub');
+  if (linSub) linSub.textContent = lin.total ? 'ready / total \u00b7 ws=' + (lin.ws_active || 0) : '\u043d\u0435\u0442 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432';
+
+  var spotEl = document.getElementById('data-spot-val');
+  if (spotEl) spotEl.textContent = spot.total ? (spot.ready || 0) + ' / ' + spot.total : '\u2014';
+  var spotSub = document.getElementById('data-spot-sub');
+  if (spotSub) spotSub.textContent = spot.total ? 'ready / total \u00b7 ws=' + (spot.ws_active || 0) : '\u043d\u0435\u0442 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432';
+
+  var wsTotal = (lin.ws_active || 0) + (spot.ws_active || 0);
+  var wsEl = document.getElementById('data-ws-val');
+  if (wsEl) { wsEl.textContent = wsTotal; wsEl.style.color = wsTotal > 0 ? 'var(--green)' : 'var(--text3)'; }
+
+  var totalCandles = (lin.total_candles || 0) + (spot.total_candles || 0);
+  var cndEl = document.getElementById('data-candles-val');
+  if (cndEl) cndEl.textContent = totalCandles > 0 ? Number(totalCandles).toLocaleString('ru-RU') : '\u2014';
+
+  // ── Button states ──
+  var bfStart = document.getElementById('btn-backfill-start');
+  var bfStop  = document.getElementById('btn-backfill-stop');
+  if (bfStart) bfStart.style.display = bfState === 'running' ? 'none' : '';
+  if (bfStop)  bfStop.style.display  = bfState === 'running' ? ''     : 'none';
+
+  var ldStart = document.getElementById('btn-live-start');
+  var ldStop  = document.getElementById('btn-live-stop');
+  if (ldStart) ldStart.style.display = ldState === 'running' ? 'none' : '';
+  if (ldStop)  ldStop.style.display  = ldState === 'running' ? ''     : 'none';
+
+  var msg = document.getElementById('data-status-msg');
+  if (msg) {
+    var parts = [];
+    if (bfState === 'running') parts.push('backfill: running');
+    if (ldState === 'running') parts.push('live: running');
+    msg.textContent = parts.join(' \u00b7 ');
+    msg.style.color = parts.length ? 'var(--green)' : 'var(--text3)';
+  }
+
+  // ── Symbol table ──
+  var empty = document.getElementById('data-empty-state');
+  var tbl   = document.getElementById('data-table');
+  if (!tbl) return;
+  if (!symbols.length) {
+    if (empty) empty.style.display = '';
+    tbl.style.display = 'none';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  tbl.style.display = '';
+  _clearEl(tbl);
+
+  var thead = tbl.createTHead();
+  var hrow  = thead.insertRow();
+  ['Символ','Категория','TF','Свечей','Статус','WS','Обновлено'].forEach(function(h) {
+    var th = document.createElement('th'); th.textContent = h; hrow.appendChild(th);
+  });
+
+  var tbody = tbl.createTBody();
+  symbols.forEach(function(s) {
+    var tr  = tbody.insertRow();
+    var stColor = s.data_status === 'ready' ? 'var(--green)' :
+                  s.data_status === 'partial' ? 'var(--yellow)' : 'var(--text3)';
+
+    var tdSym = tr.insertCell(); tdSym.style.fontFamily = "'JetBrains Mono',monospace"; tdSym.style.fontSize = '12px';
+    tdSym.textContent = s.symbol;
+
+    var tdCat = tr.insertCell(); tdCat.style.color = 'var(--text3)'; tdCat.style.fontSize = '11px';
+    tdCat.textContent = s.category;
+
+    var tdTf = tr.insertCell(); tdTf.style.fontFamily = "'JetBrains Mono',monospace"; tdTf.style.fontSize = '11px';
+    tdTf.textContent = s.interval + 'm';
+
+    var tdCnt = tr.insertCell(); tdCnt.style.fontFamily = "'JetBrains Mono',monospace";
+    tdCnt.textContent = Number(s.candle_count).toLocaleString('ru-RU');
+
+    var tdSt = tr.insertCell();
+    var stSpan = document.createElement('span');
+    stSpan.style.color = stColor; stSpan.style.fontSize = '11px'; stSpan.style.fontWeight = '600';
+    stSpan.textContent = s.data_status || '\u2014';
+    tdSt.appendChild(stSpan);
+
+    var tdWs = tr.insertCell();
+    var wsSpan = document.createElement('span');
+    wsSpan.style.color = s.ws_active ? 'var(--green)' : 'var(--text3)';
+    wsSpan.textContent = s.ws_active ? '\u25cf' : '\u25cb';
+    tdWs.appendChild(wsSpan);
+
+    var tdUpd = tr.insertCell(); tdUpd.style.color = 'var(--text3)'; tdUpd.style.fontSize = '11px';
+    tdUpd.textContent = s.updated_at ? s.updated_at.replace('T',' ').replace('Z','') : '\u2014';
+  });
+}
+
+function apiStartBackfill() {
+  var api = _getAPI(); if (!api) return;
+  var msg = document.getElementById('data-status-msg');
+  if (msg) msg.textContent = '\u0417\u0430\u043f\u0443\u0441\u043a backfill\u2026';
+  api.start_backfill().then(function(r) {
+    try {
+      var res = JSON.parse(r);
+      if (msg) msg.textContent = res.ok ? 'Backfill \u0437\u0430\u043f\u0443\u0449\u0435\u043d' : ('\u041e\u0448\u0438\u0431\u043a\u0430: ' + (res.error || ''));
+    } catch(e) {}
+    _loadDataPage();
+  });
+}
+
+function apiStopBackfill() {
+  var api = _getAPI(); if (!api) return;
+  api.stop_backfill().then(function() { _loadDataPage(); });
+}
+
+function apiStartLiveData() {
+  var api = _getAPI(); if (!api) return;
+  var msg = document.getElementById('data-status-msg');
+  if (msg) msg.textContent = '\u0417\u0430\u043f\u0443\u0441\u043a live data\u2026';
+  api.start_live_data().then(function(r) {
+    try {
+      var res = JSON.parse(r);
+      if (msg) msg.textContent = res.ok ? 'Live Data \u0437\u0430\u043f\u0443\u0449\u0435\u043d' : ('\u041e\u0448\u0438\u0431\u043a\u0430: ' + (res.error || ''));
+    } catch(e) {}
+    _loadDataPage();
+  });
+}
+
+function apiStopLiveData() {
+  var api = _getAPI(); if (!api) return;
+  api.stop_live_data().then(function() { _loadDataPage(); });
+}
+
+function apiSeedSymbols() {
+  var api = _getAPI(); if (!api) return;
+  var msg = document.getElementById('data-status-msg');
+  if (msg) msg.textContent = 'Добавление символов…';
+  api.seed_symbol_registry().then(function(r) {
+    try {
+      var res = JSON.parse(r);
+      if (msg) msg.textContent = res.ok
+        ? ('Загружено: ' + (res.linear||0) + ' linear + ' + (res.spot||0) + ' spot символов')
+        : ('Ошибка: ' + (res.error || ''));
+    } catch(e) {}
+    _loadDataPage();
+  }).catch(function(e) { console.warn('[botik] seed_symbols error', e); });
+}
+
+
+/* ─── ANALYTICS PAGE (T30) ──────────────────────────────── */
+
+function _escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ─── BACKTEST ───────────────────────────────────────────── */
+
+/**
+ * Загружает страницу бэктестинга: заполняет список символов, сбрасывает результаты.
+ * Вызывается при навигации на страницу "backtest".
+ */
+function _loadBacktestPage() {
+  _btHideAll();
+  apiGetBacktestSymbols();
+}
+
+/**
+ * Запрашивает у Python список активных символов и заполняет select#bt-symbol.
+ */
+function apiGetBacktestSymbols() {
+  var api = _getAPI();
+  if (!api) return;
+  api.get_backtest_symbols().then(function(symbols) {
+    var sel = document.getElementById('bt-symbol');
+    if (!sel) return;
+    var current = sel.value;
+    sel.innerHTML = '';
+    var list = Array.isArray(symbols) ? symbols : ['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT'];
+    list.forEach(function(s) {
+      var opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      if (s === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (!sel.value && list.length) sel.value = list[0];
+  }).catch(function(e) {
+    console.warn('[backtest] get_backtest_symbols error', e);
+  });
+}
+
+/**
+ * Вызывает Python run_backtest, возвращает Promise.
+ */
+function apiRunBacktest(scope, symbol, interval, days_back) {
+  var api = _getAPI();
+  if (!api) return Promise.reject('API not ready');
+  return api.run_backtest(scope, symbol, interval, days_back);
+}
+
+/**
+ * Запускает бэктест по текущим значениям формы.
+ */
+function _runBacktest() {
+  var scope    = (document.getElementById('bt-scope')    || {}).value || 'futures';
+  var symbol   = (document.getElementById('bt-symbol')   || {}).value || 'BTCUSDT';
+  var interval = (document.getElementById('bt-interval') || {}).value || '15';
+  var days     = parseInt((document.getElementById('bt-days') || {}).value || '30', 10);
+
+  _btHideAll();
+  var spinner = document.getElementById('bt-spinner');
+  var btn     = document.getElementById('bt-run-btn');
+  if (spinner) spinner.style.display = '';
+  if (btn)     { btn.disabled = true; btn.style.opacity = '0.6'; }
+
+  apiRunBacktest(scope, symbol, interval, days).then(function(data) {
+    if (spinner) spinner.style.display = 'none';
+    if (btn)     { btn.disabled = false; btn.style.opacity = '1'; }
+    if (data && data.error) {
+      _btShowError(data.error);
+    } else {
+      _renderBacktestResult(data);
+    }
+  }).catch(function(e) {
+    if (spinner) spinner.style.display = 'none';
+    if (btn)     { btn.disabled = false; btn.style.opacity = '1'; }
+    _btShowError(String(e));
+  });
+}
+
+/**
+ * Рендерит результаты бэктеста: метрики + таблица сделок.
+ * @param {Object} data — BacktestResult.to_dict()
+ */
+function _renderBacktestResult(data) {
+  if (!data) { _btShowError('Нет данных'); return; }
+
+  function _txt(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = (val !== undefined && val !== null) ? String(val) : '—';
+  }
+  function _col(id, v) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var n = parseFloat(v);
+    el.style.color = isNaN(n) ? '' : (n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : '');
+  }
+  function _fmtN(v, dec) {
+    var n = parseFloat(v);
+    return isNaN(n) ? '—' : n.toFixed(dec !== undefined ? dec : 2);
+  }
+  function _fmtPct(v) {
+    var n = parseFloat(v);
+    return isNaN(n) ? '—' : _fmtN(n, 1) + '%';
+  }
+
+  _txt('bt-m-trades',  data.trades || 0);
+  _txt('bt-m-winrate', _fmtPct(data.win_rate));
+  _txt('bt-m-pnl',     _fmtN(data.total_pnl) + ' USDT');
+  _col('bt-m-pnl',     data.total_pnl);
+  _txt('bt-m-drawdown', _fmtN(data.max_drawdown) + ' (' + _fmtPct(data.max_drawdown_pct) + ')');
+  _txt('bt-m-sharpe',  _fmtN(data.sharpe_ratio, 3));
+  _txt('bt-m-avgwin',  _fmtN(data.avg_win) + ' USDT');
+  _txt('bt-m-avgloss', _fmtN(data.avg_loss) + ' USDT');
+  _txt('bt-m-pf',      _fmtN(data.profit_factor, 3));
+
+  // Мета-строка
+  var meta = [
+    data.symbol || '',
+    (data.scope || '').toUpperCase(),
+    'interval ' + (data.interval || ''),
+    (data.start_date || '').slice(0, 10) + ' → ' + (data.end_date || '').slice(0, 10),
+    (data.total_candles || 0) + ' свечей',
+    (data.wins || 0) + 'W / ' + (data.losses || 0) + 'L',
+  ].filter(Boolean).join('  ·  ');
+  _txt('bt-meta-row', meta);
+
+  // Таблица сделок
+  var trades = Array.isArray(data.trades_list) ? data.trades_list.slice(-50) : [];
+  var tbody  = document.getElementById('bt-trades-tbody');
+  var empty  = document.getElementById('bt-trades-empty');
+  var table  = document.getElementById('bt-trades-table');
+
+  if (tbody) tbody.textContent = '';
+  if (trades.length === 0) {
+    if (empty) empty.style.display = '';
+    if (table) table.style.display = 'none';
+  } else {
+    if (empty) empty.style.display = 'none';
+    if (table) table.style.display = '';
+    trades.forEach(function(t) {
+      var pnl     = parseFloat(t.pnl);
+      var pnlClr  = isNaN(pnl) ? '' : (pnl > 0 ? 'var(--green)' : pnl < 0 ? 'var(--red)' : '');
+      var side    = String(t.side || '').toLowerCase();
+      var sideClr = side === 'long' ? 'var(--green)' : side === 'short' ? 'var(--red)' : 'var(--text2)';
+
+      function _cell(val, style) {
+        var td = document.createElement('td');
+        td.textContent = val !== undefined && val !== null ? String(val) : '—';
+        if (style) td.setAttribute('style', style);
+        return td;
+      }
+
+      var tr = document.createElement('tr');
+      tr.appendChild(_cell(String(t.open_time  || '').slice(0,16),
+        "color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:11px"));
+      tr.appendChild(_cell(String(t.close_time || '').slice(0,16),
+        "color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:11px"));
+      tr.appendChild(_cell(String(t.symbol || data.symbol || '')));
+      tr.appendChild(_cell(String(t.side || '').toUpperCase(),
+        'color:' + sideClr + ';font-weight:600'));
+      tr.appendChild(_cell(_fmtN(t.entry, 4),
+        "font-family:'JetBrains Mono',monospace"));
+      tr.appendChild(_cell(_fmtN(t.exit, 4),
+        "font-family:'JetBrains Mono',monospace"));
+      tr.appendChild(_cell((pnl > 0 ? '+' : '') + _fmtN(pnl),
+        'color:' + pnlClr + ";font-weight:600;font-family:'JetBrains Mono',monospace"));
+      tr.appendChild(_cell(String(t.reason || ''), 'color:var(--text3);font-size:11px'));
+      if (tbody) tbody.appendChild(tr);
+    });
+  }
+
+  var results = document.getElementById('bt-results');
+  if (results) results.style.display = '';
+}
+
+function _btHideAll() {
+  ['bt-results', 'bt-spinner', 'bt-error'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+function _btShowError(msg) {
+  var errEl  = document.getElementById('bt-error');
+  var errMsg = document.getElementById('bt-error-msg');
+  if (errMsg) errMsg.textContent = 'Ошибка: ' + msg;
+  if (errEl)  errEl.style.display = '';
+}
+
+function _loadAnalytics() {
+  var api = _getAPI(); if (!api) return;
+  var scope = (document.getElementById('analytics-scope') || {}).value || 'all';
+  var days  = parseInt((document.getElementById('analytics-days') || {}).value || '30', 10);
+  api.get_pnl_analytics(scope, days).then(function(raw) {
+    try { _renderAnalytics(JSON.parse(raw)); } catch(e) { console.warn('[botik] analytics parse error', e); }
+  }).catch(function(e) { console.warn('[botik] analytics error', e); });
+}
+
+function _renderAnalytics(d) {
+  // ── summary cards ──
+  var totalEl = document.getElementById('an-total-pnl');
+  if (totalEl) {
+    var sign = d.total_pnl >= 0 ? '+' : '';
+    totalEl.textContent = sign + d.total_pnl.toFixed(2) + ' USDT';
+    totalEl.className   = 'metric-value ' + (d.total_pnl >= 0 ? 'green' : 'red');
+  }
+  var todayEl = document.getElementById('an-today-pnl');
+  if (todayEl) {
+    var tsign = d.today_pnl >= 0 ? '+' : '';
+    todayEl.textContent = 'Сегодня ' + tsign + d.today_pnl.toFixed(2);
+  }
+  var wrEl = document.getElementById('an-win-rate');
+  if (wrEl) wrEl.textContent = (d.win_rate * 100).toFixed(1) + '%';
+  var tcEl = document.getElementById('an-trade-count');
+  if (tcEl) tcEl.textContent = d.trade_count + ' сделок';
+  var ddEl = document.getElementById('an-drawdown');
+  if (ddEl) ddEl.textContent = d.max_drawdown.toFixed(2) + ' USDT';
+  var avgEl = document.getElementById('an-avg-pnl');
+  if (avgEl) avgEl.textContent = 'Avg ' + (d.avg_pnl >= 0 ? '+' : '') + d.avg_pnl.toFixed(2);
+  var bwEl = document.getElementById('an-best-worst');
+  if (bwEl) bwEl.textContent = '+' + d.best_trade.toFixed(2) + ' / ' + d.worst_trade.toFixed(2);
+  var splitEl = document.getElementById('an-scope-split');
+  if (splitEl) {
+    var parts = Object.keys(d.by_scope).map(function(sc) {
+      return sc + ': ' + d.by_scope[sc].trade_count;
+    });
+    splitEl.textContent = parts.join(' · ') || '—';
+  }
+
+  // ── equity curve ──
+  var canvas  = document.getElementById('an-equity-canvas');
+  var emptyEl = document.getElementById('an-chart-empty');
+  if (d.equity_curve && d.equity_curve.length > 0) {
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (canvas)  { canvas.style.display = 'block'; _drawEquityCurve(canvas, d.equity_curve); }
+  } else {
+    if (emptyEl) emptyEl.style.display = '';
+    if (canvas)  canvas.style.display  = 'none';
+  }
+
+  // ── by scope ──
+  _renderByScope(d.by_scope);
+
+  // ── recent trades ──
+  _renderRecentTrades(d.recent_trades);
+}
+
+function _renderByScope(byScope) {
+  var bsEl = document.getElementById('an-by-scope');
+  if (!bsEl) return;
+  while (bsEl.firstChild) bsEl.removeChild(bsEl.firstChild);
+  var keys = Object.keys(byScope || {});
+  if (!keys.length) {
+    var emp = document.createElement('div');
+    emp.style.cssText = 'color:var(--text3);font-size:13px';
+    emp.textContent = 'Нет данных';
+    bsEl.appendChild(emp);
+    return;
+  }
+  keys.forEach(function(sc) {
+    var s     = byScope[sc];
+    var label = sc === 'futures' ? 'Фьючерсы' : sc === 'spot' ? 'Спот' : sc;
+    var sign  = s.total_pnl >= 0 ? '+' : '';
+    var block = document.createElement('div');
+    block.style.marginBottom = '12px';
+
+    var title = document.createElement('div');
+    title.style.cssText = 'font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px';
+    title.textContent = label;
+    block.appendChild(title);
+
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:4px';
+
+    var cells = [
+      ['PnL',     sign + s.total_pnl.toFixed(2), s.total_pnl >= 0 ? 'green' : 'red'],
+      ['Win Rate',(s.win_rate*100).toFixed(1)+'%','blue'],
+      ['Сделок',  String(s.trade_count), ''],
+      ['Avg PnL', (s.avg_pnl>=0?'+':'') + s.avg_pnl.toFixed(2), ''],
+    ];
+    cells.forEach(function(cell) {
+      var item  = document.createElement('div');
+      item.className = 'mini-stat';
+      var lbl   = document.createElement('span');
+      lbl.textContent = cell[0];
+      var val   = document.createElement('b');
+      if (cell[2]) val.className = cell[2];
+      val.textContent = cell[1];
+      item.appendChild(lbl);
+      item.appendChild(val);
+      grid.appendChild(item);
+    });
+    block.appendChild(grid);
+    bsEl.appendChild(block);
+  });
+}
+
+function _renderRecentTrades(trades) {
+  var tbody    = document.getElementById('an-trades-tbody');
+  var tbl      = document.getElementById('an-trades-table');
+  var tblEmpty = document.getElementById('an-trades-empty');
+  if (!tbody) return;
+  if (!trades || !trades.length) {
+    if (tbl)      tbl.style.display      = 'none';
+    if (tblEmpty) tblEmpty.style.display = '';
+    return;
+  }
+  if (tbl)      tbl.style.display      = '';
+  if (tblEmpty) tblEmpty.style.display = 'none';
+  while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+  trades.forEach(function(t) {
+    var pnlSign   = t.pnl >= 0 ? '+' : '';
+    var pnlClass  = t.pnl >= 0 ? 'green' : 'red';
+    var scopeLabel= t.scope === 'futures' ? 'Фьют' : t.scope === 'spot' ? 'Спот' : t.scope;
+    var tr = document.createElement('tr');
+
+    var tdSym   = document.createElement('td');
+    tdSym.textContent = t.symbol;
+
+    var tdScope = document.createElement('td');
+    var badge   = document.createElement('span');
+    badge.className   = 'badge';
+    badge.textContent = scopeLabel;
+    tdScope.appendChild(badge);
+
+    var tdPnl   = document.createElement('td');
+    tdPnl.className   = pnlClass;
+    tdPnl.textContent = pnlSign + t.pnl.toFixed(2);
+
+    var tdDate  = document.createElement('td');
+    tdDate.className  = 'muted';
+    tdDate.textContent= t.closed_at;
+
+    tr.appendChild(tdSym);
+    tr.appendChild(tdScope);
+    tr.appendChild(tdPnl);
+    tr.appendChild(tdDate);
+    tbody.appendChild(tr);
+  });
+}
+
+function _drawEquityCurve(canvas, curve) {
+  var dpr = window.devicePixelRatio || 1;
+  var W   = canvas.offsetWidth  || 600;
+  var H   = canvas.offsetHeight || 200;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  var vals = curve.map(function(p) { return p.cumulative_pnl; });
+  var minV = Math.min.apply(null, vals);
+  var maxV = Math.max.apply(null, vals);
+  if (minV === maxV) { maxV = minV + 1; }
+
+  var pad = { t: 16, r: 16, b: 28, l: 52 };
+  var cW  = W - pad.l - pad.r;
+  var cH  = H - pad.t - pad.b;
+
+  function xPos(i) { return pad.l + (i / (vals.length - 1 || 1)) * cW; }
+  function yPos(v) { return pad.t + (1 - (v - minV) / (maxV - minV)) * cH; }
+
+  // zero line
+  if (minV < 0 && maxV > 0) {
+    var yz = yPos(0);
+    ctx.beginPath(); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]); ctx.moveTo(pad.l, yz); ctx.lineTo(pad.l + cW, yz); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // gradient fill
+  var lastVal   = vals[vals.length - 1];
+  var fillColor = lastVal >= 0 ? '61,201,120' : '255,80,80';
+  var grad      = ctx.createLinearGradient(0, pad.t, 0, pad.t + cH);
+  grad.addColorStop(0, 'rgba(' + fillColor + ',0.25)');
+  grad.addColorStop(1, 'rgba(' + fillColor + ',0.02)');
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), yPos(vals[0]));
+  for (var i = 1; i < vals.length; i++) ctx.lineTo(xPos(i), yPos(vals[i]));
+  ctx.lineTo(xPos(vals.length - 1), pad.t + cH);
+  ctx.lineTo(xPos(0), pad.t + cH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // line
+  ctx.beginPath();
+  ctx.strokeStyle = lastVal >= 0 ? '#3dc978' : '#ff5050';
+  ctx.lineWidth   = 2;
+  ctx.lineJoin    = 'round';
+  ctx.moveTo(xPos(0), yPos(vals[0]));
+  for (var j = 1; j < vals.length; j++) ctx.lineTo(xPos(j), yPos(vals[j]));
+  ctx.stroke();
+
+  // Y axis labels (3 ticks)
+  ctx.fillStyle = 'rgba(160,170,190,0.7)';
+  ctx.font      = '10px JetBrains Mono, monospace';
+  ctx.textAlign = 'right';
+  [minV, (minV + maxV) / 2, maxV].forEach(function(v) {
+    ctx.fillText((v >= 0 ? '+' : '') + v.toFixed(1), pad.l - 4, yPos(v) + 3.5);
+  });
+
+  // X axis: first and last date
+  ctx.textAlign = 'left';
+  ctx.fillText(curve[0].date.slice(5), pad.l, H - 6);
+  ctx.textAlign = 'right';
+  ctx.fillText(curve[curve.length - 1].date.slice(5), pad.l + cW, H - 6);
+}
+
+/* ─── LOG POLLING ────────────────────────────────────────── */
+var _logActiveChannel = 'sys';
+
+// subtab switching for logs
+(function() {
+  document.addEventListener('DOMContentLoaded', function() { _initLogSubtabs(); });
+  if (document.readyState !== 'loading') { setTimeout(_initLogSubtabs, 0); }
+})();
+
+function _initLogSubtabs() {
+  var tabs = document.querySelectorAll('#log-subtabs .subtab');
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      this.classList.add('active');
+      var ch = this.getAttribute('data-log-ch');
+      _logActiveChannel = ch;
+      ['sys','spot','futures','ml','telegram'].forEach(function(c) {
+        var el = document.getElementById('log-ch-' + c);
+        if (el) el.style.display = c === ch ? '' : 'none';
+      });
+    });
+  });
+}
+
+function _pollLogs() {
+  var api = _getAPI();
+  if (!api) return;
+  api.get_logs(300).then(function(raw) {
+    try { _appendLogs(JSON.parse(raw)); } catch(e) {}
+  });
+  setTimeout(_pollLogs, 2500);
+}
+
+function _appendLogs(logs) {
+  if (!logs.length) return;
+  var newLogs = logs.slice(_logSeenCount);
+  if (!newLogs.length) return;
+  _logSeenCount = logs.length;
+  var chMap = {spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-telegram', sys:'ch-sys'};
+  var cssChMap = {spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-ml', sys:'ch-sys'};
+  newLogs.forEach(function(l) {
+    var targetId = 'log-ch-' + (l.ch || 'sys');
+    var container = document.getElementById(targetId) || document.getElementById('log-ch-sys');
+    var line = document.createElement('div'); line.className = 'log-line';
+    var ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = l.ts;
+    var ch = document.createElement('span');
+    ch.className = 'log-ch ' + (cssChMap[l.ch] || 'ch-sys');
+    ch.textContent = '[' + (l.ch || 'sys') + ']';
+    var msg = document.createElement('span'); msg.className = _logMsgClass(l.msg); msg.textContent = l.msg;
+    line.appendChild(ts); line.appendChild(ch); line.appendChild(msg);
+    container.appendChild(line);
+    // auto-scroll active channel
+    if ((l.ch || 'sys') === _logActiveChannel) {
+      container.scrollTop = container.scrollHeight;
+    }
+  });
+}
+
+function logsClearActive() {
+  var el = document.getElementById('log-ch-' + _logActiveChannel);
+  if (el) _clearEl(el);
+}
+
+function logsScrollBottom() {
+  var el = document.getElementById('log-ch-' + _logActiveChannel);
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+function _logMsgClass(msg) {
+  if (!msg) return 'lm-norm';
+  var m = msg.toLowerCase();
+  if (m.includes('error') || m.includes('exception')) return 'lm-err';
+  if (m.includes('warn')) return 'lm-warn';
+  if (m.includes(' ok') || m.includes('success') || m.includes('started') || m.includes('filled')) return 'lm-ok';
+  return 'lm-norm';
+}
+
+/* ─── BUTTON HANDLERS ────────────────────────────────────── */
+function apiStartTrading() {
+  var api = _getAPI();
+  if (!api) { alert('API \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d (\u043d\u0435 \u0432 pywebview)'); return; }
+  var sel = document.querySelector('.select-field');
+  var presetMap = {'Spot Spread (Maker)':'spot_spread','Spot Spike Burst':'spot_spike','Futures Spike Reversal':'futures_spike_reversal'};
+  var mode = sel ? (presetMap[sel.value] || 'spot_spread') : 'spot_spread';
+  api.start_trading(mode).then(function(r) {
+    var res = JSON.parse(r);
+    var ps = document.getElementById('preflight-status');
+    if (ps) { ps.textContent = res.ok ? '\u25b6 \u0417\u0430\u043f\u0443\u0441\u043a \u0438\u043d\u0438\u0446\u0438\u0438\u0440\u043e\u0432\u0430\u043d\u2026' : '\u2717 ' + (res.error || '\u043e\u0448\u0438\u0431\u043a\u0430'); }
+  });
+}
+
+function apiStopTrading() {
+  var api = _getAPI(); if (!api) return;
+  api.stop_all_trading().then(function() {
+    var ps = document.getElementById('preflight-status');
+    if (ps) ps.textContent = '\u25a0 \u0422\u043e\u0440\u0433\u043e\u0432\u043b\u044f \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430';
+  });
+}
+
+function apiPreflight() {
+  var api = _getAPI();
+  var ps = document.getElementById('preflight-status');
+  if (!api) {
+    if (ps) ps.textContent = '\u26a0 API \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u2014 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 \u0447\u0435\u0440\u0435\u0437 pywebview';
+    return;
+  }
+  api.run_preflight().then(function(r) {
+    var res = JSON.parse(r);
+    if (ps) ps.textContent = res.ok ? '\u2713 \u0412\u0441\u0435 \u0441\u0438\u0441\u0442\u0435\u043c\u044b \u0440\u0430\u0431\u043e\u0442\u0430\u044e\u0442' : '\u2717 \u041f\u0440\u043e\u0431\u043b\u0435\u043c\u044b: ' + (res.checks||[]).filter(function(c){return !c.ok;}).map(function(c){return c.name;}).join(', ');
+  });
+}
+
+function apiStartTraining() {
+  var api = _getAPI(); if (!api) return;
+  api.start_training('train').then(function(r) { console.log('[botik] start_training', r); });
+}
+
+function apiStopTraining() {
+  var api = _getAPI(); if (!api) return;
+  api.stop_training().then(function(r) { console.log('[botik] stop_training', r); });
+}
+
+function apiStartPaper() {
+  var api = _getAPI(); if (!api) return;
+  api.start_trading('futures_spike_reversal').then(function(r) { console.log('[botik] start_paper', r); });
+}
+
+function apiReloadConfig() {
+  var api = _getAPI(); if (!api) return;
+  api.reload_config().then(function(r) { var res = JSON.parse(r); alert('Config: mode=' + res.mode); });
+}
+
+function apiTelegramTest() {
+  var api = _getAPI();
+  var btn = document.getElementById('btn-tg-test');
+  if (!api) { _settingsShowErr('API не готов'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Отправка…'; }
+  api.send_telegram_test().then(function(raw) {
+    if (btn) { btn.disabled = false; btn.textContent = '✉ Тест Telegram'; }
+    try {
+      var r = JSON.parse(raw);
+      if (r.ok) {
+        var banner = document.getElementById('settings-saved-banner');
+        if (banner) {
+          banner.textContent = '✓ Telegram: ' + (r.msg || 'сообщение отправлено');
+          banner.style.display = 'block';
+          setTimeout(function(){ banner.style.display='none'; banner.textContent='✓ Настройки сохранены в .env'; }, 4000);
+        }
+      } else {
+        _settingsShowErr('Telegram: ' + (r.error || 'ошибка'));
+      }
+    } catch(e) {}
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '✉ Тест Telegram'; }
+    _settingsShowErr('Telegram: ' + String(e));
+  });
+}
+
+function settingsShowFormat() {
+  var el = document.getElementById('settings-format-hint');
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+
+/* ─── BYBIT API TEST ─────────────────────────────────────── */
+function apiTestBybit(mode) {
+  var api = _getAPI(); if (!api) { _settingsShowErr('API не готов'); return; }
+  var isDemo = mode === 'demo';
+  var host   = isDemo ? 'api-demo.bybit.com' : 'api.bybit.com';
+  var keyEl  = document.getElementById(isDemo ? 's-bybit-key'    : 's-bybit-mainnet-key');
+  var secEl  = document.getElementById(isDemo ? 's-bybit-secret' : 's-bybit-mainnet-secret');
+  var stEl   = document.getElementById(isDemo ? 's-bybit-key-status' : 's-bybit-mainnet-status');
+  var btn    = document.getElementById(isDemo ? 'btn-bybit-demo-test' : 'btn-bybit-mainnet-test');
+  var key    = keyEl ? keyEl.value.trim() : '';
+  var secret = secEl ? secEl.value.trim() : '';
+  if (!key || !secret) {
+    if (stEl) stEl.innerHTML = '<span style="color:var(--yellow)">⚠ Введите ключ и секрет</span>';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Проверка…'; }
+  if (stEl) stEl.textContent = '';
+  api.test_bybit_api(host, key, secret).then(function(raw) {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Проверить'; }
+    try {
+      var r = JSON.parse(raw);
+      if (r.ok) {
+        var eq = r.total_equity ? ' · Equity: $' + parseFloat(r.total_equity).toFixed(2) : '';
+        if (stEl) stEl.innerHTML = '<span style="color:var(--green)">✓ OK' + eq + '</span>';
+      } else {
+        if (stEl) stEl.innerHTML = '<span style="color:var(--red)">✕ ' + (r.error || 'ошибка') + '</span>';
+      }
+    } catch(e) {}
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Проверить'; }
+    if (stEl) stEl.innerHTML = '<span style="color:var(--red)">✕ ' + e + '</span>';
+  });
+}
+
+/* ─── DB CHECK ───────────────────────────────────────────── */
+function apiCheckDb() {
+  var api = _getAPI(); if (!api) { _settingsShowErr('API не готов'); return; }
+  var btn  = document.getElementById('btn-db-check');
+  var stEl = document.getElementById('s-db-status');
+  var det  = document.getElementById('s-db-detail');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Проверка…'; }
+  api.check_db().then(function(raw) {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Проверить'; }
+    try {
+      var r = JSON.parse(raw);
+      if (r.ok) {
+        if (stEl) stEl.innerHTML = '<span style="color:var(--green)">✓ Ping: ' + r.ping_ms + ' ms · ' + r.size_mb + ' MB</span>';
+        if (det) {
+          var lines = (r.counts || []).filter(function(c){ return c.rows > 0; }).map(function(c){
+            return c.table + ': ' + c.rows.toLocaleString() + ' rows';
+          }).join('\n');
+          det.textContent = lines || 'Таблицы пусты';
+          det.style.display = lines ? 'block' : 'none';
+        }
+      } else {
+        if (stEl) stEl.innerHTML = '<span style="color:var(--red)">✕ ' + (r.error || 'ошибка') + '</span>';
+      }
+    } catch(e) {}
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Проверить'; }
+    if (stEl) stEl.innerHTML = '<span style="color:var(--red)">✕ ' + e + '</span>';
+  });
+}
+
+/* ─── FUTURES ACTIONS ───────────────────────────────────── */
+function apiFuturesClose(symbol, side) {
+  var api = _getAPI(); if (!api) return;
+  if (!confirm('Закрыть позицию ' + symbol + ' ' + side + '?')) return;
+  api.close_futures_position(symbol, side).then(function(raw) {
+    try {
+      var r = JSON.parse(raw);
+      if (r.ok) { _loadFuturesPositions(); }
+      else { alert('Ошибка: ' + (r.error || 'unknown')); }
+    } catch(e) {}
+  }).catch(function(e) { alert('API error: ' + e); });
+}
+
+function apiFuturesUpdateTpSl(symbol, side, tp, sl) {
+  var api = _getAPI(); if (!api) return;
+  api.update_futures_tp_sl(symbol, side, tp, sl).then(function(raw) {
+    try {
+      var r = JSON.parse(raw);
+      if (r.ok) { _loadFuturesPositions(); }
+      else { console.warn('[botik] tp_sl error:', r.error); }
+    } catch(e) {}
+  }).catch(function(e) { console.warn('[botik] tp_sl API error', e); });
+}
+
+/* ─── SPOT SELL ──────────────────────────────────────────── */
+function apiSellSpot(symbol) {
+  var api = _getAPI(); if (!api) return;
+  if (!confirm('Продать ' + symbol + '?')) return;
+  api.sell_spot_position(symbol).then(function(raw) {
+    try {
+      var r = JSON.parse(raw);
+      if (r.ok) {
+        console.log('[botik] sell queued:', symbol);
+        _loadSpotPageData();
+      } else {
+        alert('Ошибка продажи: ' + (r.error || 'unknown'));
+      }
+    } catch(e) {}
+  }).catch(function(e) { alert('API error: ' + e); });
+}
+
+function apiSellAllSpot() {
+  var api = _getAPI(); if (!api) return;
+  if (!confirm('Продать ВСЕ spot-холдинги?')) return;
+  api.sell_all_spot().then(function(raw) {
+    try {
+      var r = JSON.parse(raw);
+      if (r.ok) {
+        console.log('[botik] sell all spot:', r.affected, 'holdings');
+        _loadSpotPageData();
+      } else {
+        alert('Ошибка: ' + (r.error || 'unknown'));
+      }
+    } catch(e) {}
+  }).catch(function(e) { alert('API error: ' + e); });
+}
+
+/* ─── SPOT POSITIONS POLLING ─────────────────────────────── */
+function _applySpotPositionsTable(rows) {
+  var tbl = document.getElementById('spot-table');
+  var empty = document.getElementById('spot-empty-state');
+  var title = document.getElementById('spot-table-title');
+  var sellAllBtn = document.getElementById('spot-sell-all-btn');
+  if (!tbl || !empty || !title) return;
+  title.textContent = 'Открытые позиции';
+  if (!rows || !rows.length) {
+    tbl.style.display = 'none';
+    _clearEl(tbl);
+    empty.style.display = '';
+    empty.textContent = 'Нет активных spot-холдингов';
+    if (sellAllBtn) sellAllBtn.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  tbl.style.display = '';
+  if (sellAllBtn) sellAllBtn.style.display = '';
+  _clearEl(tbl);
+  buildTable(tbl, spotPositionHeaders, rows.map(function(r) {
+    var unreal = r.unrealized_pnl;
+    var unrealCls = unreal === null || unreal === undefined ? 'col-dim' : (Number(unreal) >= 0 ? 'col-green' : 'col-red');
+    var sym = r.symbol || '';
+    var alreadyQueued = String(r.hold_reason || '').toLowerCase() === 'manual_sell';
+    var sellBtn = alreadyQueued
+      ? '<span style="color:var(--yellow);font-size:11px">В очереди…</span>'
+      : '<button class="btn btn-red" style="padding:2px 8px;font-size:11px" '
+        + 'onclick="apiSellSpot(\'' + sym + '\')" title="Продать ' + sym + '">Продать</button>';
+    return [
+      {text: sym, cls: 'col-blue'},
+      {text: r.base_asset || '\u2014', cls: 'col-dim'},
+      {text: r.free_qty !== undefined && r.free_qty !== null ? Number(r.free_qty).toFixed(6) : '\u2014'},
+      {text: r.locked_qty !== undefined && r.locked_qty !== null ? Number(r.locked_qty).toFixed(6) : '\u2014'},
+      {text: r.avg_entry_price !== undefined && r.avg_entry_price !== null ? Number(r.avg_entry_price).toFixed(4) : '\u2014'},
+      {text: unreal === null || unreal === undefined ? '\u2014' : _fmtSignedNumber(unreal, 4), cls: unrealCls},
+      {text: String(r.hold_reason || 'unknown').toUpperCase(), tag: r.recovered_from_exchange ? 'tag-loading' : (r.auto_sell_allowed ? 'tag-active' : 'tag-idle')},
+      {text: _fmtTimeText(r.updated_at_utc), cls: 'col-dim'},
+      {html: sellBtn}
+    ];
+  }));
+}
+
+function _applySpotOrdersTable(rows) {
+  var tbl = document.getElementById('spot-table');
+  var empty = document.getElementById('spot-empty-state');
+  var title = document.getElementById('spot-table-title');
+  if (!tbl || !empty || !title) return;
+  title.textContent = 'Открытые и последние spot-ордера';
+  if (!rows || !rows.length) {
+    tbl.style.display = 'none';
+    _clearEl(tbl);
+    empty.style.display = '';
+    empty.textContent = 'Нет spot-ордеров для отображения';
+    return;
+  }
+  empty.style.display = 'none';
+  tbl.style.display = '';
+  _clearEl(tbl);
+  buildTable(tbl, spotOrderHeaders, rows.map(function(r) {
+    var side = String(r.side || '').toUpperCase();
+    return [
+      {text: r.symbol || '', cls: 'col-blue'},
+      {text: side || '\u2014', cls: side === 'BUY' ? 'col-green' : (side === 'SELL' ? 'col-red' : '')},
+      {text: r.order_type || '\u2014', cls: 'col-dim'},
+      {text: r.price !== undefined && r.price !== null ? Number(r.price).toFixed(4) : '\u2014'},
+      {text: r.qty !== undefined && r.qty !== null ? Number(r.qty).toFixed(6) : '\u2014'},
+      {text: r.filled_qty !== undefined && r.filled_qty !== null ? Number(r.filled_qty).toFixed(6) : '\u2014'},
+      {text: String(r.status || 'unknown').toUpperCase(), tag: _spotOrderStatusTag(r.status)},
+      {text: _fmtTimeText(r.updated_at_utc), cls: 'col-dim'}
+    ];
+  }));
+}
+
+function _applySpotFillsTable(rows) {
+  var tbl = document.getElementById('spot-table');
+  var empty = document.getElementById('spot-empty-state');
+  var title = document.getElementById('spot-table-title');
+  if (!tbl || !empty || !title) return;
+  title.textContent = 'История spot fills';
+  if (!rows || !rows.length) {
+    tbl.style.display = 'none';
+    _clearEl(tbl);
+    empty.style.display = '';
+    empty.textContent = 'История spot fills пока пуста';
+    return;
+  }
+  empty.style.display = 'none';
+  tbl.style.display = '';
+  _clearEl(tbl);
+  buildTable(tbl, spotHistoryHeaders, rows.map(function(r) {
+    var side = String(r.side || '').toUpperCase();
+    var feeText = r.fee !== undefined && r.fee !== null ? Number(r.fee).toFixed(6) + ' ' + String(r.fee_currency || '').trim() : '\u2014';
+    return [
+      {text: r.symbol || '', cls: 'col-blue'},
+      {text: side || '\u2014', cls: side === 'BUY' ? 'col-green' : (side === 'SELL' ? 'col-red' : '')},
+      {text: r.price !== undefined && r.price !== null ? Number(r.price).toFixed(4) : '\u2014'},
+      {text: r.qty !== undefined && r.qty !== null ? Number(r.qty).toFixed(6) : '\u2014'},
+      {text: feeText, cls: 'col-dim'},
+      {text: _fmtTimeText(r.created_at_utc), cls: 'col-dim'}
+    ];
+  }));
+}
+
+function _fmtSignedNumber(value, digits) {
+  if (value === null || value === undefined || value === '') return '\u2014';
+  var num = Number(value);
+  if (!isFinite(num)) return '\u2014';
+  return (num > 0 ? '+' : '') + num.toFixed(digits);
+}
+
+function _fmtTimeText(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return '\u2014';
+  if (raw.indexOf('T') >= 0) return raw.replace('T', ' ').slice(0, 19);
+  return raw.slice(0, 19);
+}
+
+function _futuresProtectionTag(status) {
+  var normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'protected') return 'tag-active';
+  if (normalized === 'pending' || normalized === 'repairing') return 'tag-loading';
+  if (normalized === 'failed' || normalized === 'unprotected') return 'tag-risk';
+  return 'tag-loading';
+}
+
+function _spotOrderStatusTag(status) {
+  var normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'filled') return 'tag-active';
+  if (normalized === 'new' || normalized === 'open' || normalized === 'partiallyfilled' || normalized === 'partially_filled') return 'tag-loading';
+  if (normalized === 'cancelled' || normalized === 'rejected' || normalized === 'failed') return 'tag-risk';
+  return 'tag-idle';
+}
+
+function _applyFuturesTable(rows) {
+  var tbl = document.getElementById('futures-table');
+  var empty = document.getElementById('futures-empty-state');
+  if (!tbl || !empty) return;
+
+  if (!rows || !rows.length) {
+    tbl.style.display = 'none';
+    _clearEl(tbl);
+    empty.style.display = '';
+    empty.textContent = 'Нет открытых futures-позиций';
+    return;
+  }
+
+  empty.style.display = 'none';
+  tbl.style.display = '';
+  _clearEl(tbl);
+  buildTable(tbl, futuresHeaders, rows.map(function(r) {
+    var side = String(r.side || '').toUpperCase();
+    var sym  = r.symbol || '';
+    var protection = String(r.protection_status || 'unknown').toUpperCase();
+    var alreadyClosing = protection === 'CLOSE_REQUESTED';
+    var actBtn = alreadyClosing
+      ? '<span style="color:var(--yellow);font-size:11px">Закрывается…</span>'
+      : '<button class="btn btn-red" style="padding:2px 8px;font-size:11px" '
+        + 'onclick="apiFuturesClose(\'' + sym + '\',\'' + side + '\')" title="Закрыть позицию">Закрыть</button>';
+    return [
+      {text: sym, cls: 'col-blue'},
+      {text: side || '\u2014', cls: side === 'BUY' ? 'col-green' : (side === 'SELL' ? 'col-red' : '')},
+      {text: r.size !== undefined && r.size !== null ? Number(r.size).toFixed(4) : '\u2014'},
+      {text: r.entry_price !== undefined && r.entry_price !== null ? Number(r.entry_price).toFixed(4) : '\u2014'},
+      {text: r.mark_price !== undefined && r.mark_price !== null ? Number(r.mark_price).toFixed(4) : '\u2014'},
+      {text: r.liq_price !== undefined && r.liq_price !== null ? Number(r.liq_price).toFixed(4) : '\u2014'},
+      {text: _fmtSignedNumber(r.unrealised_pnl, 4), cls: Number(r.unrealised_pnl || 0) >= 0 ? 'col-green' : 'col-red'},
+      {text: protection, tag: _futuresProtectionTag(protection)},
+      {text: _fmtTimeText(r.updated_at_utc), cls: 'col-dim'},
+      {html: actBtn}
+    ];
+  }));
+}
+
+function _loadSpotPageData() {
+  var api = _getAPI();
+  if (!api) return;
+  var empty = document.getElementById('spot-empty-state');
+  if (_spotActiveView === 'orders') {
+    api.get_spot_orders().then(function(r) {
+      try { _applySpotOrdersTable(JSON.parse(r)); } catch(e) {}
+    }).catch(function(e) {
+      if (empty) empty.textContent = 'Не удалось загрузить spot-ордера';
+      console.warn('[botik] spot orders error', e);
+    });
+    return;
+  }
+  if (_spotActiveView === 'history') {
+    api.get_spot_fills().then(function(r) {
+      try { _applySpotFillsTable(JSON.parse(r)); } catch(e) {}
+    }).catch(function(e) {
+      if (empty) empty.textContent = 'Не удалось загрузить историю spot fills';
+      console.warn('[botik] spot fills error', e);
+    });
+    return;
+  }
+  api.get_spot_positions().then(function(r) {
+    try { _applySpotPositionsTable(JSON.parse(r)); } catch(e) {}
+  }).catch(function(e) {
+    if (empty) empty.textContent = 'Не удалось загрузить spot-позиции';
+    console.warn('[botik] spot positions error', e);
+  });
+}
+
+function _loadFuturesPositions() {
+  var api = _getAPI();
+  var empty = document.getElementById('futures-empty-state');
+  if (!api) {
+    if (empty) empty.textContent = 'API недоступен';
+    return;
+  }
+  api.get_futures_positions().then(function(r) {
+    try { _applyFuturesTable(JSON.parse(r)); } catch(e) { console.warn('[botik] futures parse error', e); }
+  }).catch(function(e) {
+    if (empty) empty.textContent = 'Не удалось загрузить futures-позиции';
+    console.warn('[botik] futures positions error', e);
+  });
+}
+
+/* ─── OPS / СОСТОЯНИЕ СИСТЕМЫ ────────────────────────────── */
+function _loadOpsPage() {
+  var api = _getAPI();
+  if (!api) return;
+  api.get_system_status().then(function(raw) {
+    try { _applyOpsPage(JSON.parse(raw)); }
+    catch(e) { console.warn('[botik] ops parse error', e); }
+  }).catch(function(e) { console.warn('[botik] ops error', e); });
+}
+
+function _applyOpsPage(d) {
+  // ── Процессы ──────────────────────────────────────────────
+  var pc = document.getElementById('ops-processes');
+  if (pc && d.processes) {
+    pc.innerHTML = '';
+    d.processes.forEach(function(p) {
+      var running = p.state === 'running';
+      var errored = p.state === 'error';
+      var dotCls  = running ? 'green' : (errored ? 'red' : 'yellow');
+      var stateColor = running ? 'var(--green)' : (errored ? 'var(--red)' : 'var(--yellow)');
+      var cardCls = running ? 'card card-glow-green' : (errored ? 'card' : 'card');
+      var pidText = p.pid ? 'PID ' + p.pid : 'не запущен';
+      pc.innerHTML +=
+        '<div class="' + cardCls + '">' +
+          '<div class="metric-label">' + p.label + '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">' +
+            '<div class="dot ' + dotCls + '" style="' + (errored ? 'background:var(--red)' : '') + '"></div>' +
+            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:14px;color:' + stateColor + '">' +
+              p.state.toUpperCase() +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--text3);margin-top:4px">' + pidText + '</div>' +
+        '</div>';
+    });
+  }
+
+  // ── RAM / CPU / DB-ping ───────────────────────────────────
+  var ramBar  = document.getElementById('ops-ram-bar');
+  var ramText = document.getElementById('ops-ram-text');
+  if (ramBar && d.ram_percent != null) {
+    ramBar.style.width = d.ram_percent + '%';
+    ramBar.style.background = d.ram_percent > 85 ? 'var(--red)' : 'var(--accent)';
+  }
+  if (ramText && d.ram_used_mb != null) {
+    ramText.textContent = d.ram_used_mb + ' MB / ' + d.ram_total_mb + ' MB  (' + d.ram_percent + '%)';
+  }
+  var cpuBar  = document.getElementById('ops-cpu-bar');
+  var cpuText = document.getElementById('ops-cpu-text');
+  if (cpuBar && d.cpu_percent != null) {
+    cpuBar.style.width = d.cpu_percent + '%';
+    cpuBar.style.background = d.cpu_percent > 80 ? 'var(--red)' : 'var(--accent)';
+  }
+  if (cpuText && d.cpu_percent != null) {
+    cpuText.textContent = d.cpu_percent.toFixed(1) + '%';
+  }
+  var pingEl = document.getElementById('ops-db-ping');
+  if (pingEl) {
+    if (d.db_ping_ms != null) {
+      pingEl.textContent = d.db_ping_ms + ' ms';
+      pingEl.style.color = d.db_ping_ms < 5 ? 'var(--green)' : (d.db_ping_ms < 20 ? 'var(--yellow)' : 'var(--red)');
+    } else {
+      pingEl.textContent = 'ERR';
+      pingEl.style.color = 'var(--red)';
+    }
+  }
+
+  // ── ENV статус ────────────────────────────────────────────
+  var env = d.env_status || {};
+  _opsEnvDot('ops-env-api-dot', 'ops-env-api-text', env.has_api_key, 'Задан', 'Не задан');
+  _opsEnvDot('ops-env-tg-dot',  'ops-env-tg-text',  env.has_telegram,'Задан', 'Не задан');
+
+  var ut = document.getElementById('ops-uptime');
+  if (ut) ut.textContent = d.uptime || '—';
+  var vr = document.getElementById('ops-version');
+  if (vr) vr.textContent = (d.version || '') + ' · Python ' + (d.python || '') + ' · ' + (d.os || '');
+
+  // ── Диагностика ───────────────────────────────────────────
+  var dt = document.getElementById('ops-diag-table');
+  if (dt && d.diag_rows) {
+    dt.innerHTML = '';
+    d.diag_rows.forEach(function(row) {
+      var color = row.state === 'ok' ? 'var(--green)' : 'var(--yellow)';
+      dt.innerHTML +=
+        '<tr>' +
+          '<td style="padding:4px 8px 4px 0;color:var(--text3);font-size:12px;white-space:nowrap">' + _fmt_str(row.key) + '</td>' +
+          '<td style="padding:4px 0;font-size:12px;color:' + color + ';font-family:\'JetBrains Mono\',monospace">' + _fmt_str(row.val) + '</td>' +
+        '</tr>';
+    });
+  }
+
+  // ── Статистика БД ─────────────────────────────────────────
+  var dbt = document.getElementById('ops-db-table');
+  if (dbt && d.db_stats) {
+    dbt.innerHTML = '';
+    d.db_stats.forEach(function(row) {
+      var cnt = row.count < 0 ? '—' : row.count.toLocaleString('ru-RU');
+      var color = row.count > 0 ? 'var(--text)' : 'var(--text3)';
+      dbt.innerHTML +=
+        '<tr>' +
+          '<td style="padding:4px 8px 4px 0;color:var(--text3);font-size:12px">' + _fmt_str(row.label) + '</td>' +
+          '<td style="padding:4px 0;font-size:12px;color:' + color + ';font-family:\'JetBrains Mono\',monospace;text-align:right">' + cnt + '</td>' +
+        '</tr>';
+    });
+  }
+
+  // ── Последние ошибки ──────────────────────────────────────
+  var erEl = document.getElementById('ops-errors');
+  if (erEl) {
+    if (!d.recent_errors || d.recent_errors.length === 0) {
+      erEl.innerHTML = '<span style="color:var(--green)">Ошибок нет</span>';
+    } else {
+      erEl.innerHTML = d.recent_errors.map(function(e) {
+        var lvlColor = e.level === 'ERROR' ? 'var(--red)' : 'var(--yellow)';
+        return '<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)">' +
+          '<span style="color:var(--text3);margin-right:6px">' + (e.ts || '').slice(0, 16) + '</span>' +
+          '<span style="color:' + lvlColor + ';margin-right:6px">[' + (e.channel || '') + ']</span>' +
+          '<span>' + _fmt_str(e.message || '') + '</span>' +
+        '</div>';
+      }).join('');
+    }
+  }
+}
+
+function _opsEnvDot(dotId, textId, ok, yesLabel, noLabel) {
+  var dot = document.getElementById(dotId);
+  var txt = document.getElementById(textId);
+  if (dot) { dot.className = 'dot ' + (ok ? 'green' : 'yellow'); }
+  if (txt) { txt.textContent = ok ? yesLabel : noLabel; txt.style.color = ok ? 'var(--green)' : 'var(--yellow)'; }
+}
+
+function _fmt_str(v) {
+  if (v === null || v === undefined) return '—';
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.querySelectorAll('.nav-item').forEach(function(item) {
+  item.addEventListener('click', function() {
+    var page = this.getAttribute('data-page');
+    if (page === 'spot') {
+      _loadSpotPageData();
+    }
+    if (page === 'futures') {
+      _loadFuturesPositions();
+    }
+    if (page === 'models') {
+      _loadModelsData();
+    }
+    if (page === 'ops') {
+      _loadOpsPage();
+    }
+    if (page === 'settings') { settingsLoad(); }
+    if (page === 'backtest') { _loadBacktestPage(); }
+  });
+});
+
+document.querySelectorAll('[data-spot-view]').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    _spotActiveView = this.getAttribute('data-spot-view') || 'positions';
+    _loadSpotPageData();
+  });
+});
+
+/* ─── SETTINGS ───────────────────────────────────────────── */
+function settingsToggleShow(inputId, btn) {
+  var inp = document.getElementById(inputId);
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '👁' : '🙈';
+}
+
+function settingsLoad() {
+  var api = _getAPI();
+  var btn = document.getElementById('btn-settings-load');
+  if (!api) {
+    _settingsShowErr('API не готов — попробуйте через секунду');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Загрузка…'; }
+  api.load_settings().then(function(raw) {
+    if (btn) { btn.disabled = false; btn.textContent = '↺ Загрузить'; }
+    var d;
+    try { d = JSON.parse(raw); } catch(e) { _settingsShowErr('Ошибка разбора ответа'); return; }
+    if (!d.ok) { _settingsShowErr(d.error || 'Ошибка загрузки'); return; }
+    var v = d.values || {};
+
+    function _set(id, val) {
+      var el = document.getElementById(id);
+      if (el && val !== undefined) el.value = val;
+    }
+    function _setStatus(id, val, label) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = val
+        ? '<span style="color:var(--green)">✓ ' + label + ' задан</span>'
+        : '<span style="color:var(--yellow)">⚠ ' + label + ' не задан</span>';
+    }
+
+    _set('s-bybit-key',            v.BYBIT_API_KEY            || '');
+    _set('s-bybit-secret',         v.BYBIT_API_SECRET_KEY     || '');
+    _set('s-bybit-mainnet-key',    v.BYBIT_MAINNET_API_KEY    || '');
+    _set('s-bybit-mainnet-secret', v.BYBIT_MAINNET_API_SECRET || '');
+    _set('s-tg-token',             v.TELEGRAM_BOT_TOKEN       || '');
+    _set('s-tg-chatid',            v.TELEGRAM_CHAT_ID         || '');
+    _set('s-db-url',               v.DB_URL                   || '');
+    // Strategy — futures
+    _set('s-fut-balance',       v.FUTURES_BALANCE        || '');
+    _set('s-fut-risk-pct',      v.FUTURES_RISK_PCT       || '');
+    _set('s-fut-atr-sl',        v.FUTURES_ATR_SL_MULT    || '');
+    _set('s-fut-atr-tp',        v.FUTURES_ATR_TP_MULT    || '');
+    _set('s-fut-max-pos-pct',   v.FUTURES_MAX_POS_PCT    || '');
+    _set('s-fut-timeout-h',     v.FUTURES_HOLD_TIMEOUT_H || '');
+    _set('s-fut-spike-bps',     v.FUTURES_SPIKE_BPS      || '');
+    _set('s-fut-max-positions', v.FUTURES_MAX_POSITIONS  || '');
+    _set('s-fut-symbols',       v.FUTURES_SYMBOLS        || '');
+    // Strategy — spot
+    _set('s-spot-balance',      v.SPOT_BALANCE           || '');
+    _set('s-spot-risk-pct',     v.SPOT_RISK_PCT          || '');
+    _set('s-spot-atr-sl',       v.SPOT_ATR_SL_MULT       || '');
+    _set('s-spot-atr-tp',       v.SPOT_ATR_TP_MULT       || '');
+    _set('s-spot-max-pos-pct',  v.SPOT_MAX_POS_PCT       || '');
+    _set('s-spot-timeout-h',    v.SPOT_HOLD_TIMEOUT_H    || '');
+    _set('s-spot-spike-bps',    v.SPOT_SPIKE_BPS         || '');
+    _set('s-spot-symbols',      v.SPOT_SYMBOLS           || '');
+
+    _setStatus('s-bybit-key-status',    v.BYBIT_API_KEY,         'Demo API Key');
+    _setStatus('s-bybit-mainnet-status',v.BYBIT_MAINNET_API_KEY, 'MainNet API Key');
+    _setStatus('s-tg-status',           v.TELEGRAM_BOT_TOKEN,    'Bot Token');
+    _setStatus('s-db-status',           v.DB_URL,                 'DB_URL');
+
+    // Show .env path hint
+    var pathEl = document.getElementById('settings-env-path');
+    if (pathEl && d.env_path) pathEl.textContent = 'Файл: ' + d.env_path;
+
+    // Hide error banner if visible
+    var errBanner = document.getElementById('settings-err-banner');
+    if (errBanner) errBanner.style.display = 'none';
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '↺ Загрузить'; }
+    _settingsShowErr(String(e));
+  });
+}
+
+function settingsSave() {
+  var api = _getAPI();
+  var btn = document.getElementById('btn-settings-save');
+  if (!api) { _settingsShowErr('API не готов — попробуйте через секунду'); return; }
+
+  function _val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  var data = {
+    BYBIT_API_KEY:           _val('s-bybit-key'),
+    BYBIT_API_SECRET_KEY:    _val('s-bybit-secret'),
+    BYBIT_MAINNET_API_KEY:   _val('s-bybit-mainnet-key'),
+    BYBIT_MAINNET_API_SECRET:_val('s-bybit-mainnet-secret'),
+    TELEGRAM_BOT_TOKEN:      _val('s-tg-token'),
+    TELEGRAM_CHAT_ID:        _val('s-tg-chatid'),
+    DB_URL:                  _val('s-db-url'),
+    // Strategy — futures
+    FUTURES_BALANCE:         _val('s-fut-balance'),
+    FUTURES_RISK_PCT:        _val('s-fut-risk-pct'),
+    FUTURES_ATR_SL_MULT:     _val('s-fut-atr-sl'),
+    FUTURES_ATR_TP_MULT:     _val('s-fut-atr-tp'),
+    FUTURES_MAX_POS_PCT:     _val('s-fut-max-pos-pct'),
+    FUTURES_HOLD_TIMEOUT_H:  _val('s-fut-timeout-h'),
+    FUTURES_SPIKE_BPS:       _val('s-fut-spike-bps'),
+    FUTURES_MAX_POSITIONS:   _val('s-fut-max-positions'),
+    FUTURES_SYMBOLS:         _val('s-fut-symbols'),
+    // Strategy — spot
+    SPOT_BALANCE:            _val('s-spot-balance'),
+    SPOT_RISK_PCT:           _val('s-spot-risk-pct'),
+    SPOT_ATR_SL_MULT:        _val('s-spot-atr-sl'),
+    SPOT_ATR_TP_MULT:        _val('s-spot-atr-tp'),
+    SPOT_MAX_POS_PCT:        _val('s-spot-max-pos-pct'),
+    SPOT_HOLD_TIMEOUT_H:     _val('s-spot-timeout-h'),
+    SPOT_SPIKE_BPS:          _val('s-spot-spike-bps'),
+    SPOT_SYMBOLS:            _val('s-spot-symbols'),
+  };
+
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Сохранение…'; }
+  var errBanner = document.getElementById('settings-err-banner');
+  if (errBanner) errBanner.style.display = 'none';
+
+  api.save_settings(data).then(function(raw) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
+    var res;
+    try { res = JSON.parse(raw); } catch(e) { _settingsShowErr('Ошибка разбора ответа'); return; }
+    if (res.ok) {
+      var banner = document.getElementById('settings-saved-banner');
+      if (banner) { banner.style.display = 'block'; setTimeout(function(){ banner.style.display='none'; }, 4000); }
+      // Refresh status indicators
+      settingsLoad();
+    } else {
+      _settingsShowErr(res.error || 'Ошибка сохранения');
+    }
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
+    _settingsShowErr(String(e));
+  });
+}
+
+function _settingsShowErr(msg) {
+  var el = document.getElementById('settings-err-banner');
+  if (el) { el.textContent = '✕ ' + msg; el.style.display = 'block'; }
+}
+/* ─── MODEL DETAIL OVERLAY ──────────────────────────────── */
+var _currentModelsPayload = null;
+
+function _showModelDetail(card, allRuns) {
+  var overlay = document.getElementById('model-detail-overlay');
+  var box = document.getElementById('model-detail-box');
+  if (!overlay || !box) return;
+  var runs = (allRuns || []).filter(function(r) { return (r.scope || r.model_scope) === card.scope; });
+  var winRate = null;
+  if (runs.length > 0) {
+    var wins = runs.filter(function(r) { return parseFloat(r.accuracy||r.f1_score||0) > 0.5; }).length;
+    winRate = Math.round(wins / runs.length * 100);
+  }
+  box.innerHTML =
+    '<button onclick="document.getElementById(\'model-detail-overlay\').classList.remove(\'open\')" '
+    + 'style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px">✕</button>'
+    + '<div style="font-size:18px;font-weight:700;margin-bottom:12px">Модель — ' + (card.scope_label || card.scope) + '</div>'
+    + '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">'
+    + _detailStat('Статус', card.tag_text || '—', '')
+    + _detailStat('Режим', (card.training_mode||'—').toUpperCase(), '')
+    + _detailStat('Checkpoint', card.checkpoint_name || '—', '')
+    + _detailStat('Win rate (runs)', winRate !== null ? winRate + '%' : '—', winRate !== null && winRate >= 50 ? 'color:var(--green)' : '')
+    + '</div>'
+    + '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text2)">История обучений (' + runs.length + ')</div>'
+    + (runs.length === 0
+        ? '<div style="color:var(--text3);font-size:12px">Нет истории для этого scope</div>'
+        : '<table style="width:100%;border-collapse:collapse;font-size:12px;font-family:\'JetBrains Mono\',monospace">'
+          + '<thead><tr style="color:var(--text3)"><th style="text-align:left;padding:4px 6px">Время</th><th style="text-align:left;padding:4px 6px">Режим</th><th style="text-align:left;padding:4px 6px">Версия</th><th style="text-align:left;padding:4px 6px">Accuracy</th><th style="text-align:left;padding:4px 6px">Статус</th></tr></thead><tbody>'
+          + runs.map(function(r) {
+              var acc = r.accuracy || r.f1_score || null;
+              var accStr = acc !== null ? (parseFloat(acc)*100).toFixed(1)+'%' : '—';
+              var ok = acc !== null && parseFloat(acc) >= 0.5;
+              return '<tr style="border-top:1px solid var(--border1)">'
+                + '<td style="padding:4px 6px;color:var(--text3)">' + _fmtTimeText(r.finished_at || r.started_at_utc || '') + '</td>'
+                + '<td style="padding:4px 6px">' + (r.mode||'—') + '</td>'
+                + '<td style="padding:4px 6px">' + (r.version||'—') + '</td>'
+                + '<td style="padding:4px 6px;color:' + (ok?'var(--green)':'var(--red)') + '">' + accStr + '</td>'
+                + '<td style="padding:4px 6px;color:' + (_statusColor(r.status)) + '">' + (r.status||'—').toUpperCase() + '</td>'
+                + '</tr>';
+            }).join('')
+          + '</tbody></table>');
+  overlay.classList.add('open');
+}
+
+function _detailStat(label, val, style) {
+  return '<div style="background:var(--surface2);border-radius:8px;padding:10px 14px;min-width:100px;' + style + '">'
+       + '<div style="font-size:10px;color:var(--text3);margin-bottom:4px">' + label + '</div>'
+       + '<div style="font-size:14px;font-weight:600">' + val + '</div>'
+       + '</div>';
+}
+
+function _statusColor(s) {
+  s = (s||'').toLowerCase();
+  if (s === 'done' || s === 'ok' || s === 'success') return 'var(--green)';
+  if (s === 'error' || s === 'failed') return 'var(--red)';
+  return 'var(--text2)';
+}
+</script>
+
+<!-- Model detail overlay -->
+<div id="model-detail-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div id="model-detail-box"></div>
+</div>
+
+</body>
+</html>

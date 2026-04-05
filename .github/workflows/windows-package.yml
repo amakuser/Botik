@@ -9,34 +9,37 @@ on:
       - "botik.spec"
       - "installer.iss"
       - "requirements.txt"
-      - "build_windows_installer.bat"
+      - "VERSION"
       - ".github/workflows/windows-package.yml"
+    tags:
+      - "v*"
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Read VERSION
+        id: ver
+        shell: pwsh
+        run: |
+          $raw = Get-Content VERSION -Raw
+          $v = ($raw | Select-String "version=(.+)").Matches[0].Groups[1].Value.Trim()
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version: $v"
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
 
-      - name: Update version.txt from commit
-        shell: pwsh
-        run: |
-          (git rev-parse HEAD).Trim() | Set-Content -Path version.txt -Encoding utf8
-
-      - name: Build one-file EXE
+      - name: Build EXE
         run: python -m PyInstaller --noconfirm --clean botik.spec
 
       - name: Install Inno Setup
@@ -46,17 +49,27 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc /DMyAppVersion="${{ steps.ver.outputs.VERSION }}" installer.iss
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: botik-exe
+          name: botik-${{ steps.ver.outputs.VERSION }}-exe
           path: dist/botik.exe
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: botik-installer
+          name: botik-${{ steps.ver.outputs.VERSION }}-installer
           path: dist/installer/BotikInstaller.exe
 
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Botik v${{ steps.ver.outputs.VERSION }}"
+          generate_release_notes: true
+          files: |
+            dist/botik.exe
+            dist/installer/BotikInstaller.exe
