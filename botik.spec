@@ -16,22 +16,50 @@ if not (PROJECT_ROOT / "src" / "botik").exists():
 
 hiddenimports = []
 hiddenimports += collect_submodules("src.botik")
+hiddenimports += collect_submodules("webview")
 hiddenimports += [
-    "telebot",
+    "webview",
+    "webview.platforms.edgechromium",
+    "webview.platforms.winforms",
+    "webview.platforms.mshtml",
+    "webview.guilib",
+    "webview.http",
+    "webview.dom",
+    "clr",          # pythonnet — required by pywebview on Windows
+    "System",
+    "System.Windows.Forms",
     "yaml",
+    "psutil",
     "sqlite3",
     "aiohttp",
     "websockets",
 ]
 
-datas = [
-    (str(PROJECT_ROOT / ".env.example"), "."),
-    (str(PROJECT_ROOT / "config.example.yaml"), "."),
-    (str(PROJECT_ROOT / "VERSION"), "."),
-    (str(PROJECT_ROOT / "version.txt"), "."),
-    (str(PROJECT_ROOT / "README.md"), "."),
+datas = []
+
+# ── Project HTML / config / version files ──────────────────────────────────
+datas += [
+    (str(PROJECT_ROOT / "dashboard_preview.html"), "."),
 ]
+
+# Optional files — only include if they exist
+for optional in [
+    ".env.example",
+    "config.example.yaml",
+    "VERSION",
+    "version.txt",
+    "README.md",
+    "dashboard_workspace_manifest.yaml",
+    "dashboard_release_manifest.yaml",
+    "active_models.yaml",
+]:
+    p = PROJECT_ROOT / optional
+    if p.exists():
+        datas.append((str(p), "."))
+
+# ── Package data ────────────────────────────────────────────────────────────
 datas += collect_data_files("src.botik")
+datas += collect_data_files("webview")   # includes WebView2Loader.dll + JS files
 
 
 a = Analysis(
@@ -43,7 +71,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=["tkinter", "PyQt5", "PyQt6", "PySide2", "PySide6", "wx"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

@@ -1,15 +1,14 @@
 """
 Application version helpers.
 
-Version is stored in project root file:
-  VERSION
-with fields:
-  version=1.0.0
-  build=1
+Version is stored in project root file VERSION:
+  version=0.0.22
+
+Single incrementing number — patch part grows with every build.
+At 100 → minor bumps: 0.0.99 → 0.1.0, 0.1.99 → 0.2.0, etc.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -17,47 +16,25 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 VERSION_FILE = ROOT_DIR / "VERSION"
 BUILD_SHA_FILE = ROOT_DIR / "version.txt"
 
-DEFAULT_VERSION = "0.1.0"
-DEFAULT_BUILD = 1
-
-
-@dataclass(frozen=True)
-class AppVersion:
-    version: str
-    build: int
-
-    @property
-    def label(self) -> str:
-        return f"{self.version}+{self.build}"
-
-
-def load_app_version(path: Path | None = None) -> AppVersion:
-    version_file = path or VERSION_FILE
-    version = DEFAULT_VERSION
-    build = DEFAULT_BUILD
-
-    if version_file.exists():
-        for raw_line in version_file.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip().lower()
-            value = value.strip()
-            if key == "version" and value:
-                version = value
-            elif key == "build":
-                try:
-                    parsed = int(value)
-                    if parsed > 0:
-                        build = parsed
-                except ValueError:
-                    pass
-    return AppVersion(version=version, build=build)
+DEFAULT_VERSION = "0.0.1"
 
 
 def get_app_version_label(path: Path | None = None) -> str:
-    return load_app_version(path).label
+    """Return version string, e.g. '0.0.22'."""
+    f = path or VERSION_FILE
+    if f.exists():
+        for raw in f.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("version="):
+                v = line.split("=", 1)[1].strip()
+                if v:
+                    return v
+    return DEFAULT_VERSION
+
+
+def load_app_version(path: Path | None = None) -> str:
+    """Alias for get_app_version_label (backward compatibility)."""
+    return get_app_version_label(path)
 
 
 def load_build_sha(path: Path | None = None) -> str:
@@ -70,7 +47,6 @@ def load_build_sha(path: Path | None = None) -> str:
         return ""
     if not value:
         return ""
-    # Accept short or full git SHA.
     if 6 <= len(value) <= 64 and all(ch in "0123456789abcdefABCDEF" for ch in value):
         return value
     return ""

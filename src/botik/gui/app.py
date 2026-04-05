@@ -34,7 +34,7 @@ import yaml
 from src.botik.risk.position import apply_fill
 from src.botik.version import get_app_version_label, load_app_version, load_build_sha
 from src.botik.gui.theme import apply_dark_theme
-from src.botik.gui.ui_components import card, labeled_combobox, labeled_entry
+from src.botik.gui.ui_components import card, hcard, hcard_alt, metric_tile, section_header, labeled_combobox, labeled_entry
 from src.botik.storage.futures_store import list_futures_positions
 from src.botik.storage.spot_store import (
     insert_spot_exit_decision,
@@ -1025,7 +1025,7 @@ def load_dashboard_release_manifest(
     active_models_manifest = load_active_models_pointer(active_models_path)
     out: dict[str, str] = {
         "shell_name": "Dashboard Shell",
-        "shell_version": _component_text(version_data.version, fallback="0.0.0"),
+        "shell_version": _component_text(version_data if isinstance(version_data, str) else getattr(version_data, "version", "0.0.0"), fallback="0.0.0"),
         "shell_build_sha": load_shell_build_sha(),
         "shell_version_source": "VERSION",
         "shell_build_source": "version.txt",
@@ -2909,7 +2909,6 @@ class BotikGui:
         self.root = tk.Tk()
         self.root.title(f"Botik Dashboard {self.app_version}")
         self.root.geometry("1320x860")
-        self.root.minsize(1180, 760)
         self.root.minsize(1020, 700)
         if os.name == "nt":
             try:
@@ -2991,6 +2990,11 @@ class BotikGui:
         self.dashboard_balance_summary_var = tk.StringVar(value="Баланс: n/a")
         self.dashboard_pnl_summary_var = tk.StringVar(value="PnL за день: n/a")
         self.dashboard_profile_summary_var = tk.StringVar(value="Профиль: unknown")
+        # Short metric tile vars (first segment of the full status string)
+        self._tile_balance_var = tk.StringVar(value="n/a")
+        self._tile_pnl_var     = tk.StringVar(value="0.000000")
+        self._tile_profile_var = tk.StringVar(value="unknown")
+        self._tile_ops_var     = tk.StringVar(value="n/a")
         self.dashboard_spot_primary_var = tk.StringVar(value="Спот: n/a")
         self.dashboard_spot_meta_var = tk.StringVar(value="Спот / runtime: n/a")
         self.dashboard_spot_settings_var = tk.StringVar(value="Параметры спота: n/a")
@@ -3108,12 +3112,22 @@ class BotikGui:
         self._suppressed_pairfilter_logs = 0
         self._suppressed_policy_logs = 0
         self._suppressed_logs_last_flush = time.monotonic()
-        self.notebook: ttk.Notebook | None = None
+        self.notebook: ttk.Notebook | None = None  # kept for compatibility, not used for navigation
         self.futures_notebook: ttk.Notebook | None = None
         self.statistics_notebook: ttk.Notebook | None = None
         self.settings_notebook: ttk.Notebook | None = None
         self.settings_main_tab: ttk.Frame | None = None
         self._ui_colors: dict[str, str] = {}
+        # Sidebar navigation state
+        self._current_workspace_key: str = "home"
+        self._sidebar_nav_buttons: dict[str, tk.Frame] = {}
+        self._workspace_frames: dict[str, ttk.Frame] = {}
+        self._topbar_clock_label: tk.Label | None = None
+        self._topbar_status_dot: tk.Canvas | None = None
+        self._topbar_status_label: tk.Label | None = None
+        self._sidebar_uptime_label: tk.Label | None = None
+        self._sidebar_footer: tk.Frame | None = None
+        self._app_start_time: float = time.monotonic()
         self._heavy_refresh_min_interval_sec = 12.0
         self._last_heavy_refresh_ts = 0.0
         self._cached_heavy_snapshot: dict[str, Any] = {
@@ -3302,36 +3316,54 @@ class BotikGui:
         self._ui_colors = apply_dark_theme(self.root)
 
     def _build_ui(self) -> None:
-        root_frame = ttk.Frame(self.root, style="Root.TFrame", padding=12)
+        c = self._ui_colors
+        root_frame = tk.Frame(self.root, bg=c.get("bg", "#03070F"))
         root_frame.pack(fill=tk.BOTH, expand=True)
+        root_frame.grid_rowconfigure(1, weight=1)
+        root_frame.grid_columnconfigure(0, weight=1)
 
-        self.title_label = ttk.Label(
-            root_frame,
-            text=f"Botik Dashboard Shell {self.app_version}",
-            style="Title.TLabel",
-        )
-        self.title_label.pack(anchor=tk.W)
-        ttk.Label(
-            root_frame,
-            text="Единая desktop-оболочка для спота, фьючерсов, моделей, логов и операторских действий.",
-            style="Subtitle.TLabel",
-        ).pack(anchor=tk.W, pady=(0, 10))
+        # ── Topbar ────────────────────────────────────────────────
+        topbar = self._build_topbar(root_frame)
+        topbar.grid(row=0, column=0, sticky=tk.EW)
 
-        notebook = ttk.Notebook(root_frame)
-        notebook.pack(fill=tk.BOTH, expand=True)
-        self.notebook = notebook
+        # ── Body (sidebar + content) ──────────────────────────────
+        body = tk.Frame(root_frame, bg=c.get("bg", "#03070F"))
+        body.grid(row=1, column=0, sticky=tk.NSEW)
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=1)
 
-        self.home_tab = ttk.Frame(notebook, style="Root.TFrame")
-        self.control_tab = ttk.Frame(notebook, style="Root.TFrame")
-        self.futures_tab = ttk.Frame(notebook, style="Root.TFrame")
+        sidebar = self._build_sidebar(body)
+        sidebar.grid(row=0, column=0, sticky=tk.NS)
+
+        # ── Content stack ──────────────────────────────────────────
+        content = tk.Frame(body, bg=c.get("bg", "#03070F"))
+        content.grid(row=0, column=1, sticky=tk.NSEW)
+        content.grid_rowconfigure(0, weight=1)
+        content.grid_columnconfigure(0, weight=1)
+
+        # ── Workspace frames ───────────────────────────────────────
+        self.home_tab           = ttk.Frame(content, style="Root.TFrame")
+        self.control_tab        = ttk.Frame(content, style="Root.TFrame")
+        self.futures_tab        = ttk.Frame(content, style="Root.TFrame")
+        self.model_registry_tab = ttk.Frame(content, style="Root.TFrame")
+        self.telegram_tab       = ttk.Frame(content, style="Root.TFrame")
+        self.logs_tab           = ttk.Frame(content, style="Root.TFrame")
+        self.settings_tab       = ttk.Frame(content, style="Root.TFrame")
+        self.statistics_tab     = ttk.Frame(content, style="Root.TFrame")
+
+        # Stack all frames in the same cell — tkraise() controls which is visible
+        for frame in (
+            self.home_tab, self.control_tab, self.futures_tab,
+            self.model_registry_tab, self.telegram_tab, self.logs_tab,
+            self.settings_tab, self.statistics_tab,
+        ):
+            frame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        # ── Futures sub-notebook ───────────────────────────────────
         self.futures_training_tab = ttk.Frame(self.futures_tab, style="Root.TFrame")
-        self.futures_paper_tab = ttk.Frame(self.futures_tab, style="Root.TFrame")
-        self.model_registry_tab = ttk.Frame(notebook, style="Root.TFrame")
-        self.telegram_tab = ttk.Frame(notebook, style="Root.TFrame")
-        self.logs_tab = ttk.Frame(notebook, style="Root.TFrame")
-        self.settings_tab = ttk.Frame(notebook, style="Root.TFrame")
-        self.statistics_tab = ttk.Frame(notebook, style="Root.TFrame")
+        self.futures_paper_tab    = ttk.Frame(self.futures_tab, style="Root.TFrame")
 
+        # ── Settings sub-notebook ──────────────────────────────────
         settings_shell = ttk.Frame(self.settings_tab, style="Root.TFrame")
         settings_shell.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         self.settings_notebook = ttk.Notebook(settings_shell)
@@ -3339,6 +3371,7 @@ class BotikGui:
         self.settings_main_tab = ttk.Frame(self.settings_notebook, style="Root.TFrame")
         self.settings_notebook.add(self.settings_main_tab, text="Технические настройки")
 
+        # ── Stats sub-notebook ─────────────────────────────────────
         statistics_shell = ttk.Frame(self.statistics_tab, style="Root.TFrame")
         statistics_shell.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         self.statistics_notebook = ttk.Notebook(statistics_shell)
@@ -3347,6 +3380,7 @@ class BotikGui:
         self.statistics_notebook.add(self.stats_tab, text="Снимок состояния")
         self.models_tab = self.model_registry_tab
 
+        # ── Build workspace contents ───────────────────────────────
         self._build_dashboard_home_tab()
         self._build_control_tab()
         self._build_futures_workspace_tab()
@@ -3355,10 +3389,258 @@ class BotikGui:
         self._build_settings_tab()
         self._build_stats_tab()
         self._build_models_tab()
+
+        # ── Register frames & build sidebar items ─────────────────
         self.dashboard_workspace_manifest = load_dashboard_workspace_manifest()
         self._apply_workspace_manifest_to_notebook(self.dashboard_workspace_manifest)
+
+        # ── Show default workspace ─────────────────────────────────
+        self._show_workspace_frame("home")
+
         self._attach_context_menu_to_entries(self.root)
         self._attach_mousewheel_to_scrollables(self.root)
+
+        # ── Start topbar clock, sidebar uptime & dot pulse ────────
+        self._update_topbar_clock()
+        self._update_sidebar_uptime()
+        self._pulse_status_dot()
+
+    # ══════════════════════════════════════════════════════════════
+    #  TOPBAR
+    # ══════════════════════════════════════════════════════════════
+
+    def _build_topbar(self, parent: tk.Widget) -> tk.Frame:
+        c = self._ui_colors
+        bg = c.get("bg_soft", "#060D1C")
+        line = c.get("line", "#1A2E50")
+        accent = c.get("accent", "#3D8BFF")
+
+        bar = tk.Frame(parent, bg=bg, height=52)
+        bar.pack_propagate(False)
+
+        # Accent left stripe
+        tk.Frame(bar, bg=accent, width=3).pack(side=tk.LEFT, fill=tk.Y)
+
+        # Logo — two-tone: BOTIK in accent, version in dim
+        logo_frame = tk.Frame(bar, bg=bg)
+        logo_frame.pack(side=tk.LEFT, padx=(14, 0))
+        tk.Label(
+            logo_frame, text="BOTIK",
+            bg=bg, fg=accent,
+            font=("Consolas", 13, "bold"),
+        ).pack(side=tk.LEFT)
+        self.title_label = tk.Label(
+            logo_frame, text=f"  {self.app_version}",
+            bg=bg, fg=c.get("text_dim", "#4A6080"),
+            font=("Consolas", 11),
+        )
+        self.title_label.pack(side=tk.LEFT)
+
+        # Vertical divider
+        tk.Frame(bar, bg=line, width=1).pack(side=tk.LEFT, fill=tk.Y, pady=12, padx=12)
+
+        # Pulsing status dot (animated via after())
+        dot_canvas = tk.Canvas(bar, width=12, height=12, bg=bg, bd=0, highlightthickness=0)
+        dot_canvas.pack(side=tk.LEFT, pady=0)
+        self._topbar_status_dot = dot_canvas
+        self._topbar_dot_phase = 0
+        dot_canvas.create_oval(2, 2, 10, 10, fill=c.get("success", "#00E599"), outline="", tags="dot")
+
+        status_lbl = tk.Label(
+            bar, text="LIVE",
+            bg=bg, fg=c.get("success", "#00E599"),
+            font=("Consolas", 10, "bold"), padx=6,
+        )
+        status_lbl.pack(side=tk.LEFT)
+        self._topbar_status_label = status_lbl
+
+        # Spacer
+        tk.Frame(bar, bg=bg).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Clock
+        clock_lbl = tk.Label(
+            bar, text="00:00:00",
+            bg=bg, fg=c.get("text_soft", "#8FA8D0"),
+            font=("Consolas", 11), padx=20,
+        )
+        clock_lbl.pack(side=tk.RIGHT)
+        self._topbar_clock_label = clock_lbl
+
+        # Bottom separator line
+        tk.Frame(bar, bg=line, height=1).place(relx=0, rely=1.0, anchor="sw", relwidth=1)
+
+        return bar
+
+    def _update_topbar_clock(self) -> None:
+        if self._topbar_clock_label is not None:
+            try:
+                self._topbar_clock_label.config(text=time.strftime("%H:%M:%S"))
+            except Exception:
+                pass
+        self.root.after(1000, self._update_topbar_clock)
+
+    def _pulse_status_dot(self) -> None:
+        """Animate the topbar status dot — fade between full and dim color."""
+        dot = self._topbar_status_dot
+        if dot is None:
+            return
+        try:
+            phase = getattr(self, "_topbar_dot_phase", 0)
+            # Phase 0-7: bright; phase 8-15: dim  (16-step cycle)
+            bright = "#00E599"
+            dim    = "#005A3C"
+            color  = bright if phase < 8 else dim
+            dot.itemconfig("dot", fill=color)
+            self._topbar_dot_phase = (phase + 1) % 16
+        except Exception:
+            pass
+        self.root.after(150, self._pulse_status_dot)
+
+    # ══════════════════════════════════════════════════════════════
+    #  SIDEBAR
+    # ══════════════════════════════════════════════════════════════
+
+    def _build_sidebar(self, parent: tk.Widget) -> tk.Frame:
+        c = self._ui_colors
+        bg = c.get("bg_soft", "#060D1C")
+        border = c.get("line", "#1A2E50")
+
+        outer = tk.Frame(parent, bg=border, width=201)
+        outer.pack_propagate(False)
+
+        sidebar = tk.Frame(outer, bg=bg, width=200)
+        sidebar.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sidebar.pack_propagate(False)
+
+        # Top padding
+        tk.Frame(sidebar, bg=bg, height=12).pack(fill=tk.X)
+
+        # Section labels + items will be populated in
+        # _apply_workspace_manifest_to_notebook()
+        self._sidebar_inner = sidebar
+
+        # Footer
+        footer = tk.Frame(sidebar, bg=bg)
+        footer.pack(side=tk.BOTTOM, fill=tk.X, pady=0)
+        tk.Frame(footer, bg=border, height=1).pack(fill=tk.X)
+        self._sidebar_uptime_label = tk.Label(
+            footer,
+            text="Uptime: 00:00:00",
+            bg=bg, fg=c.get("text_dim", "#4A6080"),
+            font=("Consolas", 9), anchor=tk.W, padx=14, pady=8,
+        )
+        self._sidebar_uptime_label.pack(fill=tk.X)
+        self._sidebar_footer = footer
+
+        return outer
+
+    def _update_sidebar_uptime(self) -> None:
+        if self._sidebar_uptime_label is not None:
+            try:
+                secs = int(time.monotonic() - self._app_start_time)
+                h = secs // 3600
+                m = (secs % 3600) // 60
+                s = secs % 60
+                self._sidebar_uptime_label.config(
+                    text=f"Uptime: {h:02d}:{m:02d}:{s:02d}"
+                )
+            except Exception:
+                pass
+        self.root.after(1000, self._update_sidebar_uptime)
+
+    def _add_sidebar_section(self, text: str) -> None:
+        c = self._ui_colors
+        bg = c.get("bg_soft", "#060D1C")
+        # Spacing before section label
+        tk.Frame(self._sidebar_inner, bg=bg, height=6).pack(fill=tk.X)
+        tk.Label(
+            self._sidebar_inner, text=text.upper(),
+            bg=bg, fg=c.get("text_dim", "#4A6080"),
+            font=("Segoe UI", 8, "bold"), anchor=tk.W,
+            padx=16, pady=2,
+        ).pack(fill=tk.X)
+
+    def _add_sidebar_item(self, key: str, label: str, icon: str = "·") -> None:
+        c = self._ui_colors
+        bg        = c.get("bg_soft",    "#060D1C")
+        bg_hover  = c.get("card",        "#0C1630")
+        bg_active = c.get("accent_soft", "#0F2248")
+        fg        = c.get("text_soft",   "#8FA8D0")
+        fg_dim    = c.get("text_dim",    "#4A6080")
+        fg_active = c.get("accent",      "#3D8BFF")
+
+        # Outer wrapper with 4px horizontal margin
+        row = tk.Frame(self._sidebar_inner, bg=bg, cursor="hand2")
+        row.pack(fill=tk.X, padx=6, pady=1)
+
+        # Left accent bar (3px wide)
+        accent_bar = tk.Frame(row, bg=bg, width=3)
+        accent_bar.pack(side=tk.LEFT, fill=tk.Y)
+
+        icon_lbl = tk.Label(row, text=icon, bg=bg, fg=fg_dim,
+                            font=("Segoe UI", 13), padx=8, pady=8)
+        icon_lbl.pack(side=tk.LEFT)
+
+        text_lbl = tk.Label(row, text=label, bg=bg, fg=fg,
+                            font=("Segoe UI", 10), anchor=tk.W, pady=8)
+        text_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        def _on_click(_e: Any = None) -> None:
+            self._show_workspace_frame(key)
+
+        def _on_enter(_e: Any = None) -> None:
+            if self._current_workspace_key != key:
+                for w in (row, icon_lbl, text_lbl, accent_bar):
+                    w.config(bg=bg_hover)
+
+        def _on_leave(_e: Any = None) -> None:
+            if self._current_workspace_key != key:
+                for w in (row, icon_lbl, text_lbl, accent_bar):
+                    w.config(bg=bg)
+
+        for widget in (row, icon_lbl, text_lbl, accent_bar):
+            widget.bind("<Button-1>", _on_click)
+            widget.bind("<Enter>",    _on_enter)
+            widget.bind("<Leave>",    _on_leave)
+
+        self._sidebar_nav_buttons[key] = row
+
+    def _update_sidebar_active(self, key: str) -> None:
+        c = self._ui_colors
+        bg        = c.get("bg_soft",     "#060D1C")
+        bg_hover  = c.get("card",         "#0C1630")
+        bg_active = c.get("accent_soft",  "#0F2248")
+        fg        = c.get("text_soft",    "#8FA8D0")
+        fg_dim    = c.get("text_dim",     "#4A6080")
+        fg_active = c.get("accent",       "#3D8BFF")
+        accent_c  = c.get("accent",       "#3D8BFF")
+
+        for nav_key, row in self._sidebar_nav_buttons.items():
+            active = (nav_key == key)
+            row_bg = bg_active if active else bg
+            children = row.winfo_children()
+            # accent_bar=0, icon_lbl=1, text_lbl=2
+            for i, child in enumerate(children):
+                if i == 0:  # accent bar
+                    child.config(bg=accent_c if active else bg)
+                elif i == 1:  # icon
+                    child.config(bg=row_bg, fg=fg_active if active else fg_dim)
+                else:  # text
+                    child.config(bg=row_bg, fg=fg_active if active else fg)
+            row.config(bg=row_bg)
+
+    # ══════════════════════════════════════════════════════════════
+    #  WORKSPACE SWITCHING
+    # ══════════════════════════════════════════════════════════════
+
+    def _show_workspace_frame(self, key: str) -> None:
+        frame_map = self._workspace_frame_map()
+        frame = frame_map.get(key)
+        if frame is None:
+            return
+        frame.tkraise()
+        self._current_workspace_key = key
+        self._update_sidebar_active(key)
 
     def _workspace_frame_map(self) -> dict[str, ttk.Frame]:
         return {
@@ -3372,42 +3654,76 @@ class BotikGui:
             "settings": self.settings_tab,
         }
 
+    _SIDEBAR_ICONS: dict[str, str] = {
+        "home":           "⌂",
+        "spot":           "◈",
+        "futures":        "◇",
+        "model_registry": "⬡",
+        "logs":           "≡",
+        "ops":            "●",
+        "telegram":       "✈",
+        "settings":       "⚙",
+    }
+    _SIDEBAR_SECTIONS: dict[str, str] = {
+        "home":           "Основное",
+        "spot":           "Основное",
+        "futures":        "Основное",
+        "model_registry": "Аналитика",
+        "logs":           "Аналитика",
+        "ops":            "Система",
+        "telegram":       "Система",
+        "settings":       "Система",
+    }
+
     def _apply_workspace_manifest_to_notebook(self, manifest: dict[str, Any] | None) -> None:
-        if self.notebook is None:
-            return
-        try:
-            for tab_id in list(self.notebook.tabs()):
-                self.notebook.forget(tab_id)
-        except Exception:
-            pass
+        """Build sidebar navigation items from the workspace manifest."""
+        # Clear existing items (skip footer to preserve uptime label)
+        footer = getattr(self, "_sidebar_footer", None)
+        for widget in list(self._sidebar_inner.winfo_children()):
+            if widget is not footer:
+                widget.destroy()
+        self._sidebar_nav_buttons.clear()
+
+        # Top padding
+        c = self._ui_colors
+        bg = c.get("bg_soft", "#060D1C")
+        tk.Frame(self._sidebar_inner, bg=bg, height=12).pack(fill=tk.X)
+
+        seen_sections: list[str] = []
         frame_map = self._workspace_frame_map()
+
         for key, label in resolve_dashboard_workspace_tabs(manifest):
-            frame = frame_map.get(key)
-            if frame is None:
+            if frame_map.get(key) is None:
                 continue
-            self.notebook.add(frame, text=label)
+            section = self._SIDEBAR_SECTIONS.get(key, "")
+            if section and section not in seen_sections:
+                seen_sections.append(section)
+                self._add_sidebar_section(section)
+            icon = self._SIDEBAR_ICONS.get(key, "·")
+            self._add_sidebar_item(key, label, icon)
 
     def _create_readonly_text_panel(self, parent: tk.Widget, *, height: int = 7) -> tk.Text:
         text = tk.Text(
             parent,
             wrap=tk.WORD,
             height=height,
-            bg=self._ui_colors.get("bg_soft", "#131F32"),
-            fg=self._ui_colors.get("text_soft", "#A7B7D0"),
-            insertbackground=self._ui_colors.get("text", "#F3F7FF"),
+            bg=self._ui_colors.get("bg_soft", "#060D1C"),
+            fg=self._ui_colors.get("text_soft", "#8FA8D0"),
+            insertbackground=self._ui_colors.get("text", "#E8F0FF"),
+            selectbackground=self._ui_colors.get("accent_soft", "#0F2248"),
             relief=tk.FLAT,
             bd=0,
-            padx=10,
-            pady=8,
+            padx=12,
+            pady=10,
             spacing1=2,
             spacing2=2,
-            spacing3=4,
+            spacing3=5,
             font=("Segoe UI", 10),
             takefocus=0,
             cursor="arrow",
             highlightthickness=1,
-            highlightbackground=self._ui_colors.get("line_soft", "#22324B"),
-            highlightcolor=self._ui_colors.get("line_soft", "#22324B"),
+            highlightbackground=self._ui_colors.get("line", "#1A2E50"),
+            highlightcolor=self._ui_colors.get("accent", "#3D8BFF"),
         )
         setattr(text, "_dashboard_bind_mousewheel", True)
         text.configure(state=tk.DISABLED)
@@ -3485,263 +3801,251 @@ class BotikGui:
         return "break" if event is not None else None
 
     def _open_workspace(self, workspace: ttk.Frame | None) -> None:
-        if self.notebook is None or workspace is None:
+        if workspace is None:
             return
-        if workspace in {self.futures_training_tab, self.futures_paper_tab} and self.futures_tab is not None:
-            try:
-                self.notebook.select(self.futures_tab)
-                if self.futures_notebook is not None:
+        # Futures sub-tabs: show futures frame then select inner tab
+        if workspace in {self.futures_training_tab, self.futures_paper_tab}:
+            self._show_workspace_frame("futures")
+            if self.futures_notebook is not None:
+                try:
                     self.futures_notebook.select(workspace)
-                return
-            except Exception:
-                return
-        if workspace is self.settings_main_tab and self.settings_tab is not None:
-            try:
-                self.notebook.select(self.settings_tab)
-                if self.settings_notebook is not None:
-                    self.settings_notebook.select(workspace)
-                return
-            except Exception:
-                return
-        try:
-            self.notebook.select(workspace)
-        except Exception:
+                except Exception:
+                    pass
             return
+        # Settings sub-tab
+        if workspace is self.settings_main_tab:
+            self._show_workspace_frame("settings")
+            if self.settings_notebook is not None:
+                try:
+                    self.settings_notebook.select(workspace)
+                except Exception:
+                    pass
+            return
+        # Regular workspace — find its key and switch
+        frame_map = self._workspace_frame_map()
+        for key, frame in frame_map.items():
+            if frame is workspace:
+                self._show_workspace_frame(key)
+                return
 
     def _build_dashboard_home_tab(self) -> None:
-        home_root = ttk.Frame(self.home_tab, style="Root.TFrame")
-        home_root.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        c = self._ui_colors
+        bg = c.get("bg", "#03070F")
 
-        hero = ttk.Frame(home_root, style="Hero.TFrame", padding=20)
-        hero.pack(fill=tk.X)
-        ttk.Label(hero, text="Главная", style="HeroTitle.TLabel").grid(row=0, column=0, sticky=tk.W)
-        ttk.Label(
-            hero,
-            text="Единая desktop-оболочка для спота, фьючерсов, моделей, логов и операторских действий. Без видимых console windows.",
-            style="HeroBody.TLabel",
-            justify=tk.LEFT,
-        ).grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
-        ttk.Button(hero, text="Открыть состояние", command=lambda: self._open_workspace(self.statistics_tab), style="Secondary.TButton").grid(
-            row=0, column=1, rowspan=2, sticky=tk.E, padx=(12, 0)
-        )
-        hero.columnconfigure(0, weight=1)
+        # Scrollable root
+        canvas = tk.Canvas(self.home_tab, bg=bg, bd=0, highlightthickness=0)
+        canvas.pack(fill=tk.BOTH, expand=True)
+        vsb = ttk.Scrollbar(self.home_tab, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        # scrollbar only shown when needed — place after canvas
+        home_root = tk.Frame(canvas, bg=bg)
+        win = canvas.create_window(0, 0, anchor=tk.NW, window=home_root)
 
-        metrics = ttk.Frame(home_root, style="Root.TFrame")
-        metrics.pack(fill=tk.X, pady=(12, 0))
-        for idx, (title, value_var) in enumerate(
-            [
-                ("Баланс", self.dashboard_balance_summary_var),
-                ("PnL за день", self.dashboard_pnl_summary_var),
-                ("Профиль", self.dashboard_profile_summary_var),
-                ("Shell / Ops", self.dashboard_ops_status_var),
-            ]
-        ):
-            card_frame = ttk.Frame(metrics, style="CardAlt.TFrame", padding=14)
-            card_frame.grid(row=0, column=idx, sticky=tk.NSEW, padx=(0 if idx == 0 else 10, 0))
-            ttk.Label(card_frame, text=title, style="SectionAlt.TLabel").pack(anchor=tk.W)
-            ttk.Label(
-                card_frame,
-                textvariable=value_var,
-                style="MetricValue.TLabel",
-                justify=tk.LEFT,
-                wraplength=220,
-            ).pack(anchor=tk.W, pady=(8, 0))
-            metrics.columnconfigure(idx, weight=1)
+        def _on_frame_configure(_e: Any = None) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        def _on_canvas_configure(e: tk.Event) -> None:
+            canvas.itemconfig(win, width=e.width)
+        home_root.bind("<Configure>", _on_frame_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+        setattr(canvas, "_dashboard_bind_mousewheel", True)
 
-        instruments = ttk.Frame(home_root, style="Root.TFrame")
-        instruments.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
-        spot_card = ttk.Frame(instruments, style="Card.TFrame", padding=18)
-        spot_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        futures_card = ttk.Frame(instruments, style="Card.TFrame", padding=18)
-        futures_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0))
+        pad = 20  # outer padding
 
-        ttk.Label(spot_card, text="Спот", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
-        ttk.Label(spot_card, text="Trading + inventory lifecycle", style="Meta.TLabel").grid(row=0, column=1, sticky=tk.E)
-        ttk.Label(spot_card, textvariable=self.dashboard_spot_status_var, style="Body.TLabel", justify=tk.LEFT).grid(
-            row=1, column=0, sticky=tk.W, pady=(8, 2)
-        )
-        ttk.Label(
-            spot_card,
-            textvariable=self.dashboard_spot_primary_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-            wraplength=520,
-        ).grid(row=2, column=0, sticky=tk.W, pady=(0, 2))
-        ttk.Label(
-            spot_card,
-            textvariable=self.dashboard_spot_meta_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-            wraplength=520,
-        ).grid(row=3, column=0, sticky=tk.W, pady=(0, 10))
-
-        spot_settings = ttk.Frame(spot_card, style="CardAlt.TFrame", padding=10)
-        spot_settings.grid(row=4, column=0, sticky=tk.EW, pady=(0, 10))
-        ttk.Label(spot_settings, text="Быстрые параметры спота", style="SectionAlt.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
-        ttk.Label(spot_settings, text="TP", style="BodyAlt.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
-        ttk.Entry(spot_settings, textvariable=self.cfg_take_profit, width=10).grid(row=1, column=1, sticky=tk.W, padx=(6, 0))
-        ttk.Label(spot_settings, text="SL", style="BodyAlt.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0))
-        ttk.Entry(spot_settings, textvariable=self.cfg_stop_loss, width=10).grid(row=1, column=3, sticky=tk.W, padx=(6, 0))
-        ttk.Label(spot_settings, text="Лимит позиции", style="BodyAlt.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
-        ttk.Entry(spot_settings, textvariable=self.cfg_target_profit, width=10).grid(row=2, column=1, sticky=tk.W, padx=(6, 0))
-        ttk.Label(spot_settings, text="Порог dust", style="BodyAlt.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(16, 0))
-        ttk.Entry(spot_settings, textvariable=self.cfg_min_active_usdt, width=10).grid(row=2, column=3, sticky=tk.W, padx=(6, 0))
-        ttk.Label(
-            spot_settings,
-            textvariable=self.dashboard_spot_settings_var,
-            style="BodyAlt.TLabel",
-            justify=tk.LEFT,
-            wraplength=520,
-        ).grid(row=3, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
-
-        spot_actions = ttk.Frame(spot_card, style="Root.TFrame")
-        spot_actions.grid(row=5, column=0, sticky=tk.EW)
-        ttk.Button(spot_actions, text="Старт", command=self.start_spot_runtime, style="Start.TButton").grid(
-            row=0, column=0, sticky=tk.EW, padx=4, pady=4
-        )
-        ttk.Button(spot_actions, text="Стоп", command=self.stop_spot_runtime, style="Stop.TButton").grid(
-            row=0, column=1, sticky=tk.EW, padx=4, pady=4
-        )
-        ttk.Button(spot_actions, text="Открыть спот", command=lambda: self._open_workspace(self.control_tab), style="Secondary.TButton").grid(
-            row=1, column=0, sticky=tk.EW, padx=4, pady=4
-        )
-        ttk.Button(spot_actions, text="Логи спота", command=self.open_spot_logs_workspace, style="Secondary.TButton").grid(
-            row=1, column=1, sticky=tk.EW, padx=4, pady=4
-        )
-        for idx in range(2):
-            spot_actions.columnconfigure(idx, weight=1)
-        spot_card.columnconfigure(0, weight=1)
-        spot_card.columnconfigure(1, weight=1)
-
-        ttk.Label(futures_card, text="Фьючерсы", style="Section.TLabel").grid(row=0, column=0, sticky=tk.W)
-        ttk.Label(futures_card, text="Training + paper evaluation", style="Meta.TLabel").grid(row=0, column=1, sticky=tk.E)
-        ttk.Label(
-            futures_card,
-            textvariable=self.dashboard_futures_status_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-        ).grid(row=1, column=0, sticky=tk.W, pady=(8, 2))
-        ttk.Label(
-            futures_card,
-            textvariable=self.dashboard_futures_primary_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-            wraplength=520,
-        ).grid(row=2, column=0, sticky=tk.W, pady=(0, 2))
-        ttk.Label(
-            futures_card,
-            textvariable=self.dashboard_futures_meta_var,
-            style="Body.TLabel",
-            justify=tk.LEFT,
-            wraplength=520,
-        ).grid(row=3, column=0, sticky=tk.W, pady=(0, 10))
-
-        futures_settings = ttk.Frame(futures_card, style="CardAlt.TFrame", padding=10)
-        futures_settings.grid(row=4, column=0, sticky=tk.EW, pady=(0, 10))
-        ttk.Label(futures_settings, text="Быстрые параметры фьючерсов", style="SectionAlt.TLabel").grid(row=0, column=0, columnspan=4, sticky=tk.W)
-        ttk.Label(futures_settings, text="TP", style="BodyAlt.TLabel").grid(row=1, column=0, sticky=tk.W, pady=4)
-        ttk.Entry(futures_settings, textvariable=self.cfg_take_profit, width=10).grid(row=1, column=1, sticky=tk.W, padx=(6, 0))
-        ttk.Label(futures_settings, text="SL", style="BodyAlt.TLabel").grid(row=1, column=2, sticky=tk.W, padx=(16, 0))
-        ttk.Entry(futures_settings, textvariable=self.cfg_stop_loss, width=10).grid(row=1, column=3, sticky=tk.W, padx=(6, 0))
-        ttk.Label(futures_settings, text="Лимит позиции", style="BodyAlt.TLabel").grid(row=2, column=0, sticky=tk.W, pady=4)
-        ttk.Entry(futures_settings, textvariable=self.cfg_target_profit, width=10).grid(row=2, column=1, sticky=tk.W, padx=(6, 0))
-        ttk.Label(futures_settings, text="Обучение", style="BodyAlt.TLabel").grid(row=2, column=2, sticky=tk.W, padx=(16, 0))
-        ttk.Label(futures_settings, textvariable=self.ml_training_state_var, style="BodyAlt.TLabel").grid(
-            row=2, column=3, sticky=tk.W, padx=(6, 0)
-        )
-        ttk.Label(
-            futures_settings,
-            textvariable=self.dashboard_futures_settings_var,
-            style="BodyAlt.TLabel",
-            justify=tk.LEFT,
-            wraplength=520,
-        ).grid(row=3, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
-
-        futures_actions = ttk.Frame(futures_card, style="Root.TFrame")
-        futures_actions.grid(row=5, column=0, sticky=tk.EW)
-        ttk.Button(futures_actions, text="Старт обучения", command=self.start_ml, style="Accent.TButton").grid(
-            row=0, column=0, sticky=tk.EW, padx=4, pady=4
-        )
-        ttk.Button(futures_actions, text="Пауза обучения", command=self.pause_training, style="Secondary.TButton").grid(
-            row=0, column=1, sticky=tk.EW, padx=4, pady=4
-        )
+        # ── PAGE HEADER ──────────────────────────────────────────────
+        hdr = tk.Frame(home_root, bg=bg, padx=pad, pady=pad)
+        hdr.pack(fill=tk.X)
+        tk.Label(
+            hdr, text="Главная",
+            bg=bg, fg=c.get("text", "#E8F0FF"),
+            font=("Segoe UI", 20, "bold"),
+        ).pack(side=tk.LEFT)
         ttk.Button(
-            futures_actions,
-            text="Открыть фьючерсы",
-            command=lambda: self._open_workspace(self.futures_tab),
+            hdr, text="Состояние →",
+            command=lambda: self._open_workspace(self.statistics_tab),
             style="Secondary.TButton",
-        ).grid(row=1, column=0, sticky=tk.EW, padx=4, pady=4)
-        ttk.Button(futures_actions, text="Логи фьючерсов", command=self.open_futures_logs_workspace, style="Secondary.TButton").grid(
-            row=1, column=1, sticky=tk.EW, padx=4, pady=4
-        )
-        for idx in range(2):
-            futures_actions.columnconfigure(idx, weight=1)
-        futures_card.columnconfigure(0, weight=1)
-        futures_card.columnconfigure(1, weight=1)
+        ).pack(side=tk.RIGHT, padx=(0, 0))
+        tk.Label(
+            hdr, text="Desktop-оболочка · Спот · Фьючерсы · ML · Логи",
+            bg=bg, fg=c.get("text_dim", "#4A6080"),
+            font=("Segoe UI", 10),
+        ).pack(side=tk.LEFT, padx=(16, 0))
 
-        bottom_row = ttk.Frame(home_root, style="Root.TFrame")
-        bottom_row.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
-        components_card = ttk.Frame(bottom_row, style="Card.TFrame", padding=14)
-        components_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        model_card = ttk.Frame(bottom_row, style="Card.TFrame", padding=14)
-        model_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0))
-        ttk.Label(components_card, text="Компоненты и релизы", style="Section.TLabel").pack(anchor=tk.W)
-        ttk.Label(
-            components_card,
-            text="Версии shell, manifests, активные модели и конфигурационный профиль.",
-            style="Meta.TLabel",
-            justify=tk.LEFT,
-            wraplength=620,
-        ).pack(anchor=tk.W, pady=(4, 8))
-        ttk.Label(
-            components_card,
-            textvariable=self.dashboard_release_status_var,
-            style="MetricValue.TLabel",
-            justify=tk.LEFT,
-            wraplength=620,
-        ).pack(anchor=tk.W, pady=(0, 8))
-        release_wrap = ttk.Frame(components_card, style="Card.TFrame")
+        tk.Frame(home_root, bg=c.get("line", "#1A2E50"), height=1).pack(fill=tk.X, padx=pad)
+
+        # ── METRICS ROW (4 tiles) ────────────────────────────────────
+        metrics_row = tk.Frame(home_root, bg=bg)
+        metrics_row.pack(fill=tk.X, padx=pad, pady=(16, 0))
+
+        _metric_configs = [
+            ("Баланс",      self._tile_balance_var,  c.get("accent", "#3D8BFF"),  "◈"),
+            ("PnL за день", self._tile_pnl_var,      c.get("success", "#00E599"), "▲"),
+            ("Профиль",     self._tile_profile_var,  c.get("text", "#E8F0FF"),    "◉"),
+            ("Shell / Ops", self._tile_ops_var,      c.get("info", "#00D4C8"),    "⬡"),
+        ]
+        for idx, (title, var, fg, icon) in enumerate(_metric_configs):
+            tile = metric_tile(metrics_row, title=title, value_var=var, value_fg=fg, icon=icon)
+            tile.grid(row=0, column=idx, sticky=tk.NSEW, padx=(0 if idx == 0 else 10, 0))
+            metrics_row.columnconfigure(idx, weight=1)
+
+        # ── INSTRUMENTS ROW (Spot + Futures) ─────────────────────────
+        instruments_row = tk.Frame(home_root, bg=bg)
+        instruments_row.pack(fill=tk.X, padx=pad, pady=(14, 0))
+        instruments_row.columnconfigure(0, weight=1)
+        instruments_row.columnconfigure(1, weight=1)
+
+        # Spot card
+        spot_outer, spot_card = hcard(instruments_row, padding=18, accent_top=True)
+        spot_outer.grid(row=0, column=0, sticky=tk.NSEW)
+
+        _row = tk.Frame(spot_card, bg=c.get("card", "#0C1630"))
+        _row.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(_row, text="СПОТ", bg=c.get("card", "#0C1630"),
+                 fg=c.get("accent", "#3D8BFF"), font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        tk.Label(_row, text="Spot trading + inventory",
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_dim", "#4A6080"),
+                 font=("Segoe UI", 9)).pack(side=tk.RIGHT)
+
+        tk.Label(spot_card, textvariable=self.dashboard_spot_status_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_soft", "#8FA8D0"),
+                 font=("Segoe UI", 10), anchor=tk.W, justify=tk.LEFT).pack(fill=tk.X)
+        tk.Label(spot_card, textvariable=self.dashboard_spot_primary_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_soft", "#8FA8D0"),
+                 font=("Consolas", 9), anchor=tk.W, justify=tk.LEFT, wraplength=480).pack(fill=tk.X, pady=(2, 0))
+        tk.Label(spot_card, textvariable=self.dashboard_spot_meta_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_dim", "#4A6080"),
+                 font=("Consolas", 9), anchor=tk.W, justify=tk.LEFT, wraplength=480).pack(fill=tk.X, pady=(2, 8))
+
+        # Spot quick params
+        _sp_outer, _sp = hcard_alt(spot_card, padding=10)
+        _sp_outer.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(_sp, text="БЫСТРЫЕ ПАРАМЕТРЫ", bg=c.get("card_alt", "#111F3A"),
+                 fg=c.get("text_dim", "#4A6080"), font=("Segoe UI", 8, "bold")).grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=(0, 6))
+        for col, (lbl, var) in enumerate([("TP", self.cfg_take_profit), ("SL", self.cfg_stop_loss),
+                                           ("Лимит", self.cfg_target_profit), ("Dust", self.cfg_min_active_usdt)]):
+            tk.Label(_sp, text=lbl, bg=c.get("card_alt", "#111F3A"),
+                     fg=c.get("text_soft", "#8FA8D0"), font=("Segoe UI", 9)).grid(row=1, column=col, sticky=tk.W, padx=(0 if col == 0 else 8, 0))
+            ttk.Entry(_sp, textvariable=var, width=8).grid(row=2, column=col, sticky=tk.W, padx=(0 if col == 0 else 8, 0), pady=(3, 0))
+        tk.Label(_sp, textvariable=self.dashboard_spot_settings_var,
+                 bg=c.get("card_alt", "#111F3A"), fg=c.get("text_dim", "#4A6080"),
+                 font=("Consolas", 8), anchor=tk.W, justify=tk.LEFT, wraplength=480).grid(
+            row=3, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
+
+        # Spot action buttons
+        _sa = tk.Frame(spot_card, bg=c.get("card", "#0C1630"))
+        _sa.pack(fill=tk.X)
+        _sa.columnconfigure(0, weight=1)
+        _sa.columnconfigure(1, weight=1)
+        ttk.Button(_sa, text="▶  Старт", command=self.start_spot_runtime, style="Start.TButton").grid(
+            row=0, column=0, sticky=tk.EW, padx=(0, 5), pady=3)
+        ttk.Button(_sa, text="■  Стоп", command=self.stop_spot_runtime, style="Stop.TButton").grid(
+            row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        ttk.Button(_sa, text="Открыть спот →", command=lambda: self._open_workspace(self.control_tab),
+                   style="Secondary.TButton").grid(row=1, column=0, sticky=tk.EW, padx=(0, 5), pady=3)
+        ttk.Button(_sa, text="Логи спота", command=self.open_spot_logs_workspace,
+                   style="Secondary.TButton").grid(row=1, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+
+        # Futures card
+        fut_outer, futures_card = hcard(instruments_row, padding=18, accent_top=True)
+        fut_outer.grid(row=0, column=1, sticky=tk.NSEW, padx=(14, 0))
+
+        _row2 = tk.Frame(futures_card, bg=c.get("card", "#0C1630"))
+        _row2.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(_row2, text="ФЬЮЧЕРСЫ", bg=c.get("card", "#0C1630"),
+                 fg=c.get("info", "#00D4C8"), font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        tk.Label(_row2, text="Training + paper eval",
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_dim", "#4A6080"),
+                 font=("Segoe UI", 9)).pack(side=tk.RIGHT)
+
+        tk.Label(futures_card, textvariable=self.dashboard_futures_status_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_soft", "#8FA8D0"),
+                 font=("Segoe UI", 10), anchor=tk.W, justify=tk.LEFT).pack(fill=tk.X)
+        tk.Label(futures_card, textvariable=self.dashboard_futures_primary_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_soft", "#8FA8D0"),
+                 font=("Consolas", 9), anchor=tk.W, justify=tk.LEFT, wraplength=480).pack(fill=tk.X, pady=(2, 0))
+        tk.Label(futures_card, textvariable=self.dashboard_futures_meta_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_dim", "#4A6080"),
+                 font=("Consolas", 9), anchor=tk.W, justify=tk.LEFT, wraplength=480).pack(fill=tk.X, pady=(2, 8))
+
+        # Futures quick params
+        _fp_outer, _fp = hcard_alt(futures_card, padding=10)
+        _fp_outer.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(_fp, text="ПАРАМЕТРЫ / ОБУЧЕНИЕ", bg=c.get("card_alt", "#111F3A"),
+                 fg=c.get("text_dim", "#4A6080"), font=("Segoe UI", 8, "bold")).grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=(0, 6))
+        for col, (lbl, var) in enumerate([("TP", self.cfg_take_profit), ("SL", self.cfg_stop_loss),
+                                           ("Лимит", self.cfg_target_profit)]):
+            tk.Label(_fp, text=lbl, bg=c.get("card_alt", "#111F3A"),
+                     fg=c.get("text_soft", "#8FA8D0"), font=("Segoe UI", 9)).grid(row=1, column=col, sticky=tk.W, padx=(0 if col == 0 else 8, 0))
+            ttk.Entry(_fp, textvariable=var, width=8).grid(row=2, column=col, sticky=tk.W, padx=(0 if col == 0 else 8, 0), pady=(3, 0))
+        tk.Label(_fp, text="Обучение", bg=c.get("card_alt", "#111F3A"),
+                 fg=c.get("text_soft", "#8FA8D0"), font=("Segoe UI", 9)).grid(row=1, column=3, sticky=tk.W, padx=(8, 0))
+        tk.Label(_fp, textvariable=self.ml_training_state_var,
+                 bg=c.get("card_alt", "#111F3A"), fg=c.get("success", "#00E599"),
+                 font=("Consolas", 9)).grid(row=2, column=3, sticky=tk.W, padx=(8, 0), pady=(3, 0))
+
+        # Futures action buttons
+        _fa = tk.Frame(futures_card, bg=c.get("card", "#0C1630"))
+        _fa.pack(fill=tk.X)
+        _fa.columnconfigure(0, weight=1)
+        _fa.columnconfigure(1, weight=1)
+        ttk.Button(_fa, text="▶  Старт обучения", command=self.start_ml, style="Accent.TButton").grid(
+            row=0, column=0, sticky=tk.EW, padx=(0, 5), pady=3)
+        ttk.Button(_fa, text="⏸  Пауза", command=self.pause_training, style="Secondary.TButton").grid(
+            row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        ttk.Button(_fa, text="Открыть фьючерсы →", command=lambda: self._open_workspace(self.futures_tab),
+                   style="Secondary.TButton").grid(row=1, column=0, sticky=tk.EW, padx=(0, 5), pady=3)
+        ttk.Button(_fa, text="Логи фьючерсов", command=self.open_futures_logs_workspace,
+                   style="Secondary.TButton").grid(row=1, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+
+        # ── BOTTOM ROW (Components + Models) ─────────────────────────
+        bottom_row = tk.Frame(home_root, bg=bg)
+        bottom_row.pack(fill=tk.X, padx=pad, pady=(14, 20))
+        bottom_row.columnconfigure(0, weight=3)
+        bottom_row.columnconfigure(1, weight=2)
+
+        # Components card
+        comp_outer, comp_card = hcard(bottom_row, padding=16)
+        comp_outer.grid(row=0, column=0, sticky=tk.NSEW)
+
+        tk.Label(comp_card, text="КОМПОНЕНТЫ И РЕЛИЗЫ", bg=c.get("card", "#0C1630"),
+                 fg=c.get("text_soft", "#8FA8D0"), font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
+        tk.Frame(comp_card, bg=c.get("line_soft", "#142340"), height=1).pack(fill=tk.X, pady=(6, 8))
+        tk.Label(comp_card, textvariable=self.dashboard_release_status_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_soft", "#8FA8D0"),
+                 font=("Consolas", 10), anchor=tk.W, justify=tk.LEFT, wraplength=580).pack(anchor=tk.W, pady=(0, 8))
+        release_wrap = tk.Frame(comp_card, bg=c.get("log_bg", "#030811"),
+                                highlightthickness=1, highlightbackground=c.get("line", "#1A2E50"))
         release_wrap.pack(fill=tk.BOTH, expand=True)
-        self.dashboard_release_text = self._create_readonly_text_panel(release_wrap, height=9)
+        self.dashboard_release_text = self._create_readonly_text_panel(release_wrap, height=8)
         release_scroll = ttk.Scrollbar(release_wrap, orient=tk.VERTICAL, command=self.dashboard_release_text.yview)
         self.dashboard_release_text.configure(yscrollcommand=release_scroll.set)
         self.dashboard_release_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         release_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        ttk.Label(
-            components_card,
-            text=f"Источник manifests: {DASHBOARD_RELEASE_MANIFEST_PATH.name}",
-            style="Meta.TLabel",
-            justify=tk.LEFT,
-        ).pack(anchor=tk.W, pady=(6, 0))
+        tk.Label(comp_card, text=f"manifest: {DASHBOARD_RELEASE_MANIFEST_PATH.name}",
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_dim", "#4A6080"),
+                 font=("Consolas", 8)).pack(anchor=tk.W, pady=(6, 0))
 
-        ttk.Label(model_card, text="Реестр моделей", style="Section.TLabel").pack(anchor=tk.W)
-        ttk.Label(
-            model_card,
-            text="Champion / challenger summary, active pointers и быстрый доступ к сравнению моделей.",
-            style="Meta.TLabel",
-            justify=tk.LEFT,
-            wraplength=420,
-        ).pack(anchor=tk.W, pady=(4, 8))
-        ttk.Label(
-            model_card,
-            textvariable=self.models_summary_var,
-            style="MetricValue.TLabel",
-            justify=tk.LEFT,
-            wraplength=420,
-        ).pack(anchor=tk.W, pady=(0, 8))
-        models_wrap = ttk.Frame(model_card, style="Card.TFrame")
+        # Models card
+        mdl_outer, mdl_card = hcard(bottom_row, padding=16)
+        mdl_outer.grid(row=0, column=1, sticky=tk.NSEW, padx=(14, 0))
+
+        tk.Label(mdl_card, text="РЕЕСТР МОДЕЛЕЙ", bg=c.get("card", "#0C1630"),
+                 fg=c.get("text_soft", "#8FA8D0"), font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
+        tk.Frame(mdl_card, bg=c.get("line_soft", "#142340"), height=1).pack(fill=tk.X, pady=(6, 8))
+        tk.Label(mdl_card, textvariable=self.models_summary_var,
+                 bg=c.get("card", "#0C1630"), fg=c.get("text_soft", "#8FA8D0"),
+                 font=("Consolas", 10), anchor=tk.W, justify=tk.LEFT, wraplength=360).pack(anchor=tk.W, pady=(0, 8))
+        models_wrap = tk.Frame(mdl_card, bg=c.get("log_bg", "#030811"),
+                               highlightthickness=1, highlightbackground=c.get("line", "#1A2E50"))
         models_wrap.pack(fill=tk.BOTH, expand=True)
-        self.dashboard_models_text = self._create_readonly_text_panel(models_wrap, height=9)
+        self.dashboard_models_text = self._create_readonly_text_panel(models_wrap, height=8)
         models_scroll = ttk.Scrollbar(models_wrap, orient=tk.VERTICAL, command=self.dashboard_models_text.yview)
         self.dashboard_models_text.configure(yscrollcommand=models_scroll.set)
         self.dashboard_models_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         models_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        ttk.Button(
-            model_card,
-            text="Открыть модели",
-            command=lambda: self._open_workspace(self.model_registry_tab),
-            style="Secondary.TButton",
-        ).pack(anchor=tk.W, pady=(12, 0))
+        ttk.Button(mdl_card, text="Открыть реестр →",
+                   command=lambda: self._open_workspace(self.model_registry_tab),
+                   style="Secondary.TButton").pack(anchor=tk.W, pady=(10, 0))
+
         self._refresh_dashboard_home_panels()
 
     def _build_futures_workspace_tab(self) -> None:
@@ -4772,12 +5076,23 @@ class BotikGui:
             log_body,
             wrap=tk.WORD,
             height=8,
-            bg=self._ui_colors.get("log_bg", "#0F1A2B"),
-            fg=self._ui_colors.get("log_fg", "#D8E8FF"),
-            insertbackground=self._ui_colors.get("log_fg", "#D8E8FF"),
+            bg=self._ui_colors.get("log_bg", "#030811"),
+            fg=self._ui_colors.get("log_fg", "#8FA8D0"),
+            insertbackground=self._ui_colors.get("log_fg", "#8FA8D0"),
+            selectbackground=self._ui_colors.get("accent_soft", "#0F2248"),
             relief=tk.FLAT,
+            bd=0,
+            padx=8,
+            pady=6,
+            spacing1=1,
+            spacing2=1,
+            spacing3=3,
             font=("Consolas", 10),
+            highlightthickness=1,
+            highlightbackground=self._ui_colors.get("line", "#1A2E50"),
+            highlightcolor=self._ui_colors.get("accent", "#3D8BFF"),
         )
+        self._configure_log_tags(self.log_text)
         log_scroll = ttk.Scrollbar(log_body, orient=tk.VERTICAL, command=self.log_text.yview)
         self.log_scroll_main = log_scroll
         self.log_text.configure(yscrollcommand=lambda a, b: self._on_log_yview("main", a, b))
@@ -4875,12 +5190,23 @@ class BotikGui:
             body,
             wrap=tk.WORD,
             height=28,
-            bg=self._ui_colors.get("log_bg", "#0F1A2B"),
-            fg=self._ui_colors.get("log_fg", "#D8E8FF"),
-            insertbackground=self._ui_colors.get("log_fg", "#D8E8FF"),
+            bg=self._ui_colors.get("log_bg", "#030811"),
+            fg=self._ui_colors.get("log_fg", "#8FA8D0"),
+            insertbackground=self._ui_colors.get("log_fg", "#8FA8D0"),
+            selectbackground=self._ui_colors.get("accent_soft", "#0F2248"),
             relief=tk.FLAT,
+            bd=0,
+            padx=8,
+            pady=6,
+            spacing1=1,
+            spacing2=1,
+            spacing3=3,
             font=("Consolas", 10),
+            highlightthickness=1,
+            highlightbackground=self._ui_colors.get("line", "#1A2E50"),
+            highlightcolor=self._ui_colors.get("accent", "#3D8BFF"),
         )
+        self._configure_log_tags(self.log_text_full)
         scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=self.log_text_full.yview)
         self.log_scroll_full = scroll
         self.log_text_full.configure(yscrollcommand=lambda a, b: self._on_log_yview("full", a, b))
@@ -6237,7 +6563,7 @@ class BotikGui:
             return
         self.app_version = latest
         self.root.title(f"Botik Dashboard {self.app_version}")
-        self.title_label.config(text=f"Botik Dashboard Shell {self.app_version}")
+        self.title_label.config(text=f"  {self.app_version}")
         self.version_label.config(text=f"app.version: {self.app_version}")
         self._enqueue_log(f"[ui] app.version updated -> {self.app_version}")
 
@@ -6380,12 +6706,45 @@ class BotikGui:
         if current != "ALL" and current not in self._known_log_pairs:
             self.log_filter_pair_var.set("ALL")
 
+    # ── Log color helpers ─────────────────────────────────────────────
+
+    def _configure_log_tags(self, widget: tk.Text) -> None:
+        """Apply colour tags to a log Text widget."""
+        c = self._ui_colors
+        widget.tag_configure("log_error",   foreground=c.get("danger",   "#FF4D6A"))
+        widget.tag_configure("log_warn",    foreground=c.get("warning",  "#FFB830"))
+        widget.tag_configure("log_ok",      foreground=c.get("success",  "#00E599"))
+        widget.tag_configure("log_info",    foreground=c.get("text_soft","#8FA8D0"))
+        widget.tag_configure("log_debug",   foreground=c.get("text_dim", "#4A6080"))
+        widget.tag_configure("log_channel", foreground=c.get("info",     "#00D4C8"))
+
+    def _log_tag_for_msg(self, msg: str) -> str:
+        """Return the tag name that matches the log level of *msg*."""
+        level = detect_dashboard_log_level(msg)
+        if level == "ERROR":
+            return "log_error"
+        if level == "WARNING":
+            return "log_warn"
+        if level == "DEBUG":
+            return "log_debug"
+        upper = msg.upper()
+        if any(kw in upper for kw in ("OK", "STARTED", "SUCCESS", "DONE", "SAVED")):
+            return "log_ok"
+        return "log_info"
+
+    def _insert_log_with_tag(self, widget: tk.Text, msg: str) -> None:
+        """Insert a single log line into *widget* with an appropriate colour tag."""
+        tag = self._log_tag_for_msg(msg)
+        widget.insert(tk.END, msg + "\n", tag)
+
+    # ── End log color helpers ─────────────────────────────────────────
+
     def _append_full_log_line(self, msg: str) -> None:
         if self.log_text_full is None:
             return
         if not self._log_matches_full_filters(msg):
             return
-        self.log_text_full.insert(tk.END, msg + "\n")
+        self._insert_log_with_tag(self.log_text_full, msg)
         if self._log_autoscroll_full:
             self.log_text_full.see(tk.END)
 
@@ -6395,7 +6754,7 @@ class BotikGui:
         self.log_text_full.delete("1.0", tk.END)
         for msg in self._log_messages:
             if self._log_matches_full_filters(msg):
-                self.log_text_full.insert(tk.END, msg + "\n")
+                self._insert_log_with_tag(self.log_text_full, msg)
         self._trim_text_widget(self.log_text_full, self._max_ui_log_lines_full)
         if self._log_autoscroll_full:
             self.log_text_full.see(tk.END)
@@ -6479,7 +6838,7 @@ class BotikGui:
         if dropped > 0:
             msg = f"[ui] log backlog trimmed: dropped={dropped}"
             self._log_messages.append(msg)
-            self.log_text.insert(tk.END, msg + "\n")
+            self._insert_log_with_tag(self.log_text, msg)
             if self._log_autoscroll_main:
                 self.log_text.see(tk.END)
             self._append_full_log_line(msg)
@@ -6498,7 +6857,7 @@ class BotikGui:
             if pair and pair not in self._known_log_pairs:
                 self._known_log_pairs.add(pair)
                 pair_values_changed = True
-            self.log_text.insert(tk.END, msg + "\n")
+            self._insert_log_with_tag(self.log_text, msg)
             if self._log_autoscroll_main:
                 self.log_text.see(tk.END)
             self._append_full_log_line(msg)
@@ -8622,37 +8981,17 @@ class BotikGui:
             tree.insert("", tk.END, values=row, tags=tags)
 
     def _active_tab_key(self) -> str:
-        if self.notebook is None:
-            return "home"
-        try:
-            selected = self.notebook.select()
-            widget = self.notebook.nametowidget(selected)
-        except Exception:
-            return "home"
-        if widget is self.home_tab:
-            return "home"
-        if widget is self.control_tab:
-            return "spot"
-        if widget is self.futures_tab:
-            if self.futures_notebook is not None:
-                try:
-                    inner = self.futures_notebook.nametowidget(self.futures_notebook.select())
-                    if inner is self.futures_paper_tab:
-                        return "futures_paper"
-                except Exception:
-                    pass
+        key = self._current_workspace_key or "home"
+        # For futures, distinguish between training and paper sub-tabs
+        if key == "futures" and self.futures_notebook is not None:
+            try:
+                inner = self.futures_notebook.nametowidget(self.futures_notebook.select())
+                if inner is self.futures_paper_tab:
+                    return "futures_paper"
+            except Exception:
+                pass
             return "futures_training"
-        if widget is self.model_registry_tab:
-            return "model_registry"
-        if widget is self.telegram_tab:
-            return "telegram"
-        if widget is self.logs_tab:
-            return "logs"
-        if widget is self.settings_tab:
-            return "settings"
-        if widget is self.statistics_tab:
-            return "ops"
-        return "home"
+        return key
 
     @staticmethod
     def _parse_pct_cell(value: Any) -> float | None:
@@ -8725,15 +9064,37 @@ class BotikGui:
         self.dashboard_release_manifests_var.set(
             format_dashboard_status_block(snapshot.get("dashboard_release_manifests_line") or "release=dashboard_release_manifest.yaml")
         )
+        _bal_total  = snapshot.get('balance_total', 'n/a')
+        _bal_wallet = snapshot.get('balance_wallet', 'n/a')
+        _pnl        = float(snapshot.get('stats_net_pnl_quote', 0.0))
+        _bal_delta  = float(snapshot.get('stats_balance_delta_total', 0.0))
+        _api_status = snapshot.get('api_status', 'n/a')
         self.dashboard_balance_summary_var.set(
-            f"{snapshot.get('balance_total', 'n/a')} всего | кошелек {snapshot.get('balance_wallet', 'n/a')}"
+            f"{_bal_total} всего | кошелек {_bal_wallet}"
         )
         self.dashboard_pnl_summary_var.set(
-            f"{float(snapshot.get('stats_net_pnl_quote', 0.0)):.6f} quote | поток баланса {float(snapshot.get('stats_balance_delta_total', 0.0)):.6f}"
+            f"{_pnl:.6f} quote | поток баланса {_bal_delta:.6f}"
         )
         self.dashboard_profile_summary_var.set(
-            f"{snapshot.get('api_status', 'n/a')} | профиль {snapshot.get('dashboard_profile_summary_line', 'unknown')}"
+            f"{_api_status} | профиль {snapshot.get('dashboard_profile_summary_line', 'unknown')}"
         )
+        # Short tile values
+        self._tile_balance_var.set(str(_bal_total) if _bal_total != "n/a" else "—")
+        self._tile_pnl_var.set(f"{_pnl:+.4f} USDT")
+        # Profile tile: extract mode keyword
+        _mode = str(_api_status)
+        if "paper" in _mode.lower():
+            _mode_short = "PAPER"
+        elif "live" in _mode.lower():
+            _mode_short = "LIVE"
+        elif "=" in _mode:
+            _mode_short = _mode.split("=")[-1].split(";")[0].strip().upper()[:10]
+        else:
+            _mode_short = _mode[:12]
+        self._tile_profile_var.set(_mode_short)
+        # Ops tile: service health summary
+        _rec = str(snapshot.get("reconciliation_status_line", "ok")).lower()
+        self._tile_ops_var.set("OK" if "ok" in _rec and "error" not in _rec else "WARN")
         self.ops_service_health_var.set(format_dashboard_status_block(snapshot.get("ops_service_health_line") or "services=n/a"))
         self.ops_reconciliation_var.set(format_dashboard_status_block(snapshot.get("ops_reconciliation_line") or "reconciliation=n/a"))
         self.ops_protection_var.set(format_dashboard_status_block(snapshot.get("ops_protection_line") or "protection=n/a"))

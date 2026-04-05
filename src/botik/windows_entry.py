@@ -41,9 +41,31 @@ def _show_error_box(text: str) -> None:
 
 
 def _run_gui() -> None:
-    from src.botik.gui.app import main as gui_main
+    from src.botik.gui.webview_app import main as gui_main
 
     gui_main()
+
+
+def _run_worker(worker_type: str, worker_args: list[str]) -> None:
+    """Dispatch to background worker entry points (backfill / live / training).
+
+    Called when the exe is launched with ``--worker <type>`` from ManagedProcess.
+    """
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    if worker_type == "backfill":
+        from src.botik.data.backfill_entry import main
+        sys.exit(main(worker_args))
+    elif worker_type == "live":
+        from src.botik.data.live_entry import main
+        sys.exit(main(worker_args))
+    elif worker_type == "training":
+        from src.botik.data.training_worker import main
+        sys.exit(main(worker_args))
+    sys.exit(1)
 
 
 def _run_nogui(config: str | None, *, role: str = "trading", ml_mode: str | None = None) -> None:
@@ -85,7 +107,19 @@ def main() -> None:
         help="ML mode for --nogui --role ml.",
     )
     parser.add_argument("--config", type=str, default=None, help="Optional config path for --nogui mode.")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--worker",
+        choices=["backfill", "live", "training"],
+        default=None,
+        help="Run a background worker subprocess (used internally by the dashboard).",
+    )
+    # Use parse_known_args so worker-specific flags (--scope, --category, etc.)
+    # are passed through unchanged to the worker's own argparse.
+    args, remaining = parser.parse_known_args()
+
+    if args.worker:
+        _run_worker(args.worker, remaining)
+        return
 
     launch_mode = f"nogui:{args.role}" if args.nogui else "gui"
     _log(f"windows_entry start mode={launch_mode} cwd={Path.cwd()}")

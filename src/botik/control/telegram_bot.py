@@ -25,6 +25,7 @@ from telebot import TeleBot
 from telebot import types
 
 from src.botik.utils.runtime import runtime_root
+from src.botik.storage.db import get_db
 
 if TYPE_CHECKING:
     from src.botik.config import AppConfig
@@ -43,13 +44,18 @@ BTN_RESUME = "Продолжить"
 BTN_PANIC = "Паника"
 BTN_HELP = "Помощь"
 BTN_UPDATE = "Update"
+BTN_BALANCE = "Баланс"
+BTN_ORDERS = "Ордера"
+BTN_FUTURES = "Фьючерсы"
+BTN_TRAINING = "ML статус"
 
 
 def _main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row(types.KeyboardButton(BTN_STATUS), types.KeyboardButton(BTN_SCANNER), types.KeyboardButton(BTN_PAIRS))
-    kb.row(types.KeyboardButton(BTN_PAUSE), types.KeyboardButton(BTN_RESUME), types.KeyboardButton(BTN_PANIC))
-    kb.row(types.KeyboardButton(BTN_HELP), types.KeyboardButton(BTN_UPDATE))
+    kb.row(types.KeyboardButton(BTN_STATUS), types.KeyboardButton(BTN_BALANCE), types.KeyboardButton(BTN_ORDERS))
+    kb.row(types.KeyboardButton(BTN_FUTURES), types.KeyboardButton(BTN_TRAINING), types.KeyboardButton(BTN_SCANNER))
+    kb.row(types.KeyboardButton(BTN_PAIRS), types.KeyboardButton(BTN_PAUSE), types.KeyboardButton(BTN_RESUME))
+    kb.row(types.KeyboardButton(BTN_PANIC), types.KeyboardButton(BTN_HELP), types.KeyboardButton(BTN_UPDATE))
     return kb
 
 
@@ -221,17 +227,181 @@ def _pairs_text(state: "TradingState", limit: int = 10) -> str:
     return "Фильтр пар (топ):\n" + "\n".join(lines)
 
 
+def _balance_text() -> str:
+    """Read latest balance snapshot from DB."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT total_equity, wallet_balance, available_balance, created_at_utc "
+                "FROM account_snapshots ORDER BY created_at_utc DESC LIMIT 1"
+            ).fetchone()
+        if not row:
+            return "Баланс: нет данных (таблица account_snapshots пуста)"
+        ts = str(row[3] or "")[:19]
+        return (
+            f"Баланс ({ts}):\n"
+            f"Итого: {float(row[0] or 0):.2f} USDT\n"
+            f"Кошелёк: {float(row[1] or 0):.2f} USDT\n"
+            f"Доступно: {float(row[2] or 0):.2f} USDT"
+        )
+    except Exception as exc:
+        return f"Баланс: ошибка БД — {exc}"
+
+
+def _table_exists(conn, table_name: str) -> bool:
+    try:
+        conn.execute(f"SELECT 1 FROM {table_name} WHERE 1=0").fetchall()
+        return True
+    except Exception:
+        return False
+
+
+def _table_columns(conn, table_name: str) -> set[str]:
+    try:
+        cursor = conn.execute(f"SELECT * FROM {table_name} WHERE 1=0")
+        return {str(column[0]) for column in (cursor.description or [])}
+    except Exception:
+        return set()
+
+
+def _orders_text(limit: int = 10) -> str:
+    """Read open spot holdings from DB."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            if not _table_exists(conn, "spot_holdings"):
+                return "Открытых спот-позиций нет"
+            columns = _table_columns(conn, "spot_holdings")
+            current_price_expr = "current_price" if "current_price" in columns else "NULL AS current_price"
+            unrealized_pnl_expr = "unrealized_pnl" if "unrealized_pnl" in columns else "NULL AS unrealized_pnl"
+            rows = conn.execute(
+                f"SELECT symbol, base_asset, free_qty, locked_qty, avg_entry_price, {current_price_expr}, "
+                f"{unrealized_pnl_expr}, hold_reason, updated_at_utc "
+                "FROM spot_holdings "
+                "WHERE ABS(COALESCE(free_qty, 0.0)) > 0 OR ABS(COALESCE(locked_qty, 0.0)) > 0 "
+                "ORDER BY updated_at_utc DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        if not rows:
+            return "Открытых спот-позиций нет"
+        lines = ["Открытые спот-позиции:"]
+        for r in rows:
+            sym, base_asset, free_qty, locked_qty, avg_entry, current_price, unrealized_pnl, hold_reason, ts = r
+            qty = float(free_qty or 0.0) + float(locked_qty or 0.0)
+            upnl = None if unrealized_pnl is None else float(unrealized_pnl or 0.0)
+            upnl_text = "n/a" if upnl is None else f"{upnl:+.2f}"
+            price_text = "n/a" if current_price is None else f"{float(current_price or 0):.4f}"
+            lines.append(
+                f"  {sym} {base_asset} qty={qty:.6f} вход={float(avg_entry or 0):.4f} "
+                f"mark={price_text} uPnL={upnl_text} [{hold_reason}] {str(ts or '')[:16]}"
+            )
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"Ордера: ошибка БД — {exc}"
+
+
+def _futures_text(limit: int = 10) -> str:
+    """Read open futures positions from DB."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            if not _table_exists(conn, "futures_positions"):
+                return "Открытых фьючерсных позиций нет"
+            columns = _table_columns(conn, "futures_positions")
+            qty_column = "size" if "size" in columns else ("qty" if "qty" in columns else "")
+            pnl_column = (
+                "unrealised_pnl"
+                if "unrealised_pnl" in columns
+                else ("unrealized_pnl" if "unrealized_pnl" in columns else "")
+            )
+            if not qty_column:
+                return "Фьючерсы: схема `futures_positions` не содержит size/qty"
+            leverage_expr = "leverage" if "leverage" in columns else "NULL AS leverage"
+            liq_expr = "liq_price" if "liq_price" in columns else "NULL AS liq_price"
+            protection_expr = "protection_status" if "protection_status" in columns else "NULL AS protection_status"
+            pnl_expr = f"{pnl_column} AS position_pnl" if pnl_column else "NULL AS position_pnl"
+            rows = conn.execute(
+                f"SELECT symbol, side, {qty_column} AS size, entry_price, mark_price, {leverage_expr}, "
+                f"{liq_expr}, {pnl_expr}, {protection_expr} "
+                "FROM futures_positions "
+                f"WHERE ABS(COALESCE({qty_column}, 0.0)) > 0 "
+                "ORDER BY updated_at_utc DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        if not rows:
+            return "Открытых фьючерсных позиций нет"
+        lines = ["Фьючерсные позиции:"]
+        for r in rows:
+            sym, side, size, ep, mp, leverage, liq, pnl, protection = r
+            pnl_f = float(pnl or 0)
+            sign = "+" if pnl_f >= 0 else ""
+            lines.append(
+                f"  {sym} {side} size={float(size or 0):.6f} вход={float(ep or 0):.4f} mark={float(mp or 0):.4f} "
+                f"liq={('n/a' if liq is None else f'{float(liq or 0):.4f}')} lev={('n/a' if leverage is None else float(leverage or 0))} "
+                f"PnL={sign}{pnl_f:.2f} [{str(protection or 'unknown')}]"
+            )
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"Фьючерсы: ошибка БД — {exc}"
+
+
+def _training_text() -> str:
+    """Read latest ML training status from DB."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            # Latest training run
+            run = conn.execute(
+                "SELECT model_scope, status, epochs_done, epochs_total, accuracy, "
+                "loss, started_at_utc, finished_at_utc "
+                "FROM ml_training_runs ORDER BY started_at_utc DESC LIMIT 1"
+            ).fetchone()
+            # Latest model stats
+            stat = conn.execute(
+                "SELECT model_name, model_scope, accuracy, sharpe_ratio, trade_count, status "
+                "FROM model_stats ORDER BY created_at_utc DESC LIMIT 1"
+            ).fetchone()
+
+        lines = ["ML статус:"]
+        if run:
+            scope, st, ep, ep_max, acc, loss, started, finished = run
+            lines.append(
+                f"  Обучение [{scope}]: {st}  эпох={ep}/{ep_max}  "
+                f"acc={float(acc or 0):.3f}  loss={float(loss or 0):.4f}"
+            )
+            lines.append(f"  Старт: {str(started or '')[:19]}  Конец: {str(finished or '')[:19]}")
+        else:
+            lines.append("  Запусков обучения нет")
+
+        if stat:
+            mname, mscope, acc2, sharpe, tcnt, mst = stat
+            lines.append(
+                f"  Модель [{mscope}] {mname}: acc={float(acc2 or 0):.3f}  "
+                f"sharpe={float(sharpe or 0):.2f}  trades={tcnt}  [{mst}]"
+            )
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"ML статус: ошибка БД — {exc}"
+
+
 def _help_text() -> str:
     return (
         "Команды:\n"
-        "/status - текущий статус\n"
-        "/scanner - сводка сканера\n"
-        "/pairs - статусы пар\n"
-        "/pause - поставить торговлю на паузу\n"
-        "/resume - продолжить торговлю\n"
-        "/panic - аварийная остановка (cancel-all)\n"
-        "/update - подтянуть обновления из GitHub и мягко перезапустить торговый цикл\n"
-        "/help - подсказка"
+        "/status — текущий статус бота\n"
+        "/balance — баланс аккаунта\n"
+        "/orders — открытые спот-позиции\n"
+        "/futures — фьючерсные позиции\n"
+        "/training — статус ML обучения\n"
+        "/starttrading — запустить торговлю\n"
+        "/stoptrading — остановить торговлю\n"
+        "/scanner — сводка сканера\n"
+        "/pairs — статусы пар\n"
+        "/pause — пауза (новые ордера отключены)\n"
+        "/resume — продолжить торговлю\n"
+        "/panic — аварийная остановка (cancel-all)\n"
+        "/update — обновить код из GitHub\n"
+        "/help — подсказка"
     )
 
 
@@ -418,6 +588,50 @@ def run_telegram_bot(
             return
         do_update(message.chat.id)
 
+    @bot.message_handler(commands=["balance"])
+    def cmd_balance(message: types.Message) -> None:
+        if not is_allowed_message(message):
+            return
+        logger.info("Telegram command: /balance from chat_id=%s", message.chat.id)
+        bot.reply_to(message, _balance_text(), reply_markup=reply_kb)
+
+    @bot.message_handler(commands=["orders"])
+    def cmd_orders(message: types.Message) -> None:
+        if not is_allowed_message(message):
+            return
+        logger.info("Telegram command: /orders from chat_id=%s", message.chat.id)
+        bot.reply_to(message, _orders_text(), reply_markup=reply_kb)
+
+    @bot.message_handler(commands=["futures"])
+    def cmd_futures(message: types.Message) -> None:
+        if not is_allowed_message(message):
+            return
+        logger.info("Telegram command: /futures from chat_id=%s", message.chat.id)
+        bot.reply_to(message, _futures_text(), reply_markup=reply_kb)
+
+    @bot.message_handler(commands=["training"])
+    def cmd_training(message: types.Message) -> None:
+        if not is_allowed_message(message):
+            return
+        logger.info("Telegram command: /training from chat_id=%s", message.chat.id)
+        bot.reply_to(message, _training_text(), reply_markup=reply_kb)
+
+    @bot.message_handler(commands=["starttrading"])
+    def cmd_starttrading(message: types.Message) -> None:
+        if not is_allowed_message(message):
+            return
+        logger.info("Telegram command: /starttrading from chat_id=%s", message.chat.id)
+        state.set_paused(False)
+        send_text(message.chat.id, "Торговля запущена. Новые ордера разрешены.")
+
+    @bot.message_handler(commands=["stoptrading"])
+    def cmd_stoptrading(message: types.Message) -> None:
+        if not is_allowed_message(message):
+            return
+        logger.info("Telegram command: /stoptrading from chat_id=%s", message.chat.id)
+        state.set_paused(True)
+        send_text(message.chat.id, "Торговля остановлена. Новые ордера отключены.")
+
     @bot.message_handler(func=lambda m: bool(m.text))
     def button_router(message: types.Message) -> None:
         if not is_allowed_message(message):
@@ -439,6 +653,14 @@ def run_telegram_bot(
             do_update(message.chat.id)
         elif text == BTN_HELP:
             bot.reply_to(message, _help_text(), reply_markup=reply_kb)
+        elif text == BTN_BALANCE:
+            bot.reply_to(message, _balance_text(), reply_markup=reply_kb)
+        elif text == BTN_ORDERS:
+            bot.reply_to(message, _orders_text(), reply_markup=reply_kb)
+        elif text == BTN_FUTURES:
+            bot.reply_to(message, _futures_text(), reply_markup=reply_kb)
+        elif text == BTN_TRAINING:
+            bot.reply_to(message, _training_text(), reply_markup=reply_kb)
 
     @bot.callback_query_handler(func=lambda call: str(call.data).startswith("ctl:"))
     def callback_controls(call: types.CallbackQuery) -> None:
@@ -470,7 +692,13 @@ def run_telegram_bot(
             [
                 types.BotCommand("start", "открыть управление"),
                 types.BotCommand("help", "список команд"),
-                types.BotCommand("status", "текущий статус"),
+                types.BotCommand("status", "текущий статус бота"),
+                types.BotCommand("balance", "баланс аккаунта"),
+                types.BotCommand("orders", "открытые спот-позиции"),
+                types.BotCommand("futures", "фьючерсные позиции"),
+                types.BotCommand("training", "статус ML обучения"),
+                types.BotCommand("starttrading", "запустить торговлю"),
+                types.BotCommand("stoptrading", "остановить торговлю"),
                 types.BotCommand("scanner", "сводка сканера"),
                 types.BotCommand("pairs", "статусы пар"),
                 types.BotCommand("pause", "пауза торговли"),

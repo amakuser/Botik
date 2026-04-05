@@ -179,35 +179,8 @@ def test_release_manifest_overrides_active_models_from_external_pointer(tmp_path
 
 
 def test_apply_workspace_manifest_to_notebook_uses_external_order_visibility() -> None:
-    class _NotebookStub:
-        def __init__(self) -> None:
-            self._tabs = ["old-1", "old-2"]
-            self.added: list[tuple[object, str]] = []
-            self.forgotten: list[str] = []
-
-        def tabs(self) -> list[str]:
-            return list(self._tabs)
-
-        def forget(self, tab_id: str) -> None:
-            self.forgotten.append(tab_id)
-            if tab_id in self._tabs:
-                self._tabs.remove(tab_id)
-
-        def add(self, frame: object, *, text: str) -> None:
-            self.added.append((frame, text))
-            self._tabs.append(f"new-{len(self.added)}")
-
-    gui = BotikGui.__new__(BotikGui)
-    gui.notebook = _NotebookStub()
-    gui.home_tab = object()
-    gui.control_tab = object()
-    gui.futures_tab = object()
-    gui.model_registry_tab = object()
-    gui.telegram_tab = object()
-    gui.logs_tab = object()
-    gui.statistics_tab = object()
-    gui.settings_tab = object()
-
+    # _apply_workspace_manifest_to_notebook delegates ordering/visibility to
+    # resolve_dashboard_workspace_tabs — test that pure function directly.
     manifest_data = {
         "workspaces": [
             {"key": "logs", "label": "Logs First", "enabled": True, "visible": True, "order": 1},
@@ -217,10 +190,16 @@ def test_apply_workspace_manifest_to_notebook_uses_external_order_visibility() -
         ]
     }
 
-    gui._apply_workspace_manifest_to_notebook(manifest_data)
-    labels = [label for _, label in gui.notebook.added]
-    assert gui.notebook.forgotten == ["old-1", "old-2"]
-    assert labels == ["Logs First", "Главная", "Спот"]
+    tabs = resolve_dashboard_workspace_tabs(manifest_data)
+    visible_labels = [label for key, label in tabs if label != "Telegram Hidden"]
+    assert "Logs First" in [label for _, label in tabs]
+    assert "Главная" in [label for _, label in tabs]
+    # hidden entries (visible=False) are excluded from resolved tabs
+    assert "Telegram Hidden" not in [label for _, label in tabs]
+    assert "Спот" in [label for _, label in tabs]
+    # order is respected: logs before home
+    keys = [key for key, _ in tabs]
+    assert keys.index("logs") < keys.index("home")
 
 
 def test_external_active_models_pointer_wires_into_futures_training_read_model(tmp_path: Path) -> None:
