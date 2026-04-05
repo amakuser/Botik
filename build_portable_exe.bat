@@ -31,11 +31,11 @@ for /f "delims=" %%i in ('git rev-parse HEAD 2^>^&1') do set "SHA=%%i"
 if not "%SHA%"=="" (>version.txt echo %SHA% & echo [INFO] SHA: %SHA%)
 
 :: ── [3/4] Kill old process, build EXE directly into project root ─────────
-echo [3/4] Building EXE...
+echo [3/4] Building EXE (low priority, no lag)...
 powershell -NoProfile -Command "Stop-Process -Name botik -Force -ErrorAction SilentlyContinue" >nul 2>&1
-"%PY%" -m PyInstaller --noconfirm --clean --distpath . botik.spec >>"%LOG_FILE%" 2>&1
-if errorlevel 1 (
-  echo [ERROR] Build failed. See: "%LOG_FILE%"
+start "" /low /wait "%PY%" -m PyInstaller --noconfirm --clean --distpath . botik.spec
+if not exist "botik.exe" (
+  echo [ERROR] Build failed - botik.exe not found. See: "%LOG_FILE%"
   exit /b 1
 )
 

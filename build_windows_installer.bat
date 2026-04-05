@@ -25,10 +25,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [2/3] Building one-file executable...
-"%PY%" -m PyInstaller --noconfirm --clean botik.spec >>"%LOG_FILE%" 2>&1
-if errorlevel 1 (
-  echo [ERROR] PyInstaller build failed. See "%LOG_FILE%"
+echo [2/3] Building one-file executable (low priority, no lag)...
+start "" /low /wait "%PY%" -m PyInstaller --noconfirm --clean botik.spec
+if not exist "dist\botik.exe" (
+  echo [ERROR] PyInstaller build failed - dist\botik.exe not found. See "%LOG_FILE%"
   exit /b 1
 )
 
