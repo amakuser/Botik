@@ -84,8 +84,8 @@ def _insert_candles(
             """
             INSERT OR IGNORE INTO price_history
               (symbol, category, interval, open_time_ms,
-               open, high, low, close, volume, created_at_utc)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               open, high, low, close, volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

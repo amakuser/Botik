@@ -24,7 +24,6 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime, timezone
 from typing import Any
 
 log = logging.getLogger("botik.marketdata.ohlcv_worker")
@@ -34,10 +33,6 @@ BASE_URL = f"https://{BYBIT_HOST}"
 KLINE_LIMIT = 1000          # максимум Bybit за один запрос
 REQUEST_DELAY = 0.25        # пауза между запросами (не бить по rate limit)
 MS_PER_MIN = 60_000
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _interval_to_ms(interval: str) -> int:
@@ -216,12 +211,12 @@ class OHLCVWorker:
         Сохраняет список свечей в price_history.
         Использует INSERT OR IGNORE — дубликаты молча пропускаются.
         Возвращает кол-во вставленных строк.
+        Использует executemany для пакетной вставки вместо цикла.
         """
         if not candles:
             return 0
 
         rows = []
-        now = _utc_now()
         for c in candles:
             try:
                 open_time_ms = int(c[0])
@@ -236,7 +231,7 @@ class OHLCVWorker:
             if close <= 0:
                 continue
             rows.append((symbol, category, interval, open_time_ms,
-                         open_p, high, low, close, volume, turnover, now))
+                         open_p, high, low, close, volume, turnover))
 
         if not rows:
             return 0
@@ -244,21 +239,18 @@ class OHLCVWorker:
         try:
             from src.botik.storage.db import get_db
             db = get_db()
-            saved = 0
             with db.connect() as conn:
-                for row in rows:
-                    result = conn.execute(
-                        """
-                        INSERT OR IGNORE INTO price_history
-                          (symbol, category, interval, open_time_ms,
-                           open, high, low, close, volume, turnover,
-                           created_at_utc)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        row,
-                    )
-                    saved += result.rowcount if hasattr(result, "rowcount") else 1
-            return saved
+                cur = conn.executemany(
+                    """
+                    INSERT OR IGNORE INTO price_history
+                      (symbol, category, interval, open_time_ms,
+                       open, high, low, close, volume, turnover)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+                # rowcount is accumulated across all executemany statements
+                return max(0, cur.rowcount)
         except Exception as exc:
             log.error("_save_candles DB error: %s", exc)
             return 0

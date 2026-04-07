@@ -62,12 +62,12 @@ def _insert_candles(db: Database, symbol: str, category: str, interval: str,
         p = base_price * (1.0 + 0.02 * math.sin(i * 0.5))
         high = p * 1.003
         low  = p * 0.997
-        rows.append((symbol, category, interval, ts, p, high, low, p, 100.0, p * 100.0, "2026-01-01T00:00:00Z"))
+        rows.append((symbol, category, interval, ts, p, high, low, p, 100.0, p * 100.0))
     with db.connect() as conn:
         conn.executemany(
             "INSERT OR IGNORE INTO price_history "
-            "(symbol, category, interval, open_time_ms, open, high, low, close, volume, turnover, created_at_utc) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "(symbol, category, interval, open_time_ms, open, high, low, close, volume, turnover) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
 
