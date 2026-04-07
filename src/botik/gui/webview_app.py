@@ -59,6 +59,7 @@ from .api_data_mixin import DataMixin
 from .api_ticker_mixin import TickerMixin
 from .api_analytics_mixin import AnalyticsMixin
 from .api_backtest_mixin import BacktestMixin
+from .dev_server import BotikDevServer
 
 log = logging.getLogger("botik.webview")
 
@@ -232,6 +233,9 @@ def main() -> None:
     api     = DashboardAPI()
     version = api._app_version
 
+    dev_server = BotikDevServer(api=api, version=version)
+    dev_server.start()
+
     html_content = HTML_PATH.read_text(encoding="utf-8")
     window = webview.create_window(
         title=f"Botik Dashboard  {version}",
@@ -245,6 +249,8 @@ def main() -> None:
     )
 
     log.info("Starting pywebview window — Botik Dashboard %s", version)
+
+    dev_server.set_window(window)
 
     def _bootstrap_js(win) -> None:
         """Poll for pywebview bridge readiness, then call _initAPI() in the page.
