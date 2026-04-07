@@ -575,8 +575,9 @@
     <div class="nav-item" data-page="analytics">
       <span class="nav-icon">📈</span> PnL
     </div>
-    <div class="nav-item" data-page="data">
+    <div class="nav-item" data-page="data" id="nav-data-item">
       <span class="nav-icon">⬦</span> Данные
+      <span class="nav-badge" id="nav-data-badge" style="display:none;background:var(--yellow);color:#000;animation:pulse-dot 1.5s ease-in-out infinite">●</span>
     </div>
     <div class="nav-item" data-page="market">
       <span class="nav-icon">◎</span> Рынок
@@ -586,7 +587,6 @@
     </div>
     <div class="nav-item" data-page="logs">
       <span class="nav-icon">≡</span> Логи
-      <span class="nav-badge">3</span>
     </div>
     <div class="sidebar-section" style="margin-top:10px">Система</div>
     <div class="nav-item" data-page="ops">
@@ -621,7 +621,7 @@
           <div class="metric-icon">💰</div>
           <div class="metric-label">PnL сегодня</div>
           <div class="metric-value green" id="pnl-today">—</div>
-          <div class="metric-change up">↑ +2.4% vs вчера</div>
+          <div class="metric-change muted" id="pnl-sub">Нет сделок</div>
         </div>
         <div class="card">
           <div class="metric-icon">📊</div>
@@ -646,24 +646,86 @@
         <div class="card">
           <div class="section-title">PnL за неделю</div>
           <div class="chart-area" id="pnl-chart"></div>
-          <div class="ticker" id="ticker-row"></div>
         </div>
-        <div class="card" style="display:flex;flex-direction:column;gap:14px">
-          <div class="section-title">Управление</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="font-size:11.5px;color:var(--text3);margin-bottom:2px">Стратегия</div>
-            <select class="select-field" style="width:100%">
-              <option>Spot Spread (Maker)</option>
-              <option>Spot Spike Burst</option>
-              <option>Futures Spike Reversal</option>
-            </select>
+        <div class="card" style="display:flex;flex-direction:column;gap:12px">
+          <div class="section-title">Управление торговлей</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="min-width:80px;font-size:13px;font-weight:500">Спот</div>
+            <span class="tag tag-idle" id="spot-trade-tag">STOPPED</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-green" id="btn-spot-start" onclick="apiStartSpot()" style="padding:4px 12px;font-size:12px">▶ Старт</button>
+            <button class="btn btn-red"   id="btn-spot-stop"  onclick="apiStopSpot()"  style="padding:4px 12px;font-size:12px" disabled>■ Стоп</button>
           </div>
-          <div class="ctrl-row">
-            <button class="btn btn-green" id="btn-start" style="flex:1" onclick="apiStartTrading()">▶ Запустить</button>
-            <button class="btn btn-red" id="btn-stop" style="flex:1" onclick="apiStopTrading()">■ Стоп</button>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="min-width:80px;font-size:13px;font-weight:500">Фьючерсы</div>
+            <span class="tag tag-idle" id="fut-trade-tag">STOPPED</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-green" id="btn-fut-start" onclick="apiStartFutures()" style="padding:4px 12px;font-size:12px">▶ Старт</button>
+            <button class="btn btn-red"   id="btn-fut-stop"  onclick="apiStopFutures()"  style="padding:4px 12px;font-size:12px" disabled>■ Стоп</button>
           </div>
           <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiPreflight()">⚡ Preflight Check</button>
-          <div class="alert-ok" id="preflight-status">✓ Ожидание данных…</div>
+          <div class="alert-ok" id="preflight-status">Ожидание данных…</div>
+        </div>
+      </div>
+      <!-- ПАЙПЛАЙН: Данные → Обучение → Торговля -->
+      <div class="card mb-14" id="pipeline-card">
+        <div class="section-title" style="margin-bottom:12px">Пайплайн: Данные → Обучение → Торговля</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          <!-- Шаг 1: Данные -->
+          <div style="background:var(--surface2);border-radius:8px;padding:12px 14px" id="pl-step1-card">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0" id="pl-step1-num">1</div>
+              <div style="font-size:13px;font-weight:600">Исторические данные</div>
+              <span id="pl-backfill-badge" style="display:none;margin-left:auto;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--yellow);animation:pulse-dot 1.5s ease-in-out infinite">● СБОР</span>
+            </div>
+            <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">OHLCV свечи для обучения моделей</div>
+            <div style="font-size:12px;margin-bottom:6px">
+              Futures: <span id="pl-data-fut" style="color:var(--text2)">—</span><br>
+              Spot: <span id="pl-data-spot" style="color:var(--text2)">—</span>
+            </div>
+            <div id="pl-backfill-info" style="display:none;font-size:11px;color:var(--yellow);margin-bottom:8px;font-family:'JetBrains Mono',monospace">
+              <span id="pl-backfill-detail">Идёт загрузка свечей…</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost" id="pl-btn-data" style="flex:1;font-size:12px;justify-content:center"
+                onclick="_navTo('data')">→ Вкладка Данные</button>
+              <button class="btn" id="pl-btn-stop-backfill" style="display:none;flex:1;font-size:12px;justify-content:center;background:rgba(255,77,106,0.15);color:var(--red);border-color:var(--red)"
+                onclick="apiStopBackfill()">■ Стоп</button>
+            </div>
+          </div>
+          <!-- Шаг 2: Обучение -->
+          <div style="background:var(--surface2);border-radius:8px;padding:12px 14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">2</div>
+              <div style="font-size:13px;font-weight:600">Обучение ML моделей</div>
+            </div>
+            <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Историк + Предиктор на свечах</div>
+            <div style="font-size:12px;margin-bottom:10px">
+              Futures: <span id="pl-model-fut">—</span><br>
+              Spot: <span id="pl-model-spot">—</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn" id="pl-btn-fut" style="flex:1;font-size:11px;padding:4px 6px"
+                onclick="apiStartTrainingFromHome('futures')">▶ Futures</button>
+              <button class="btn" id="pl-btn-spot" style="flex:1;font-size:11px;padding:4px 6px"
+                onclick="apiStartTrainingFromHome('spot')">▶ Spot</button>
+              <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px"
+                onclick="_navTo('models')">→</button>
+            </div>
+          </div>
+          <!-- Шаг 3: Торговля -->
+          <div style="background:var(--surface2);border-radius:8px;padding:12px 14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">3</div>
+              <div style="font-size:13px;font-weight:600">Запуск торговли</div>
+            </div>
+            <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Требует обученных моделей</div>
+            <div style="font-size:12px;margin-bottom:10px">
+              Спот: <span id="pl-trade-spot">—</span><br>
+              Фьючерсы: <span id="pl-trade-fut">—</span>
+            </div>
+            <div style="font-size:11px;color:var(--text3)">Управление выше ↑</div>
+          </div>
         </div>
       </div>
       <div class="card mb-14">
@@ -812,6 +874,24 @@
             <button class="btn" id="train-spot-start-btn" onclick="apiStartTrainingScope('spot')" disabled>▶ Старт</button>
             <button class="btn btn-ghost" id="train-spot-stop-btn" onclick="apiStopTrainingScope('spot')" disabled>■ Стоп</button>
           </div>
+        </div>
+      </div>
+      <!-- Мониторинг ресурсов ML -->
+      <div class="grid-3 mb-14" id="ml-resources-row">
+        <div class="card">
+          <div class="metric-label">RAM (Futures ML)</div>
+          <div class="metric-value plain" id="ml-ram-futures" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="ml-cpu-futures">CPU: —</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">RAM (Spot ML)</div>
+          <div class="metric-value plain" id="ml-ram-spot" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="ml-cpu-spot">CPU: —</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">GPU</div>
+          <div class="metric-value plain" id="ml-gpu-pct" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="ml-gpu-mem">VRAM: —</div>
         </div>
       </div>
       <div class="card">
@@ -1674,13 +1754,21 @@ function buildTable(tableEl, headers, rows) {
   tableEl.appendChild(tbody);
 }
 
-var holdingsHeaders = ['Символ','Кол-во','Цена входа','Текущая','PnL','Статус'];
-var holdingsRows = [
-  [{text:'BTC/USDT',cls:'col-blue'},{text:'0.00124'},{text:'103 800'},{text:'104 280'},{text:'+$0.59',cls:'col-green'},{text:'OPEN',tag:'tag-active'}],
-  [{text:'ETH/USDT',cls:'col-blue'},{text:'0.0521'},{text:'3 860'},{text:'3 841'},{text:'-$0.99',cls:'col-red'},{text:'OPEN',tag:'tag-active'}],
-  [{text:'SOL/USDT',cls:'col-blue'},{text:'1.22'},{text:'180.1'},{text:'182.5'},{text:'+$2.93',cls:'col-green'},{text:'OPEN',tag:'tag-active'}]
-];
-buildTable(document.getElementById('holdings-table'), holdingsHeaders, holdingsRows);
+/* ─── HOME HOLDINGS TABLE ─────────────────────────────── */
+(function() {
+  var tbl = document.getElementById('holdings-table');
+  if (tbl) {
+    var tbody = document.createElement('tbody');
+    var tr = document.createElement('tr');
+    var td = document.createElement('td');
+    td.colSpan = 6;
+    td.style.cssText = 'text-align:center;color:var(--text3);padding:24px;font-size:13px';
+    td.textContent = 'Загрузка…';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    tbl.appendChild(tbody);
+  }
+})();
 
 var spotPositionHeaders = ['Символ','Base','Free','Locked','Avg entry','uPnL','Причина','Обновлено',''];
 var spotOrderHeaders = ['Символ','Сторона','Тип','Цена','Qty','Filled','Статус','Обновлено'];
@@ -2008,8 +2096,27 @@ function _loadModelCards() {
       var d = JSON.parse(raw) || {};
       _renderPerModelCards(d.cards || []);
       _applyTrainingControls(d.training_states, d.data_ready);
+      _applyMlResources(d.process_resources);
     } catch(e) { console.warn('[botik] model_cards parse error', e); }
   }).catch(function(e) { console.warn('[botik] model_cards error', e); });
+}
+
+function _applyMlResources(res) {
+  if (!res) return;
+  var scopes = res.scopes || {};
+  function _setResource(scope, ramId, cpuId) {
+    var info = scopes[scope] || {};
+    var ramEl = document.getElementById(ramId);
+    var cpuEl = document.getElementById(cpuId);
+    if (ramEl) ramEl.textContent = info.ram_mb !== null && info.ram_mb !== undefined ? info.ram_mb + ' MB' : '\u2014';
+    if (cpuEl) cpuEl.textContent = 'CPU: ' + (info.cpu_pct !== null && info.cpu_pct !== undefined ? info.cpu_pct + '%' : '\u2014');
+  }
+  _setResource('futures', 'ml-ram-futures', 'ml-cpu-futures');
+  _setResource('spot',    'ml-ram-spot',    'ml-cpu-spot');
+  var gpuEl  = document.getElementById('ml-gpu-pct');
+  var gpuMem = document.getElementById('ml-gpu-mem');
+  if (gpuEl)  gpuEl.textContent  = res.gpu_pct  !== null && res.gpu_pct  !== undefined ? res.gpu_pct  + '%' : '\u2014';
+  if (gpuMem) gpuMem.textContent = 'VRAM: ' + (res.gpu_mem_mb !== null && res.gpu_mem_mb !== undefined ? Math.round(res.gpu_mem_mb) + ' MB' : '\u2014');
 }
 
 function _loadMlLogs(scope) {
@@ -2242,7 +2349,178 @@ window.addEventListener('pywebviewready', _initAPI);
   if (!_apiInitDone && attempt < 50) setTimeout(function(){ _waitAPI(attempt+1); }, 200);
 })(0);
 
+/* ─── NAVIGATION HELPER ──────────────────────────────────── */
+function _navTo(page) {
+  var item = document.querySelector('.nav-item[data-page="' + page + '"]');
+  if (item) item.click();
+}
+
+/* ─── PIPELINE WIDGET ────────────────────────────────────── */
+function _applyPipeline(p) {
+  if (!p) return;
+
+  var futReady    = p.data_futures_ready || 0;
+  var spotReady   = p.data_spot_ready    || 0;
+  var totalData   = p.data_total         || 0;
+  var bfState     = p.backfill_state     || 'stopped';
+  var ldState     = p.livedata_state     || 'stopped';
+  var isCollecting = (bfState === 'running' || ldState === 'running');
+
+  // Step 1: Data counts
+  var futEl  = document.getElementById('pl-data-fut');
+  var spotEl = document.getElementById('pl-data-spot');
+  if (futEl)  futEl.textContent  = futReady  > 0 ? futReady  + ' символов готово' : 'Нет данных';
+  if (spotEl) spotEl.textContent = spotReady > 0 ? spotReady + ' символов готово' : 'Нет данных';
+  if (futEl)  futEl.style.color  = futReady  > 0 ? 'var(--green)' : 'var(--yellow)';
+  if (spotEl) spotEl.style.color = spotReady > 0 ? 'var(--green)' : 'var(--yellow)';
+
+  // Step 1: Backfill indicator
+  var badge  = document.getElementById('pl-backfill-badge');
+  var info   = document.getElementById('pl-backfill-info');
+  var detail = document.getElementById('pl-backfill-detail');
+  var stopBtn = document.getElementById('pl-btn-stop-backfill');
+  var card   = document.getElementById('pl-step1-card');
+  if (isCollecting) {
+    if (badge)  { badge.style.display = ''; }
+    if (info)   { info.style.display  = ''; }
+    if (detail) {
+      var who = bfState === 'running' ? 'backfill' : 'livedata';
+      detail = document.getElementById('pl-backfill-detail');
+      detail.textContent = who === 'backfill'
+        ? 'Идёт загрузка исторических свечей (' + totalData + ' символов)…'
+        : 'Идёт получение live-данных…';
+    }
+    if (stopBtn) { stopBtn.style.display = ''; }
+    if (card)   { card.style.borderLeft = '2px solid var(--yellow)'; }
+  } else {
+    if (badge)  { badge.style.display  = 'none'; }
+    if (info)   { info.style.display   = 'none'; }
+    if (stopBtn){ stopBtn.style.display = 'none'; }
+    if (card)   { card.style.borderLeft = ''; }
+  }
+
+  // Nav badge on "Данные"
+  var navBadge = document.getElementById('nav-data-badge');
+  if (navBadge) { navBadge.style.display = isCollecting ? '' : 'none'; }
+
+  // Step 2: Models
+  var stateMap = {
+    'trained':    ['var(--green)',  'Обучена'],
+    'training':   ['var(--yellow)', 'Обучается…'],
+    'checkpoint': ['var(--yellow)', 'Checkpoint'],
+    'missing':    ['var(--red)',    'Не обучена'],
+  };
+  function _applyModelEl(elId, state, btnId, hasData) {
+    var el  = document.getElementById(elId);
+    var btn = document.getElementById(btnId);
+    var info2 = stateMap[state] || ['var(--text3)', state];
+    if (el)  { el.textContent = info2[1]; el.style.color = info2[0]; }
+    if (btn) {
+      var canTrain = hasData && state !== 'training';
+      btn.disabled = !canTrain;
+      btn.textContent = state === 'training' ? '⟳' : '▶ ' + (btnId === 'pl-btn-fut' ? 'Futures' : 'Spot');
+    }
+  }
+  _applyModelEl('pl-model-fut',  p.models_futures || 'missing', 'pl-btn-fut',  futReady  > 0);
+  _applyModelEl('pl-model-spot', p.models_spot    || 'missing', 'pl-btn-spot', spotReady > 0);
+
+  // Step 3: Trade state (from running_modes already applied elsewhere)
+}
+
+function apiStopBackfill() {
+  var api = _getAPI(); if (!api) return;
+  if (api.stop_backfill) {
+    api.stop_backfill().then(function(r) { console.log('[botik] stop_backfill', r); });
+  } else {
+    console.warn('[botik] stop_backfill not available');
+  }
+}
+
+function _applyPipelineTrade(runningModes) {
+  var modes    = runningModes || [];
+  var spotRunning = modes.some(function(m) { return m === 'spot_spread' || m === 'spot_spike'; });
+  var futRunning  = modes.some(function(m) { return m === 'futures_spike_reversal'; });
+  var tradeSpot = document.getElementById('pl-trade-spot');
+  var tradeFut  = document.getElementById('pl-trade-fut');
+  if (tradeSpot) { tradeSpot.textContent = spotRunning ? 'RUNNING' : 'STOPPED'; tradeSpot.style.color = spotRunning ? 'var(--green)' : 'var(--text3)'; }
+  if (tradeFut)  { tradeFut.textContent  = futRunning  ? 'RUNNING' : 'STOPPED'; tradeFut.style.color  = futRunning  ? 'var(--green)' : 'var(--text3)'; }
+}
+
+function apiStartTrainingFromHome(scope) {
+  var api = _getAPI(); if (!api) return;
+  api.start_training_scope(scope).then(function(r) {
+    console.log('[botik] start_training_scope', scope, r);
+  });
+}
+
 /* ─── SNAPSHOT POLLING ───────────────────────────────────── */
+/* ─── HOME HOLDINGS (SPOT + FUTURES COMBINED) ─────────── */
+function _loadHomeHoldings() {
+  var api = _getAPI();
+  if (!api) return;
+  var spotRows = [];
+  var futRows  = [];
+  var pending  = 2;
+  function _tryRender() {
+    if (--pending > 0) return;
+    _buildHomeHoldingsTable(spotRows, futRows);
+  }
+  api.get_spot_positions().then(function(raw) {
+    try { spotRows = JSON.parse(raw) || []; } catch(e) {}
+    _tryRender();
+  }).catch(function() { _tryRender(); });
+  api.get_futures_positions().then(function(raw) {
+    try { futRows = JSON.parse(raw) || []; } catch(e) {}
+    _tryRender();
+  }).catch(function() { _tryRender(); });
+}
+
+function _buildHomeHoldingsTable(spotRows, futRows) {
+  var tbl = document.getElementById('holdings-table');
+  if (!tbl) return;
+  _clearEl(tbl);
+  var headers = ['Символ', 'Тип', 'Кол-во / Размер', 'Цена входа', 'uPnL', 'Статус'];
+  var rows = [];
+  spotRows.forEach(function(r) {
+    var pnl    = r.unrealized_pnl;
+    var pnlCls = (pnl === null || pnl === undefined) ? '' : (Number(pnl) >= 0 ? 'col-green' : 'col-red');
+    rows.push([
+      {text: r.symbol || '\u2014', cls: 'col-blue'},
+      {text: 'SPOT', tag: 'tag-idle'},
+      {text: r.free_qty !== undefined && r.free_qty !== null ? Number(r.free_qty).toFixed(6) : '\u2014'},
+      {text: r.avg_entry_price !== undefined && r.avg_entry_price !== null ? Number(r.avg_entry_price).toFixed(4) : '\u2014'},
+      {text: (pnl === null || pnl === undefined) ? '\u2014' : _fmtSignedNumber(pnl, 4), cls: pnlCls},
+      {text: String(r.hold_reason || 'HOLD').toUpperCase(), tag: 'tag-active'}
+    ]);
+  });
+  futRows.forEach(function(r) {
+    var pnl    = r.unrealised_pnl !== undefined ? r.unrealised_pnl : r.unrealized_pnl;
+    var pnlCls = (pnl === null || pnl === undefined) ? '' : (Number(pnl) >= 0 ? 'col-green' : 'col-red');
+    var side   = String(r.side || '').toUpperCase();
+    rows.push([
+      {text: r.symbol || '\u2014', cls: 'col-blue'},
+      {text: 'FUT', tag: 'tag-loading'},
+      {text: r.size !== undefined && r.size !== null ? String(r.size) : '\u2014'},
+      {text: r.entry_price !== undefined && r.entry_price !== null ? Number(r.entry_price).toFixed(4) : '\u2014'},
+      {text: (pnl === null || pnl === undefined) ? '\u2014' : _fmtSignedNumber(pnl, 4), cls: pnlCls},
+      {text: side || 'OPEN', tag: side === 'BUY' ? 'tag-active' : (side === 'SELL' ? 'tag-risk' : 'tag-idle')}
+    ]);
+  });
+  if (!rows.length) {
+    var tbody = document.createElement('tbody');
+    var tr = document.createElement('tr');
+    var td = document.createElement('td');
+    td.colSpan = headers.length;
+    td.style.cssText = 'text-align:center;color:var(--text3);padding:24px;font-size:13px';
+    td.textContent = 'Нет активных холдингов';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    tbl.appendChild(tbody);
+    return;
+  }
+  buildTable(tbl, headers, rows);
+}
+
 function _pollSnapshot() {
   var api = _getAPI();
   if (!api) return;
@@ -2250,11 +2528,12 @@ function _pollSnapshot() {
     try {
       _applySnapshot(JSON.parse(raw));
       var activePage = _activePageKey();
-      if (activePage === 'spot') _loadSpotPageData();
-      if (activePage === 'futures') _loadFuturesPositions();
-      if (activePage === 'models') _loadModelsData();
-      if (activePage === 'ops') _loadOpsPage();
-      if (activePage === 'data') _loadDataPage();
+      if (activePage === 'home')      _loadHomeHoldings();
+      if (activePage === 'spot')      _loadSpotPageData();
+      if (activePage === 'futures')   _loadFuturesPositions();
+      if (activePage === 'models')    _loadModelsData();
+      if (activePage === 'ops')       _loadOpsPage();
+      if (activePage === 'data')      _loadDataPage();
       if (activePage === 'analytics') _loadAnalytics();
     } catch(e) { console.warn('[botik] parse error', e); }
   }).catch(function(e) { console.warn('[botik] snapshot error', e); });
@@ -2292,10 +2571,22 @@ function _applySnapshot(d) {
 
   var pnl = typeof d.pnl_today === 'number' ? d.pnl_today : null;
   var pnlEl = document.getElementById('pnl-today');
-  if (pnlEl && pnl !== null) {
-    _pnlDemoActive = false;
-    pnlEl.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
-    pnlEl.className = 'metric-value ' + (pnl >= 0 ? 'green' : 'red');
+  if (pnlEl) {
+    if (pnl !== null) {
+      _pnlDemoActive = false;
+      pnlEl.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      pnlEl.className = 'metric-value ' + (pnl >= 0 ? 'green' : 'red');
+    } else {
+      pnlEl.textContent = '\u2014';
+      pnlEl.className = 'metric-value plain';
+    }
+  }
+  var pnlSub = document.getElementById('pnl-sub');
+  if (pnlSub) {
+    var tToday = typeof d.trades_today === 'number' ? d.trades_today : null;
+    pnlSub.textContent = tToday !== null
+      ? (tToday === 0 ? 'Нет сделок сегодня' : tToday + ' сделок · WR ' + (d.win_rate !== null && d.win_rate !== undefined ? d.win_rate + '%' : '—'))
+      : 'Нет сделок';
   }
 
   var balEl  = document.getElementById('balance-val');
@@ -2398,11 +2689,27 @@ function _applySnapshot(d) {
 
   if (d.pnl_chart && d.pnl_chart.length) _rebuildChart(d.pnl_chart);
   if (d.diag_rows) _applyDiagRows(d.diag_rows);
+  if (d.pipeline)  _applyPipeline(d.pipeline);
 
-  var btnStart = document.getElementById('btn-start');
-  if (btnStart) btnStart.disabled = running;
-  var btnStop = document.getElementById('btn-stop');
-  if (btnStop) btnStop.disabled = !running;
+  // Spot/Futures trade controls
+  var modes = d.running_modes || [];
+  _applyPipelineTrade(modes);
+  var spotRunning = modes.some(function(m) { return m === 'spot_spread' || m === 'spot_spike'; });
+  var futRunning  = modes.some(function(m) { return m === 'futures_spike_reversal'; });
+
+  var spotTag = document.getElementById('spot-trade-tag');
+  if (spotTag) { spotTag.textContent = spotRunning ? 'RUNNING' : 'STOPPED'; spotTag.className = 'tag ' + (spotRunning ? 'tag-active' : 'tag-idle'); }
+  var futTag  = document.getElementById('fut-trade-tag');
+  if (futTag)  { futTag.textContent  = futRunning  ? 'RUNNING' : 'STOPPED'; futTag.className  = 'tag ' + (futRunning  ? 'tag-active' : 'tag-idle'); }
+
+  var btnSpotStart = document.getElementById('btn-spot-start');
+  var btnSpotStop  = document.getElementById('btn-spot-stop');
+  if (btnSpotStart) btnSpotStart.disabled = spotRunning;
+  if (btnSpotStop)  btnSpotStop.disabled  = !spotRunning;
+  var btnFutStart  = document.getElementById('btn-fut-start');
+  var btnFutStop   = document.getElementById('btn-fut-stop');
+  if (btnFutStart) btnFutStart.disabled = futRunning;
+  if (btnFutStop)  btnFutStop.disabled  = !futRunning;
 
   var btnTrainStart = document.getElementById('btn-train-start');
   if (btnTrainStart) btnTrainStart.style.display = (mlState === 'running') ? 'none' : '';
@@ -3100,17 +3407,31 @@ function _logMsgClass(msg) {
 }
 
 /* ─── BUTTON HANDLERS ────────────────────────────────────── */
-function apiStartTrading() {
-  var api = _getAPI();
-  if (!api) { alert('API \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d (\u043d\u0435 \u0432 pywebview)'); return; }
-  var sel = document.querySelector('.select-field');
-  var presetMap = {'Spot Spread (Maker)':'spot_spread','Spot Spike Burst':'spot_spike','Futures Spike Reversal':'futures_spike_reversal'};
-  var mode = sel ? (presetMap[sel.value] || 'spot_spread') : 'spot_spread';
-  api.start_trading(mode).then(function(r) {
-    var res = JSON.parse(r);
-    var ps = document.getElementById('preflight-status');
-    if (ps) { ps.textContent = res.ok ? '\u25b6 \u0417\u0430\u043f\u0443\u0441\u043a \u0438\u043d\u0438\u0446\u0438\u0438\u0440\u043e\u0432\u0430\u043d\u2026' : '\u2717 ' + (res.error || '\u043e\u0448\u0438\u0431\u043a\u0430'); }
-  });
+function _tradingFeedback(r, action) {
+  var res;
+  try { res = JSON.parse(r); } catch(e) { res = {}; }
+  var ps = document.getElementById('preflight-status');
+  if (ps) ps.textContent = res.ok ? action + ' инициирован' : '\u2717 ' + (res.error || 'ошибка');
+}
+
+function apiStartSpot() {
+  var api = _getAPI(); if (!api) return;
+  api.start_trading('spot_spread').then(function(r) { _tradingFeedback(r, 'Спот старт'); });
+}
+function apiStopSpot() {
+  var api = _getAPI(); if (!api) return;
+  Promise.all([
+    api.stop_trading('spot_spread'),
+    api.stop_trading('spot_spike'),
+  ]).then(function() { _tradingFeedback('{"ok":true}', 'Спот стоп'); });
+}
+function apiStartFutures() {
+  var api = _getAPI(); if (!api) return;
+  api.start_trading('futures_spike_reversal').then(function(r) { _tradingFeedback(r, 'Фьючерсы старт'); });
+}
+function apiStopFutures() {
+  var api = _getAPI(); if (!api) return;
+  api.stop_trading('futures_spike_reversal').then(function(r) { _tradingFeedback(r, 'Фьючерсы стоп'); });
 }
 
 function apiStopTrading() {
@@ -3665,18 +3986,11 @@ function _fmt_str(v) {
 document.querySelectorAll('.nav-item').forEach(function(item) {
   item.addEventListener('click', function() {
     var page = this.getAttribute('data-page');
-    if (page === 'spot') {
-      _loadSpotPageData();
-    }
-    if (page === 'futures') {
-      _loadFuturesPositions();
-    }
-    if (page === 'models') {
-      _loadModelsData();
-    }
-    if (page === 'ops') {
-      _loadOpsPage();
-    }
+    if (page === 'home')     { _loadHomeHoldings(); }
+    if (page === 'spot')     { _loadSpotPageData(); }
+    if (page === 'futures')  { _loadFuturesPositions(); }
+    if (page === 'models')   { _loadModelsData(); }
+    if (page === 'ops')      { _loadOpsPage(); }
     if (page === 'settings') { settingsLoad(); }
     if (page === 'backtest') { _loadBacktestPage(); }
   });
