@@ -86,14 +86,35 @@ class DataMixin:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    def _read_backfill_progress(self) -> dict:
+        """Read backfill_progress JSON from bot_settings, or empty dict."""
+        try:
+            raw_cfg = _load_yaml()
+            db_path = _resolve_db_path(raw_cfg)
+            conn = self._db_connect(db_path)  # type: ignore[attr-defined]
+            if not conn:
+                return {}
+            try:
+                row = conn.execute(
+                    "SELECT value FROM bot_settings WHERE key='backfill_progress'"
+                ).fetchone()
+            finally:
+                conn.close()
+            if row and row[0]:
+                return json.loads(row[0])
+        except Exception:
+            pass
+        return {}
+
     def get_data_status(self) -> str:
         """Returns JSON with symbol registry contents and worker states."""
         symbols, summary = self._read_symbol_registry()
         return json.dumps({
-            "symbols":         symbols,
-            "summary":         summary,
-            "backfill_state":  self._backfill_process.state,   # type: ignore[attr-defined]
-            "livedata_state":  self._livedata_process.state,   # type: ignore[attr-defined]
+            "symbols":            symbols,
+            "summary":            summary,
+            "backfill_state":     self._backfill_process.state,   # type: ignore[attr-defined]
+            "livedata_state":     self._livedata_process.state,   # type: ignore[attr-defined]
+            "backfill_progress":  self._read_backfill_progress(),
         }, default=str)
 
     def start_backfill(self) -> str:

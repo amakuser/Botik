@@ -1332,6 +1332,18 @@ DB_URL=sqlite:///data/botik.db</pre>
             </div>
           </div>
         </div>
+        <!-- Текущий символ -->
+        <div id="data-current-symbol-row" style="display:none;margin-bottom:12px;padding:8px 12px;background:rgba(61,139,255,0.07);border:1px solid rgba(61,139,255,0.2);border-radius:6px">
+          <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px;letter-spacing:0.5px">СЕЙЧАС КАЧАЕТСЯ</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="data-cur-symbol" style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--accent2)">—</span>
+            <span id="data-cur-category" style="font-size:11px;color:var(--text3)">—</span>
+            <span style="color:var(--border2)">·</span>
+            <span style="font-size:11px;color:var(--text3)">TF</span>
+            <span id="data-cur-interval" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--yellow)">—</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--text3)" id="data-cur-cnt">—</span>
+          </div>
+        </div>
         <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:5px;letter-spacing:0.5px">LIVE ЛОГ ПРОЦЕССА</div>
         <div id="data-mini-log" style="
           background:rgba(3,7,15,0.85);border:1px solid var(--border);border-radius:6px;
@@ -2899,6 +2911,24 @@ function _applyDataStatus(d) {
   if (ldBadge)   ldBadge.style.display   = ldState === 'running' ? '' : 'none';
   var allDone = linTotal > 0 && linReady >= linTotal && spotTotal > 0 && spotReady >= spotTotal;
   if (doneBadge) doneBadge.style.display = allDone && bfState !== 'running' && ldState !== 'running' ? '' : 'none';
+
+  // ── Current symbol (backfill_progress from DB) ──
+  var bp  = d.backfill_progress || {};
+  var curRow = document.getElementById('data-current-symbol-row');
+  var curSym = document.getElementById('data-cur-symbol');
+  var curCat = document.getElementById('data-cur-category');
+  var curIv  = document.getElementById('data-cur-interval');
+  var curCnt = document.getElementById('data-cur-cnt');
+  if (curRow) {
+    var showCur = bfState === 'running' && bp.symbol && !bp.done;
+    curRow.style.display = showCur ? '' : 'none';
+    if (showCur) {
+      if (curSym) curSym.textContent = bp.symbol || '—';
+      if (curCat) curCat.textContent = bp.category || '—';
+      if (curIv)  curIv.textContent  = bp.interval ? bp.interval + 'm' : '—';
+      if (curCnt) curCnt.textContent = bp.total ? (bp.processed + 1) + ' / ' + bp.total + ' симв.' : '';
+    }
+  }
 
   // ── Button states ──
   var bfStart = document.getElementById('btn-backfill-start');
