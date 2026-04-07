@@ -59,6 +59,7 @@ from .api_data_mixin import DataMixin
 from .api_ticker_mixin import TickerMixin
 from .api_analytics_mixin import AnalyticsMixin
 from .api_backtest_mixin import BacktestMixin
+from .api_balance_mixin import BalanceMixin
 from .dev_server import BotikDevServer
 
 log = logging.getLogger("botik.webview")
@@ -100,6 +101,8 @@ class ManagedProcess:
             if self._proc and self._proc.poll() is None:
                 return False, "already_running"
             try:
+                # CREATE_NO_WINDOW prevents a flash of console on Windows
+                _flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 self._proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
@@ -108,6 +111,7 @@ class ManagedProcess:
                     encoding="utf-8",
                     errors="replace",
                     cwd=str(ROOT_DIR),
+                    creationflags=_flags,
                 )
                 threading.Thread(target=self._read_loop, daemon=True).start()
                 return True, "ok"
@@ -149,6 +153,7 @@ class DashboardAPI(
     TickerMixin,
     AnalyticsMixin,
     BacktestMixin,
+    BalanceMixin,
 ):
     """All public methods are callable from JS via window.pywebview.api.*"""
 
@@ -169,6 +174,7 @@ class DashboardAPI(
         self._livedata_process   = ManagedProcess("livedata",   self._add_log)
 
         self._init_ticker()
+        self._init_balance()
         self._add_log("[sys] Dashboard loaded", "sys")
 
     # ── Core internal helpers ─────────────────────────────────

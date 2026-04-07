@@ -223,6 +223,8 @@ class _Handler(BaseHTTPRequestHandler):
         body = self._read_body_json()
         if path == "/navigate":
             self._handle_navigate(body)
+        elif path == "/inspect":
+            self._handle_inspect(body)
         elif path.startswith("/api/"):
             method = path[5:]
             self._handle_api(method, body)
@@ -272,6 +274,24 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "tab": tab})
         except Exception as exc:
             log.exception("navigate evaluate_js failed")
+            self._send_error_json(str(exc))
+
+    def _handle_inspect(self, body: dict) -> None:
+        """POST /inspect {"js": "<script>"} — run JS in WebView2, return result as JSON."""
+        script = str(body.get("js", "")).strip()
+        if not script:
+            self._send_error_json("Missing 'js' field", 400)
+            return
+        srv = self.server.botik_server
+        window = srv.window
+        if not window:
+            self._send_error_json("pywebview window not yet available")
+            return
+        try:
+            result = window.evaluate_js(script)
+            self._send_json({"ok": True, "result": result})
+        except Exception as exc:
+            log.exception("inspect js execution failed")
             self._send_error_json(str(exc))
 
     def _handle_api(self, method: str, kwargs: dict) -> None:
