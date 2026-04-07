@@ -1304,6 +1304,44 @@ DB_URL=sqlite:///data/botik.db</pre>
           <div class="metric-change muted" id="data-candles-sub">в price_history (все TF)</div>
         </div>
       </div>
+      <!-- ПРОГРЕСС СБОРА + МИНИ-ЛОГ -->
+      <div class="card mb-14">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <div class="section-title" style="margin:0">Прогресс сбора данных</div>
+          <span id="data-bf-badge" style="display:none;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--yellow);animation:pulse-dot 1.5s ease-in-out infinite">● BACKFILL</span>
+          <span id="data-ld-badge" style="display:none;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--teal);animation:pulse-dot 1.5s ease-in-out infinite">● LIVE DATA</span>
+          <span id="data-done-badge" style="display:none;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--green)">✓ ГОТОВО</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3);margin-bottom:5px">
+              <span>Futures (linear)</span>
+              <span id="data-prog-fut-txt" style="color:var(--text2)">—</span>
+            </div>
+            <div style="height:7px;background:rgba(10,22,40,0.9);border-radius:4px;overflow:hidden;border:1px solid var(--border)">
+              <div id="data-prog-fut-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;transition:width 0.8s ease"></div>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3);margin-bottom:5px">
+              <span>Spot</span>
+              <span id="data-prog-spot-txt" style="color:var(--text2)">—</span>
+            </div>
+            <div style="height:7px;background:rgba(10,22,40,0.9);border-radius:4px;overflow:hidden;border:1px solid var(--border)">
+              <div id="data-prog-spot-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--teal2));border-radius:4px;transition:width 0.8s ease"></div>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:5px;letter-spacing:0.5px">LIVE ЛОГ ПРОЦЕССА</div>
+        <div id="data-mini-log" style="
+          background:rgba(3,7,15,0.85);border:1px solid var(--border);border-radius:6px;
+          height:180px;overflow-y:auto;padding:8px 10px;
+          font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.5;
+        ">
+          <span style="color:var(--text3)">Запустите Backfill для начала сбора данных…</span>
+        </div>
+      </div>
+
       <div class="grid-21 mb-14">
         <div class="card">
           <div class="section-title">Символы (symbol_registry)</div>
@@ -2760,6 +2798,56 @@ function _loadDataPage() {
   api.get_data_status().then(function(raw) {
     try { _applyDataStatus(JSON.parse(raw)); } catch(e) { console.warn('[botik] data parse', e); }
   });
+  _refreshDataMiniLog();
+}
+
+function _refreshDataMiniLog() {
+  var api = _getAPI(); if (!api) return;
+  api.get_logs(300).then(function(raw) {
+    try {
+      var logs = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      var lines = logs.filter(function(e) {
+        return e.ch === 'data'
+          || (e.msg && (
+              e.msg.indexOf('[backfill]') !== -1
+              || e.msg.indexOf('[livedata]') !== -1
+              || e.msg.indexOf('BackfillWorker') !== -1
+              || e.msg.indexOf('backfill_worker') !== -1
+              || e.msg.indexOf('[data]') !== -1
+          ));
+      });
+      var box = document.getElementById('data-mini-log');
+      if (!box) return;
+      while (box.firstChild) box.removeChild(box.firstChild);
+      if (!lines.length) {
+        var ph = document.createElement('span');
+        ph.style.color = 'var(--text3)';
+        ph.textContent = 'Нет активности. Запустите Backfill для начала сбора данных.';
+        box.appendChild(ph);
+        return;
+      }
+      var last = lines.slice(-60);
+      last.forEach(function(e) {
+        var row = document.createElement('div');
+        var m = e.msg || '';
+        var col = 'var(--text2)';
+        if (m.indexOf('FAILED') !== -1 || m.indexOf('ERROR') !== -1) col = 'var(--red)';
+        else if (m.indexOf('+') !== -1 && m.indexOf('candles') !== -1) col = 'var(--green)';
+        else if (m.indexOf('starting') !== -1 || m.indexOf('finished') !== -1) col = 'var(--yellow)';
+        else if (m.indexOf('[data]') !== -1) col = 'var(--teal)';
+        row.style.color = col;
+        var ts = document.createElement('span');
+        ts.style.color = 'var(--text3)';
+        ts.style.marginRight = '6px';
+        ts.textContent = e.ts || '';
+        row.appendChild(ts);
+        var txt = document.createTextNode(m);
+        row.appendChild(txt);
+        box.appendChild(row);
+      });
+      box.scrollTop = box.scrollHeight;
+    } catch(e2) { console.warn('[botik] mini-log parse', e2); }
+  });
 }
 
 function _applyDataStatus(d) {
@@ -2788,6 +2876,29 @@ function _applyDataStatus(d) {
   var totalCandles = (lin.total_candles || 0) + (spot.total_candles || 0);
   var cndEl = document.getElementById('data-candles-val');
   if (cndEl) cndEl.textContent = totalCandles > 0 ? Number(totalCandles).toLocaleString('ru-RU') : '\u2014';
+
+  // ── Progress bars ──
+  var linReady  = lin.ready  || 0;  var linTotal  = lin.total  || 0;
+  var spotReady = spot.ready || 0;  var spotTotal = spot.total || 0;
+  var futPct  = linTotal  > 0 ? Math.round(linReady  / linTotal  * 100) : 0;
+  var spotPct = spotTotal > 0 ? Math.round(spotReady / spotTotal * 100) : 0;
+  var futBar = document.getElementById('data-prog-fut-bar');
+  var futTxt = document.getElementById('data-prog-fut-txt');
+  if (futBar)  futBar.style.width = futPct + '%';
+  if (futTxt)  futTxt.textContent = linTotal  > 0 ? linReady  + ' / ' + linTotal  + ' (' + futPct  + '%)' : '\u2014';
+  var spotBar = document.getElementById('data-prog-spot-bar');
+  var spotTxt = document.getElementById('data-prog-spot-txt');
+  if (spotBar) spotBar.style.width = spotPct + '%';
+  if (spotTxt) spotTxt.textContent = spotTotal > 0 ? spotReady + ' / ' + spotTotal + ' (' + spotPct + '%)' : '\u2014';
+
+  // ── Progress badges ──
+  var bfBadge   = document.getElementById('data-bf-badge');
+  var ldBadge   = document.getElementById('data-ld-badge');
+  var doneBadge = document.getElementById('data-done-badge');
+  if (bfBadge)   bfBadge.style.display   = bfState === 'running' ? '' : 'none';
+  if (ldBadge)   ldBadge.style.display   = ldState === 'running' ? '' : 'none';
+  var allDone = linTotal > 0 && linReady >= linTotal && spotTotal > 0 && spotReady >= spotTotal;
+  if (doneBadge) doneBadge.style.display = allDone && bfState !== 'running' && ldState !== 'running' ? '' : 'none';
 
   // ── Button states ──
   var bfStart = document.getElementById('btn-backfill-start');

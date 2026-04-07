@@ -191,6 +191,8 @@ class DashboardAPI(
                 channel = "futures"
             elif "telegram" in tag:
                 channel = "telegram"
+            elif "backfill" in tag or "livedata" in tag or tag == "data":
+                channel = "data"
         entry = {"ts": ts, "ch": channel, "msg": msg}
         with self._buf_lock:
             self._log_buffer.append(entry)
