@@ -59,13 +59,23 @@ class _BITMAPINFOHEADER(ctypes.Structure):
     ]
 
 
+_SW_SHOWNOACTIVATE = 4
+_SW_SHOWMINIMIZED  = 2
+
+
 def _capture_hwnd_silent(hwnd: int) -> bytes:
     """
     Capture window via PrintWindow(PW_RENDERFULLCONTENT).
-    Works without activating the window, even when minimized.
+    If the window is minimized, temporarily shows it without activating,
+    waits for WebView2 to re-render, captures, then minimizes again.
     Returns raw PNG bytes.
     """
     from PIL import Image  # type: ignore[import]
+
+    was_minimized = bool(_user32.IsIconic(hwnd))
+    if was_minimized:
+        _user32.ShowWindow(hwnd, _SW_SHOWNOACTIVATE)
+        time.sleep(1.5)  # let WebView2 render
 
     rect = ctypes.wintypes.RECT()
     _user32.GetWindowRect(hwnd, ctypes.byref(rect))
@@ -73,6 +83,8 @@ def _capture_hwnd_silent(hwnd: int) -> bytes:
     h = rect.bottom - rect.top
 
     if w < 10 or h < 10:
+        if was_minimized:
+            _user32.ShowWindow(hwnd, _SW_SHOWMINIMIZED)
         raise RuntimeError(f"Window too small for screenshot: {w}x{h}")
 
     hwnd_dc = _user32.GetDC(hwnd)
@@ -103,6 +115,9 @@ def _capture_hwnd_silent(hwnd: int) -> bytes:
     data = bytearray(pixel_buf.raw)
     for i in range(0, len(data), 4):
         data[i], data[i + 2] = data[i + 2], data[i]
+
+    if was_minimized:
+        _user32.ShowWindow(hwnd, _SW_SHOWMINIMIZED)
 
     img = Image.frombytes("RGBA", (w, h), bytes(data))
     out = io.BytesIO()
