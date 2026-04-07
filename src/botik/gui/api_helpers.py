@@ -43,6 +43,45 @@ ENV_PATH          = ROOT_DIR / ".env"
 HTML_PATH         = bundled_file("dashboard_preview.html", ROOT_DIR)
 ACTIVE_MODELS_PATH = bundled_file("active_models.yaml", ROOT_DIR)
 
+# Dashboard component paths
+DASHBOARD_TEMPLATE = ROOT_DIR / "dashboard_template.html"
+PAGES_DIR = ROOT_DIR / "src" / "botik" / "gui" / "pages"
+
+
+def assemble_dashboard_html() -> str:
+    """Assemble dashboard HTML from template + component page files.
+
+    In source mode: reads dashboard_template.html and substitutes
+    <!-- INJECT:page-X --> markers with contents of src/botik/gui/pages/page-X.html.
+
+    Falls back to dashboard_preview.html if template is not found (frozen/exe mode).
+    Regenerates dashboard_preview.html so the assembled output is always current.
+    """
+    if not DASHBOARD_TEMPLATE.exists():
+        # Frozen exe: template not bundled, use pre-built HTML
+        return HTML_PATH.read_text(encoding="utf-8")
+
+    import re as _re
+
+    template = DASHBOARD_TEMPLATE.read_text(encoding="utf-8")
+
+    def _substitute(match: "_re.Match[str]") -> str:  # type: ignore[name-defined]
+        page_id = match.group(1)   # e.g. "page-home"
+        page_file = PAGES_DIR / f"{page_id}.html"
+        if page_file.exists():
+            return page_file.read_text(encoding="utf-8")
+        return match.group(0)  # leave marker in place if file missing
+
+    assembled = _re.sub(r"<!-- INJECT:(page-[^>]+) -->", _substitute, template)
+
+    # Write the assembled result back to dashboard_preview.html (keeps it current)
+    try:
+        HTML_PATH.write_text(assembled, encoding="utf-8")
+    except Exception:
+        pass  # read-only filesystem in some environments is fine
+
+    return assembled
+
 # Strategy ordering / label mapping used by trading API
 STRATEGY_MODE_ORDER: list[str] = [
     "spot_spread",

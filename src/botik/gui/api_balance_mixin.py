@@ -22,6 +22,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from .api_helpers import _load_yaml, _read_env_map, _resolve_db_path
+from .event_bus import bus as _event_bus
 
 log = logging.getLogger("botik.webview")
 
@@ -112,6 +113,12 @@ class BalanceMixin:
         self._write_balance_snapshot(total_equity, wallet_balance, available_balance)
         log.debug("[balance] equity=%.2f  wallet=%.2f  available=%.2f",
                   total_equity, wallet_balance, available_balance)
+        # Push balance event reactively (T40)
+        _event_bus.emit("balance_update", {
+            "total_equity":      total_equity,
+            "wallet_balance":    wallet_balance,
+            "available_balance": available_balance,
+        })
 
     def _write_balance_snapshot(
         self,

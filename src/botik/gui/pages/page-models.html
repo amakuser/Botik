@@ -1,0 +1,87 @@
+    <div class="page" id="page-models">
+      <div class="page-header">
+        <div class="page-title">ML Модели</div>
+        <div class="page-sub">Статус bootstrap, обучения и готовности моделей</div>
+      </div>
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-label">Готовые scope</div>
+          <div class="metric-value blue" id="models-ready-val">—</div>
+          <div class="metric-change muted" id="models-ready-sub">Ожидание статуса моделей</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Активные указатели</div>
+          <div class="metric-value teal" id="models-active-val">—</div>
+          <div class="metric-change muted" id="models-active-sub">active_models.yaml</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Последний run</div>
+          <div class="metric-value plain" id="models-run-val">—</div>
+          <div class="metric-change muted" id="models-run-sub">История обучения загружается</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Источники</div>
+          <div class="metric-value plain" id="models-source-val" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="models-source-sub">manifest / БД</div>
+        </div>
+      </div>
+      <div id="models-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px"></div>
+      <div class="section-title" style="margin:14px 0 8px">Детали по моделям</div>
+      <div id="models-per-model-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px"></div>
+      <div class="card mb-14">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="section-title">ML Логи</div>
+          <div class="subtabs" id="ml-log-scope-tabs">
+            <div class="subtab active" data-ml-scope="futures">Фьючерсы</div>
+            <div class="subtab" data-ml-scope="spot">Спот</div>
+          </div>
+        </div>
+        <div class="log-box" id="ml-log-box" style="max-height:200px"></div>
+      </div>
+      <div class="card mb-14">
+        <div class="section-title" style="margin-bottom:12px">Управление обучением</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="min-width:90px;font-size:13px;font-weight:500">Фьючерсы</div>
+            <span class="tag tag-idle" id="train-futures-state-tag">STOPPED</span>
+            <div style="flex:1;font-size:11px;color:var(--text3)" id="train-futures-data-hint"></div>
+            <button class="btn" id="train-futures-start-btn" onclick="apiStartTrainingScope('futures')" disabled>▶ Старт</button>
+            <button class="btn btn-ghost" id="train-futures-stop-btn" onclick="apiStopTrainingScope('futures')" disabled>■ Стоп</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="min-width:90px;font-size:13px;font-weight:500">Спот</div>
+            <span class="tag tag-idle" id="train-spot-state-tag">STOPPED</span>
+            <div style="flex:1;font-size:11px;color:var(--text3)" id="train-spot-data-hint"></div>
+            <button class="btn" id="train-spot-start-btn" onclick="apiStartTrainingScope('spot')" disabled>▶ Старт</button>
+            <button class="btn btn-ghost" id="train-spot-stop-btn" onclick="apiStopTrainingScope('spot')" disabled>■ Стоп</button>
+          </div>
+        </div>
+      </div>
+      <!-- Мониторинг ресурсов ML -->
+      <div class="grid-3 mb-14" id="ml-resources-row">
+        <div class="card">
+          <div class="metric-label">RAM (Futures ML)</div>
+          <div class="metric-value plain" id="ml-ram-futures" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="ml-cpu-futures">CPU: —</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">RAM (Spot ML)</div>
+          <div class="metric-value plain" id="ml-ram-spot" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="ml-cpu-spot">CPU: —</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">GPU</div>
+          <div class="metric-value plain" id="ml-gpu-pct" style="font-size:20px">—</div>
+          <div class="metric-change muted" id="ml-gpu-mem">VRAM: —</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Последние training runs</div>
+        <div id="models-empty-state" style="padding:36px;text-align:center;color:var(--text3);font-size:13px">
+          Загрузка статуса моделей…
+        </div>
+        <table class="tbl" id="models-table" style="display:none"></table>
+      </div>
+    </div>
+
+    <!-- ЛОГИ -->

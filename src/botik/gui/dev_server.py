@@ -149,18 +149,19 @@ def _find_hwnd_by_pid(pid: int) -> int | None:
 # ─── Page-load JS snippets called after navigate ─────────────────────────────
 
 _PAGE_LOAD_JS: dict[str, str] = {
-    "spot":      "_loadSpotPageData();",
-    "futures":   "_loadFuturesPositions();",
-    "analytics": "_loadAnalytics();",
-    "data":      "_loadDataPage();",
-    "models":    "_loadModelsData();",
-    "ops":       "_loadOpsPage();",
-    "backtest":  "_loadBacktestPage();",
-    "logs":      "_pollLogs();",
-    "home":      "",
-    "market":    "",
-    "telegram":  "",
-    "settings":  "settingsLoad();",
+    "spot":       "_loadSpotPageData();",
+    "futures":    "_loadFuturesPositions();",
+    "analytics":  "_loadAnalytics();",
+    "data":       "_loadDataPage();",
+    "models":     "_loadModelsData();",
+    "ops":        "_loadOpsPage();",
+    "backtest":   "_loadBacktestPage();",
+    "orderbook":  "_pollOrderbook();",
+    "logs":       "_pollLogs();",
+    "home":       "",
+    "market":     "",
+    "telegram":   "",
+    "settings":   "settingsLoad();",
 }
 
 
@@ -212,6 +213,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._handle_ping()
         elif path == "/screenshot":
             self._handle_screenshot()
+        elif path == "/rebuild-html":
+            self._handle_rebuild_html()
         elif path.startswith("/api/"):
             method = path[5:]
             self._handle_api(method, {})
@@ -254,6 +257,21 @@ class _Handler(BaseHTTPRequestHandler):
             log.debug("Screenshot captured, %d bytes", len(png))
         except Exception as exc:
             log.exception("Screenshot failed")
+            self._send_error_json(str(exc))
+
+    def _handle_rebuild_html(self) -> None:
+        """GET /rebuild-html — reassemble dashboard from component pages and save to disk.
+
+        Writes the assembled HTML to dashboard_preview.html.
+        The window must be restarted to pick up the changes.
+        """
+        try:
+            from .api_helpers import assemble_dashboard_html
+            html = assemble_dashboard_html()
+            self._send_json({"ok": True, "bytes": len(html), "note": "restart to apply"})
+            log.info("[dev_server] HTML rebuilt (%d bytes)", len(html))
+        except Exception as exc:
+            log.exception("rebuild-html failed")
             self._send_error_json(str(exc))
 
     def _handle_navigate(self, body: dict) -> None:

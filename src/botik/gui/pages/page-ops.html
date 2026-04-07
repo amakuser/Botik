@@ -1,0 +1,78 @@
+    <div class="page" id="page-ops">
+      <div class="page-header">
+        <div class="page-title">Состояние системы</div>
+        <div class="page-sub">Процессы · Диагностика · БД</div>
+      </div>
+
+      <!-- Карточки процессов — генерируются JS -->
+      <div id="ops-processes" class="grid-3 mb-14"></div>
+
+      <!-- Системные ресурсы: RAM / CPU / DB -->
+      <div class="grid-3 mb-14">
+        <div class="card">
+          <div class="metric-label">RAM</div>
+          <div id="ops-ram-bar-wrap" style="margin-top:8px;background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+            <div id="ops-ram-bar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width .4s"></div>
+          </div>
+          <div id="ops-ram-text" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);margin-top:6px">—</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">CPU</div>
+          <div id="ops-cpu-bar-wrap" style="margin-top:8px;background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+            <div id="ops-cpu-bar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width .4s"></div>
+          </div>
+          <div id="ops-cpu-text" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);margin-top:6px">—</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">DB Ping</div>
+          <div id="ops-db-ping" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;margin-top:8px;color:var(--green)">—</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">SQLite latency</div>
+        </div>
+      </div>
+
+      <!-- .env статус + конфиг окружения -->
+      <div class="grid-3 mb-14">
+        <div class="card">
+          <div class="metric-label">Bybit API Key</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <div class="dot" id="ops-env-api-dot"></div>
+            <div id="ops-env-api-text" style="font-family:'JetBrains Mono',monospace;font-size:13px">—</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Telegram Token</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <div class="dot" id="ops-env-tg-dot"></div>
+            <div id="ops-env-tg-text" style="font-family:'JetBrains Mono',monospace;font-size:13px">—</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Аптайм / Версия</div>
+          <div id="ops-uptime" style="font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:6px;color:var(--text2)">—</div>
+          <div id="ops-version" style="font-size:11px;color:var(--text3);margin-top:2px">—</div>
+        </div>
+      </div>
+
+      <!-- Диагностика + Статистика БД -->
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">Диагностика</div>
+          <table id="ops-diag-table" style="width:100%;border-collapse:collapse;margin-top:8px"></table>
+        </div>
+        <div class="card">
+          <div class="section-title">Статистика БД</div>
+          <table id="ops-db-table" style="width:100%;border-collapse:collapse;margin-top:8px"></table>
+        </div>
+      </div>
+
+      <!-- Последние ошибки -->
+      <div class="card">
+        <div class="section-title">Последние ошибки и предупреждения</div>
+        <div id="ops-errors" style="margin-top:8px;font-size:12px;font-family:'JetBrains Mono',monospace;
+             max-height:200px;overflow-y:auto;color:var(--text2)">
+          <span style="color:var(--text3)">Загрузка…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TELEGRAM -->

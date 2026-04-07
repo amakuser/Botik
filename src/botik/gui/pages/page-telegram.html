@@ -1,0 +1,19 @@
+    <div class="page" id="page-telegram">
+      <div class="page-header">
+        <div class="page-title">Telegram</div>
+        <div class="page-sub">Управление ботом уведомлений</div>
+      </div>
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">Доступные команды</div>
+          <div id="cmd-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:8px">
+          <div class="section-title">Действия</div>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiReloadConfig()">⟳ Обновить конфиг</button>
+          <button class="btn btn-accent" style="width:100%;justify-content:center" onclick="apiTelegramTest()">✉ Test Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- НАСТРОЙКИ -->

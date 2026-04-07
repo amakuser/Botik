@@ -1,0 +1,129 @@
+    <div class="page" id="page-backtest">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Бэктест</div>
+          <div class="page-sub">Симуляция стратегии на исторических данных</div>
+        </div>
+      </div>
+
+      <!-- Форма параметров -->
+      <div class="card mb-14">
+        <div class="section-title" style="margin-bottom:14px">Параметры запуска</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Тип рынка</label>
+            <select class="select-field" id="bt-scope" style="width:130px">
+              <option value="futures">Фьючерсы</option>
+              <option value="spot">Спот</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Символ</label>
+            <select class="select-field" id="bt-symbol" style="width:140px">
+              <option value="BTCUSDT">BTCUSDT</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Интервал</label>
+            <select class="select-field" id="bt-interval" style="width:100px">
+              <option value="1">1м</option>
+              <option value="5">5м</option>
+              <option value="15" selected>15м</option>
+              <option value="60">1ч</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Дней назад</label>
+            <input class="select-field" id="bt-days" type="number" min="7" max="365" value="30"
+                   style="width:90px;font-family:'JetBrains Mono',monospace">
+          </div>
+          <button id="bt-run-btn" onclick="_runBacktest()"
+                  style="padding:9px 22px;background:linear-gradient(135deg,var(--accent),var(--teal));
+                         border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;
+                         cursor:pointer;white-space:nowrap;transition:opacity .2s">
+            &#9654; Запустить бэктест
+          </button>
+        </div>
+      </div>
+
+      <!-- Спиннер / статус -->
+      <div id="bt-spinner" style="display:none;text-align:center;padding:32px;color:var(--text2);font-size:14px">
+        <span style="display:inline-block;width:22px;height:22px;border:3px solid var(--border2);
+                     border-top-color:var(--accent);border-radius:50%;
+                     animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:10px"></span>
+        Считаем…
+      </div>
+
+      <!-- Результаты (скрыты до запуска) -->
+      <div id="bt-results" style="display:none">
+
+        <!-- Сетка метрик 2×4 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
+          <div class="card">
+            <div class="metric-label">Сделок</div>
+            <div class="metric-value plain" id="bt-m-trades">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Win Rate</div>
+            <div class="metric-value blue" id="bt-m-winrate">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">PnL итого</div>
+            <div class="metric-value" id="bt-m-pnl">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Max Drawdown</div>
+            <div class="metric-value red" id="bt-m-drawdown">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Sharpe</div>
+            <div class="metric-value plain" id="bt-m-sharpe">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Avg Win</div>
+            <div class="metric-value green" id="bt-m-avgwin">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Avg Loss</div>
+            <div class="metric-value red" id="bt-m-avgloss">—</div>
+          </div>
+          <div class="card">
+            <div class="metric-label">Profit Factor</div>
+            <div class="metric-value plain" id="bt-m-pf">—</div>
+          </div>
+        </div>
+
+        <!-- Мета-строка -->
+        <div class="card mb-14" style="padding:10px 18px">
+          <span style="font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace" id="bt-meta-row">—</span>
+        </div>
+
+        <!-- Таблица сделок -->
+        <div class="card">
+          <div class="section-title" style="margin-bottom:12px">Сделки (последние 50)</div>
+          <div id="bt-trades-empty" style="display:none;padding:24px;text-align:center;color:var(--text3);font-size:13px">
+            Нет сделок за выбранный период
+          </div>
+          <div style="overflow-x:auto">
+            <table class="tbl" id="bt-trades-table">
+              <thead>
+                <tr>
+                  <th>Открыта</th><th>Закрыта</th><th>Символ</th><th>Сторона</th>
+                  <th>Вход</th><th>Выход</th><th>PnL</th><th>Причина</th>
+                </tr>
+              </thead>
+              <tbody id="bt-trades-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /bt-results -->
+
+      <!-- Блок ошибки -->
+      <div id="bt-error" style="display:none;margin-bottom:14px" class="card">
+        <div style="color:var(--red);font-size:13px" id="bt-error-msg">—</div>
+      </div>
+
+    </div><!-- /page-backtest -->
+
+    <!-- РЫНОК -->

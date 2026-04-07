@@ -149,7 +149,16 @@ class DataMixin:
 
     # ── Symbol seeding ────────────────────────────────────────────────────────
 
-    _SEED_INTERVALS: tuple[str, ...] = ("1", "5", "15", "60")
+    def _get_backfill_intervals(self) -> list[str]:
+        """Read backfill_intervals from config.yaml; falls back to defaults."""
+        try:
+            raw_cfg = _load_yaml()
+            intervals = (raw_cfg.get("data") or {}).get("backfill_intervals")
+            if isinstance(intervals, list) and intervals:
+                return [str(i) for i in intervals]
+        except Exception:
+            pass
+        return ["1", "5", "15", "60"]
 
     def seed_symbol_registry(self) -> str:
         """Discover ALL trading symbols from Bybit and register them for all intervals.
@@ -186,14 +195,15 @@ class DataMixin:
 
             db = get_db()
             registry = SymbolRegistry(db)
-            for interval in self._SEED_INTERVALS:
+            intervals = self._get_backfill_intervals()
+            for interval in intervals:
                 registry.register_many(linear_symbols, "linear", interval)
                 registry.register_many(spot_symbols,   "spot",   interval)
 
-            total = (len(linear_symbols) + len(spot_symbols)) * len(self._SEED_INTERVALS)
+            total = (len(linear_symbols) + len(spot_symbols)) * len(intervals)
             self._add_log(  # type: ignore[attr-defined]
                 f"[data] seeded {len(linear_symbols)} linear + {len(spot_symbols)} spot "
-                f"symbols → {total} rows",
+                f"symbols × {len(intervals)} intervals → {total} rows",
                 "sys",
             )
             return json.dumps({

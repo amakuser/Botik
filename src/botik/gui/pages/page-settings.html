@@ -1,0 +1,246 @@
+    <div class="page" id="page-settings">
+      <div class="page-header">
+        <div class="page-title">Настройки</div>
+        <div class="page-sub">API ключи, Telegram, База данных</div>
+      </div>
+
+      <!-- Статус-баннеры -->
+      <div id="settings-saved-banner" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:8px;background:rgba(0,229,153,0.08);border:1px solid rgba(0,229,153,0.2);color:var(--green);font-size:13px;font-family:'JetBrains Mono',monospace">✓ Настройки сохранены</div>
+      <div id="settings-err-banner" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:8px;background:rgba(255,77,106,0.08);border:1px solid rgba(255,77,106,0.2);color:var(--red);font-size:13px;font-family:'JetBrains Mono',monospace"></div>
+
+      <!-- Панель управления -->
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+        <button class="btn btn-accent" id="btn-settings-save" onclick="settingsSave()">💾 Сохранить</button>
+        <div style="display:flex;gap:4px;align-items:center;margin-left:auto">
+          <button class="btn btn-ghost" id="btn-settings-load" onclick="settingsLoad()">↺ Загрузить</button>
+          <!-- Кнопка формата .env — круглый ? в стиле дашборда -->
+          <button onclick="settingsShowFormat()" title="Формат файла .env"
+            style="width:32px;height:32px;padding:0;border-radius:8px;cursor:pointer;flex-shrink:0;
+                   background:rgba(255,255,255,0.04);border:1px solid rgba(64,120,220,0.25);
+                   display:flex;align-items:center;justify-content:center;
+                   transition:background 0.18s,border-color 0.18s"
+            onmouseover="this.style.background='rgba(255,255,255,0.09)';this.style.borderColor='rgba(64,120,220,0.5)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(64,120,220,0.25)'">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="9" r="7.5" stroke="#4A6080" stroke-width="1.2"/>
+              <text x="9" y="13.2" text-anchor="middle" fill="#8FA8D0"
+                    font-size="9.5" font-family="Inter,sans-serif" font-weight="700">?</text>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:14px" id="settings-env-path"></div>
+
+      <!-- Подсказка формата .env -->
+      <div id="settings-format-hint" style="display:none;margin-bottom:14px;padding:14px 16px;border-radius:8px;background:var(--surface2);border:1px solid var(--border2)">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:600">Формат файла .env</div>
+        <pre style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);margin:0;line-height:1.7">BYBIT_API_KEY=ВАШ_DEMO_КЛЮЧ
+BYBIT_API_SECRET=ВАШ_DEMO_СЕКРЕТ
+BYBIT_MAINNET_API_KEY=ВАШ_MAINNET_КЛЮЧ
+BYBIT_MAINNET_API_SECRET=ВАШ_MAINNET_СЕКРЕТ
+TELEGRAM_BOT_TOKEN=123456789:AABBccddEEff...
+TELEGRAM_CHAT_ID=-100123456789
+DB_URL=sqlite:///data/botik.db</pre>
+      </div>
+
+      <!-- Bybit Demo + MainNet рядом -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+        <!-- Bybit Demo -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-title" style="margin-bottom:0">Bybit Demo</div>
+            <span style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace">api-demo.bybit.com</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">API Key</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-key" class="text-input" placeholder="Demo API Key" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-key',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div>
+              <div class="settings-label">API Secret</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-secret" class="text-input" placeholder="Demo API Secret" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-secret',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-bybit-demo-test" onclick="apiTestBybit('demo')" style="font-size:11px;padding:4px 10px">▶ Проверить</button>
+              <div id="s-bybit-key-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bybit MainNet -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-title" style="margin-bottom:0">Bybit MainNet</div>
+            <span style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace">api.bybit.com</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">API Key</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-mainnet-key" class="text-input" placeholder="MainNet API Key" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-mainnet-key',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div>
+              <div class="settings-label">API Secret</div>
+              <div style="position:relative">
+                <input type="password" id="s-bybit-mainnet-secret" class="text-input" placeholder="MainNet API Secret" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-bybit-mainnet-secret',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-bybit-mainnet-test" onclick="apiTestBybit('mainnet')" style="font-size:11px;padding:4px 10px">▶ Проверить</button>
+              <div id="s-bybit-mainnet-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Telegram + DB рядом -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+        <!-- Telegram -->
+        <div class="card">
+          <div class="section-title">Telegram</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">Bot Token</div>
+              <div style="position:relative">
+                <input type="password" id="s-tg-token" class="text-input" placeholder="123456789:AABBccdd…" autocomplete="off" />
+                <button onclick="settingsToggleShow('s-tg-token',this)" tabindex="-1" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">👁</button>
+              </div>
+            </div>
+            <div>
+              <div class="settings-label">Chat ID</div>
+              <input type="text" id="s-tg-chatid" class="text-input" placeholder="-100123456789" autocomplete="off" />
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-tg-test" onclick="apiTelegramTest()" style="font-size:11px;padding:4px 10px">▶ Отправить тест</button>
+              <div id="s-tg-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- База данных -->
+        <div class="card">
+          <div class="section-title">База данных</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="settings-label">DB_URL</div>
+              <input type="text" id="s-db-url" class="text-input" placeholder="sqlite:///data/botik.db" autocomplete="off" />
+              <div style="font-size:10px;color:var(--text3);margin-top:3px">Пусто = SQLite по умолчанию. После изменения — перезапуск.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-ghost" id="btn-db-check" onclick="apiCheckDb()" style="font-size:11px;padding:4px 10px">▶ Проверить</button>
+              <div id="s-db-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;flex:1"></div>
+            </div>
+            <div id="s-db-detail" style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text2);display:none"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Стратегия -->
+      <div style="margin-top:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <div class="section-title" style="margin-bottom:0">Параметры стратегии</div>
+          <span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace">Применяются при следующем перезапуске торговли</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+          <!-- Фьючерсы -->
+          <div class="card">
+            <div class="section-title" style="margin-bottom:12px">Фьючерсы</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div>
+                <div class="settings-label">Виртуальный баланс (USDT)</div>
+                <input type="number" id="s-fut-balance" class="text-input" placeholder="10000" min="100" step="100" />
+              </div>
+              <div>
+                <div class="settings-label">Риск на сделку (%)</div>
+                <input type="number" id="s-fut-risk-pct" class="text-input" placeholder="1.0" min="0.1" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель SL</div>
+                <input type="number" id="s-fut-atr-sl" class="text-input" placeholder="1.5" min="0.5" max="5" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель TP</div>
+                <input type="number" id="s-fut-atr-tp" class="text-input" placeholder="2.5" min="0.5" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">Макс. позиция (% баланса)</div>
+                <input type="number" id="s-fut-max-pos-pct" class="text-input" placeholder="15" min="1" max="100" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Таймаут позиции (ч)</div>
+                <input type="number" id="s-fut-timeout-h" class="text-input" placeholder="4" min="1" max="72" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Порог спайка (bps, 1bps=0.01%)</div>
+                <input type="number" id="s-fut-spike-bps" class="text-input" placeholder="80" min="10" max="500" step="5" />
+              </div>
+              <div>
+                <div class="settings-label">Макс. открытых позиций</div>
+                <input type="number" id="s-fut-max-positions" class="text-input" placeholder="3" min="1" max="20" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Символы (через запятую)</div>
+                <input type="text" id="s-fut-symbols" class="text-input" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Спот -->
+          <div class="card">
+            <div class="section-title" style="margin-bottom:12px">Спот</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div>
+                <div class="settings-label">Виртуальный баланс (USDT)</div>
+                <input type="number" id="s-spot-balance" class="text-input" placeholder="10000" min="100" step="100" />
+              </div>
+              <div>
+                <div class="settings-label">Риск на сделку (%)</div>
+                <input type="number" id="s-spot-risk-pct" class="text-input" placeholder="0.8" min="0.1" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель SL</div>
+                <input type="number" id="s-spot-atr-sl" class="text-input" placeholder="1.2" min="0.5" max="5" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">ATR множитель TP</div>
+                <input type="number" id="s-spot-atr-tp" class="text-input" placeholder="2.0" min="0.5" max="10" step="0.1" />
+              </div>
+              <div>
+                <div class="settings-label">Макс. позиция (% баланса)</div>
+                <input type="number" id="s-spot-max-pos-pct" class="text-input" placeholder="10" min="1" max="100" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Таймаут позиции (ч)</div>
+                <input type="number" id="s-spot-timeout-h" class="text-input" placeholder="8" min="1" max="72" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Порог спайка (bps, 1bps=0.01%)</div>
+                <input type="number" id="s-spot-spike-bps" class="text-input" placeholder="20" min="5" max="200" step="1" />
+              </div>
+              <div>
+                <div class="settings-label">Символы (через запятую)</div>
+                <input type="text" id="s-spot-symbols" class="text-input" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" />
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ДАННЫЕ (M4) -->

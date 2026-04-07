@@ -1,0 +1,124 @@
+    <div class="page" id="page-home">
+      <div class="page-header">
+        <div class="page-title">Главная</div>
+        <div class="page-sub">Обзор торгового бота · обновлено сейчас</div>
+      </div>
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-icon">💰</div>
+          <div class="metric-label">PnL сегодня</div>
+          <div class="metric-value green" id="pnl-today">—</div>
+          <div class="metric-change muted" id="pnl-sub">Нет сделок</div>
+        </div>
+        <div class="card">
+          <div class="metric-icon">📊</div>
+          <div class="metric-label">Баланс USDT</div>
+          <div class="metric-value blue" id="balance-val">—</div>
+          <div class="metric-change muted" id="balance-sub">Spot wallet</div>
+        </div>
+        <div class="card">
+          <div class="metric-icon">🔁</div>
+          <div class="metric-label">Сделок сегодня</div>
+          <div class="metric-value plain" id="trades-val">—</div>
+          <div class="metric-change up" id="trades-sub">WR —</div>
+        </div>
+        <div class="card">
+          <div class="metric-icon">⚡</div>
+          <div class="metric-label">Открытые позиции</div>
+          <div class="metric-value teal" id="open-pos-val">—</div>
+          <div class="metric-change muted" id="open-pos-sub">Spot: — · Fut: —</div>
+        </div>
+      </div>
+      <div class="grid-21 mb-14">
+        <div class="card">
+          <div class="section-title">PnL за неделю</div>
+          <div class="chart-area" id="pnl-chart"></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:12px">
+          <div class="section-title">Управление торговлей</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="min-width:80px;font-size:13px;font-weight:500">Спот</div>
+            <span class="tag tag-idle" id="spot-trade-tag">STOPPED</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-green" id="btn-spot-start" onclick="apiStartSpot()" style="padding:4px 12px;font-size:12px">▶ Старт</button>
+            <button class="btn btn-red"   id="btn-spot-stop"  onclick="apiStopSpot()"  style="padding:4px 12px;font-size:12px" disabled>■ Стоп</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="min-width:80px;font-size:13px;font-weight:500">Фьючерсы</div>
+            <span class="tag tag-idle" id="fut-trade-tag">STOPPED</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-green" id="btn-fut-start" onclick="apiStartFutures()" style="padding:4px 12px;font-size:12px">▶ Старт</button>
+            <button class="btn btn-red"   id="btn-fut-stop"  onclick="apiStopFutures()"  style="padding:4px 12px;font-size:12px" disabled>■ Стоп</button>
+          </div>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiPreflight()">⚡ Preflight Check</button>
+          <div class="alert-ok" id="preflight-status">Ожидание данных…</div>
+        </div>
+      </div>
+      <!-- ПАЙПЛАЙН: Данные → Обучение → Торговля -->
+      <div class="card mb-14" id="pipeline-card">
+        <div class="section-title" style="margin-bottom:12px">Пайплайн: Данные → Обучение → Торговля</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          <!-- Шаг 1: Данные -->
+          <div style="background:var(--surface2);border-radius:8px;padding:12px 14px" id="pl-step1-card">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0" id="pl-step1-num">1</div>
+              <div style="font-size:13px;font-weight:600">Исторические данные</div>
+              <span id="pl-backfill-badge" style="display:none;margin-left:auto;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--yellow);animation:pulse-dot 1.5s ease-in-out infinite">● СБОР</span>
+            </div>
+            <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">OHLCV свечи для обучения моделей</div>
+            <div style="font-size:12px;margin-bottom:6px">
+              Futures: <span id="pl-data-fut" style="color:var(--text2)">—</span><br>
+              Spot: <span id="pl-data-spot" style="color:var(--text2)">—</span>
+            </div>
+            <div id="pl-backfill-info" style="display:none;font-size:11px;color:var(--yellow);margin-bottom:8px;font-family:'JetBrains Mono',monospace">
+              <span id="pl-backfill-detail">Идёт загрузка свечей…</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost" id="pl-btn-data" style="flex:1;font-size:12px;justify-content:center"
+                onclick="_navTo('data')">→ Вкладка Данные</button>
+              <button class="btn" id="pl-btn-stop-backfill" style="display:none;flex:1;font-size:12px;justify-content:center;background:rgba(255,77,106,0.15);color:var(--red);border-color:var(--red)"
+                onclick="apiStopBackfill()">■ Стоп</button>
+            </div>
+          </div>
+          <!-- Шаг 2: Обучение -->
+          <div style="background:var(--surface2);border-radius:8px;padding:12px 14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">2</div>
+              <div style="font-size:13px;font-weight:600">Обучение ML моделей</div>
+            </div>
+            <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Историк + Предиктор на свечах</div>
+            <div style="font-size:12px;margin-bottom:10px">
+              Futures: <span id="pl-model-fut">—</span><br>
+              Spot: <span id="pl-model-spot">—</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn" id="pl-btn-fut" style="flex:1;font-size:11px;padding:4px 6px"
+                onclick="apiStartTrainingFromHome('futures')">▶ Futures</button>
+              <button class="btn" id="pl-btn-spot" style="flex:1;font-size:11px;padding:4px 6px"
+                onclick="apiStartTrainingFromHome('spot')">▶ Spot</button>
+              <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px"
+                onclick="_navTo('models')">→</button>
+            </div>
+          </div>
+          <!-- Шаг 3: Торговля -->
+          <div style="background:var(--surface2);border-radius:8px;padding:12px 14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">3</div>
+              <div style="font-size:13px;font-weight:600">Запуск торговли</div>
+            </div>
+            <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px">Требует обученных моделей</div>
+            <div style="font-size:12px;margin-bottom:10px">
+              Спот: <span id="pl-trade-spot">—</span><br>
+              Фьючерсы: <span id="pl-trade-fut">—</span>
+            </div>
+            <div style="font-size:11px;color:var(--text3)">Управление выше ↑</div>
+          </div>
+        </div>
+      </div>
+      <div class="card mb-14">
+        <div class="section-title">Активные холдинги</div>
+        <table class="tbl" id="holdings-table"></table>
+      </div>
+    </div>
+
+    <!-- СПОТ -->

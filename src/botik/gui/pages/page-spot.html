@@ -1,0 +1,41 @@
+    <div class="page" id="page-spot">
+      <div class="page-header">
+        <div class="page-title">Спот торговля</div>
+        <div class="page-sub">Spot runtime · Bybit Spot</div>
+      </div>
+      <div class="subtabs">
+        <div class="subtab active" data-spot-view="positions">Позиции</div>
+        <div class="subtab" data-spot-view="orders">Ордера</div>
+        <div class="subtab" data-spot-view="history">История</div>
+      </div>
+      <div class="grid-3 mb-14">
+        <div class="card">
+          <div class="metric-label">Spot uPnL</div>
+          <div class="metric-value plain" id="spot-pnl-val">—</div>
+          <div class="metric-change muted" id="spot-pnl-sub">Ожидание данных spot_holdings</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Активных холдингов</div>
+          <div class="metric-value plain" id="spot-open-val">—</div>
+          <div class="metric-change muted" id="spot-open-sub">Ожидание данных</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Открытых ордеров</div>
+          <div class="metric-value teal" id="spot-orders-val">—</div>
+          <div class="metric-change muted" id="spot-orders-sub">Последний снимок очереди</div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div class="section-title" id="spot-table-title">Открытые позиции</div>
+          <button class="btn btn-red" id="spot-sell-all-btn" style="display:none;font-size:12px;padding:4px 12px"
+                  onclick="apiSellAllSpot()">Продать всё → USDT</button>
+        </div>
+        <div id="spot-empty-state" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
+          Загрузка spot-данных…
+        </div>
+        <table class="tbl" id="spot-table" style="display:none"></table>
+      </div>
+    </div>
+
+    <!-- ФЬЮЧЕРСЫ -->

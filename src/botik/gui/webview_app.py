@@ -44,9 +44,10 @@ from src.botik.version import get_app_version_label
 from src.botik.storage.schema import bootstrap_db
 
 from .api_helpers import (
-    ROOT_DIR, HTML_PATH,
+    ROOT_DIR, HTML_PATH, DASHBOARD_TEMPLATE,
     STRATEGY_MODE_ORDER,
     _resolve_project_root,
+    assemble_dashboard_html,
 )
 from .api_db_mixin import DbMixin
 from .api_models_mixin import ModelsMixin
@@ -60,6 +61,8 @@ from .api_ticker_mixin import TickerMixin
 from .api_analytics_mixin import AnalyticsMixin
 from .api_backtest_mixin import BacktestMixin
 from .api_balance_mixin import BalanceMixin
+from .api_orderbook_mixin import OrderbookMixin
+from .event_bus import EventDispatcher, bus as _event_bus
 from .dev_server import BotikDevServer
 
 log = logging.getLogger("botik.webview")
@@ -154,6 +157,7 @@ class DashboardAPI(
     AnalyticsMixin,
     BacktestMixin,
     BalanceMixin,
+    OrderbookMixin,
 ):
     """All public methods are callable from JS via window.pywebview.api.*"""
 
@@ -173,8 +177,11 @@ class DashboardAPI(
         self._backfill_process   = ManagedProcess("backfill",   self._add_log)
         self._livedata_process   = ManagedProcess("livedata",   self._add_log)
 
+        self._event_dispatcher = EventDispatcher()
+        self._event_dispatcher.start()
         self._init_ticker()
         self._init_balance()
+        self._init_orderbook()
         self._add_log("[sys] Dashboard loaded", "sys")
 
     # ── Core internal helpers ─────────────────────────────────
@@ -196,6 +203,8 @@ class DashboardAPI(
         entry = {"ts": ts, "ch": channel, "msg": msg}
         with self._buf_lock:
             self._log_buffer.append(entry)
+        # Push log event reactively (T40)
+        _event_bus.emit("log_entry", entry)
 
     def _uptime_str(self) -> str:
         secs = int(time.monotonic() - self._start_time)
@@ -225,7 +234,7 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    if not HTML_PATH.exists():
+    if not HTML_PATH.exists() and not DASHBOARD_TEMPLATE.exists():
         raise FileNotFoundError(f"dashboard_preview.html not found at: {HTML_PATH}")
 
     # Pin DB_URL to SQLite so that all sub-processes write to the same DB
@@ -244,7 +253,7 @@ def main() -> None:
     dev_server = BotikDevServer(api=api, version=version)
     dev_server.start()
 
-    html_content = HTML_PATH.read_text(encoding="utf-8")
+    html_content = assemble_dashboard_html()
     window = webview.create_window(
         title=f"Botik Dashboard  {version}",
         html=html_content,
@@ -259,6 +268,7 @@ def main() -> None:
     log.info("Starting pywebview window — Botik Dashboard %s", version)
 
     dev_server.set_window(window)
+    api._event_dispatcher.attach_window(window)
 
     def _bootstrap_js(win) -> None:
         """Poll for pywebview bridge readiness, then call _initAPI() in the page.
