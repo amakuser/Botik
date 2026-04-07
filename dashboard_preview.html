@@ -543,7 +543,7 @@
 
   <!-- TOP BAR -->
   <header class="topbar">
-    <div class="topbar-logo">BOTIK <span id="topbar-version">v2.0</span></div>
+    <div class="topbar-logo">BOTIK <span id="topbar-version">…</span></div>
     <div class="topbar-sep"></div>
     <div class="topbar-status" id="topbar-live">
       <div class="dot yellow" id="topbar-dot"></div>
@@ -603,7 +603,7 @@
     </div>
     <div class="sidebar-footer">
       <div>Bybit <span>Spot + Linear</span></div>
-      <div>Uptime <span id="uptime">02:14:37</span></div>
+      <div>Uptime <span id="uptime">—</span></div>
     </div>
   </nav>
 
@@ -620,7 +620,7 @@
         <div class="card">
           <div class="metric-icon">💰</div>
           <div class="metric-label">PnL сегодня</div>
-          <div class="metric-value green" id="pnl-today">+$24.18</div>
+          <div class="metric-value green" id="pnl-today">—</div>
           <div class="metric-change up">↑ +2.4% vs вчера</div>
         </div>
         <div class="card">
@@ -1536,17 +1536,7 @@ document.querySelectorAll('.subtab').forEach(function(tab) {
   });
 });
 
-/* ─── PNL CHART ─────────────────────────────────────────── */
-var pnlData = [4.2, 11.8, 7.4, 18.2, 22.1, 15.6, 24.2];
-var maxVal = Math.max.apply(null, pnlData);
-var chartEl = document.getElementById('pnl-chart');
-pnlData.forEach(function(v, i) {
-  var bar = document.createElement('div');
-  bar.className = 'chart-bar' + (i === pnlData.length-1 ? ' bar-green' : '');
-  bar.style.height = '4px';
-  chartEl.appendChild(bar);
-  setTimeout(function() { bar.style.height = Math.round((v/maxVal)*110)+'px'; }, 100 + i*80);
-});
+/* ─── PNL CHART — populated by _rebuildChart() from API ── */
 
 /* ─── LIVE TICKER ───────────────────────────────────────── */
 function _fmtTickerPrice(price) {
@@ -2308,8 +2298,11 @@ function _applySnapshot(d) {
     pnlEl.className = 'metric-value ' + (pnl >= 0 ? 'green' : 'red');
   }
 
-  var balEl = document.getElementById('balance-val');
-  if (balEl) balEl.textContent = d.balance_total !== null && d.balance_total !== undefined ? _fmt(d.balance_total, 2) : '\u2014';
+  var balEl  = document.getElementById('balance-val');
+  var balSub = document.getElementById('balance-sub');
+  var balHasValue = d.balance_total !== null && d.balance_total !== undefined;
+  if (balEl)  balEl.textContent  = balHasValue ? _fmt(d.balance_total, 2) : '\u2014';
+  if (balSub) balSub.textContent = balHasValue ? 'Spot wallet' : 'Paper / API не настроен';
 
   var tradesEl = document.getElementById('trades-val');
   if (tradesEl) tradesEl.textContent = d.trades_today !== undefined ? d.trades_today : '\u2014';
@@ -2421,6 +2414,14 @@ function _rebuildChart(vals) {
   var el = document.getElementById('pnl-chart');
   if (!el) return;
   _clearEl(el);
+  var allZero = vals.every(function(v) { return v === 0; });
+  if (allZero) {
+    var msg = document.createElement('div');
+    msg.style.cssText = 'color:var(--text3);font-size:11px;align-self:center;padding:8px 0';
+    msg.textContent = 'Нет сделок';
+    el.appendChild(msg);
+    return;
+  }
   var maxVal = Math.max.apply(null, vals.map(Math.abs)) || 1;
   vals.forEach(function(v, i) {
     var bar = document.createElement('div');
