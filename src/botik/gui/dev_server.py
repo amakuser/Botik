@@ -153,6 +153,7 @@ _PAGE_LOAD_JS: dict[str, str] = {
 
 class _Handler(BaseHTTPRequestHandler):
     server: "BotikDevHTTPServer"
+    protocol_version = "HTTP/1.1"  # needed for urllib compatibility
 
     # suppress default per-request log lines
     def log_message(self, fmt: str, *args: Any) -> None:
