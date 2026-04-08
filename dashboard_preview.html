@@ -3101,6 +3101,21 @@ function _applyDataStatus(d) {
     msg.style.color = parts.length ? 'var(--green)' : 'var(--text3)';
   }
 
+  // ── Storage paths ──
+  var stor = d.storage || {};
+  var storCard = document.getElementById('data-storage-card');
+  if (storCard && stor.db_path) {
+    storCard.style.display = '';
+    var dbPathEl = document.getElementById('data-db-path');
+    var dbSizeEl = document.getElementById('data-db-size');
+    var exePathEl = document.getElementById('data-exe-path');
+    var exeBtnEl  = document.getElementById('btn-open-exe-folder');
+    if (dbPathEl) dbPathEl.textContent = stor.db_path;
+    if (dbSizeEl) dbSizeEl.textContent = stor.db_size_mb != null ? stor.db_size_mb + ' MB' : '—';
+    if (exePathEl) exePathEl.textContent = stor.exe_path || 'не найден';
+    if (exeBtnEl) exeBtnEl.style.display = stor.exe_path ? '' : 'none';
+  }
+
   // ── Symbol table ──
   var empty = document.getElementById('data-empty-state');
   var tbl   = document.getElementById('data-table');

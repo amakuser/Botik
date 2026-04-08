@@ -108,14 +108,59 @@ class DataMixin:
 
     def get_data_status(self) -> str:
         """Returns JSON with symbol registry contents and worker states."""
+        import os
         symbols, summary = self._read_symbol_registry()
+        raw_cfg = _load_yaml()
+        db_path = _resolve_db_path(raw_cfg)
+        db_size_mb = round(db_path.stat().st_size / 1_048_576, 1) if db_path.exists() else None
+
+        # Exe path: next to the running script or in dist/
+        exe_candidates = [
+            db_path.parent.parent / "dist" / "botik.exe",
+            db_path.parent.parent / "botik.exe",
+        ]
+        exe_path = next((str(p) for p in exe_candidates if p.exists()), None)
+
         return json.dumps({
             "symbols":            symbols,
             "summary":            summary,
             "backfill_state":     self._backfill_process.state,   # type: ignore[attr-defined]
             "livedata_state":     self._livedata_process.state,   # type: ignore[attr-defined]
             "backfill_progress":  self._read_backfill_progress(),
+            "storage": {
+                "db_path":    str(db_path),
+                "db_size_mb": db_size_mb,
+                "exe_path":   exe_path,
+            },
         }, default=str)
+
+    def open_storage_folder(self) -> str:
+        """Open the folder containing botik.db in Windows Explorer."""
+        import os
+        import subprocess
+        raw_cfg = _load_yaml()
+        db_path = _resolve_db_path(raw_cfg)
+        folder = str(db_path.parent)
+        try:
+            subprocess.Popen(["explorer", folder])
+            return json.dumps({"ok": True, "folder": folder})
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+
+    def open_exe_folder(self) -> str:
+        """Open the folder containing botik.exe in Windows Explorer."""
+        import subprocess
+        raw_cfg = _load_yaml()
+        db_path = _resolve_db_path(raw_cfg)
+        exe_dir = db_path.parent.parent / "dist"
+        if not exe_dir.exists():
+            exe_dir = db_path.parent.parent
+        folder = str(exe_dir)
+        try:
+            subprocess.Popen(["explorer", folder])
+            return json.dumps({"ok": True, "folder": folder})
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
 
     def start_backfill(self) -> str:
         """Start BackfillWorker subprocess."""

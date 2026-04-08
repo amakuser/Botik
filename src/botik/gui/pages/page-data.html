@@ -3,6 +3,28 @@
         <div class="page-title">Данные</div>
         <div class="page-sub">Сбор исторических и live OHLCV данных · symbol registry</div>
       </div>
+      <!-- ХРАНИЛИЩЕ -->
+      <div class="card mb-14" id="data-storage-card" style="display:none">
+        <div class="section-title" style="margin-bottom:10px">Хранилище</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px;letter-spacing:0.5px">БАЗА ДАННЫХ</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="data-db-path" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);word-break:break-all">—</span>
+              <button class="btn" style="padding:2px 8px;font-size:10px;white-space:nowrap" onclick="pywebview.api.open_storage_folder()">📂</button>
+            </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--text3)">Размер: <span id="data-db-size" style="color:var(--text2)">—</span></div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px;letter-spacing:0.5px">EXE (СБОРКА)</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="data-exe-path" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);word-break:break-all">—</span>
+              <button class="btn" id="btn-open-exe-folder" style="padding:2px 8px;font-size:10px;white-space:nowrap;display:none" onclick="pywebview.api.open_exe_folder()">📂</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid-4 mb-14">
         <div class="card">
           <div class="metric-label">Linear (futures)</div>
