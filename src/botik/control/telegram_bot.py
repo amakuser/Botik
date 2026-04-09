@@ -33,6 +33,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ── FSM state storage ─────────────────────────────────────────────────────────
+_state_lock = threading.Lock()
+_user_states: dict[int, str] = {}  # chat_id → state name
+
+
+def _get_state(chat_id: int) -> str:
+    with _state_lock:
+        return _user_states.get(chat_id, "main")
+
+
+def _set_state(chat_id: int, state: str) -> None:
+    with _state_lock:
+        _user_states[chat_id] = state
+
+
 ROOT_DIR = runtime_root(__file__, levels_up=3)
 VERSION_FILE = ROOT_DIR / "version.txt"
 
@@ -72,6 +87,56 @@ def _controls_inline_keyboard() -> types.InlineKeyboardMarkup:
         types.InlineKeyboardButton("Паника", callback_data="ctl:panic"),
     )
     kb.row(types.InlineKeyboardButton("Update", callback_data="ctl:update"))
+    return kb
+
+
+def _main_menu_keyboard() -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("📊 Статус", callback_data="menu:status"),
+        types.InlineKeyboardButton("📥 Данные", callback_data="menu:data"),
+        types.InlineKeyboardButton("💹 Торговля", callback_data="menu:trading"),
+        types.InlineKeyboardButton("📜 История", callback_data="menu:history"),
+    )
+    return kb
+
+
+def _data_menu_keyboard() -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("▶ Запустить Backfill", callback_data="data:backfill_start"),
+        types.InlineKeyboardButton("■ Стоп Backfill", callback_data="data:backfill_stop"),
+        types.InlineKeyboardButton("📈 Прогресс", callback_data="data:progress"),
+        types.InlineKeyboardButton("◀ Назад", callback_data="menu:main"),
+    )
+    return kb
+
+
+def _history_menu_keyboard() -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("🔵 Спот сделки", callback_data="hist:spot"),
+        types.InlineKeyboardButton("🟡 Фьючерсы сделки", callback_data="hist:futures"),
+        types.InlineKeyboardButton("📊 Статистика", callback_data="hist:stats"),
+        types.InlineKeyboardButton("◀ Назад", callback_data="menu:main"),
+    )
+    return kb
+
+
+def _trading_menu_keyboard() -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("▶ Запустить", callback_data="trading:start"),
+        types.InlineKeyboardButton("■ Стоп", callback_data="trading:stop"),
+        types.InlineKeyboardButton("⚠ Паника", callback_data="trading:panic"),
+        types.InlineKeyboardButton("◀ Назад", callback_data="menu:main"),
+    )
+    return kb
+
+
+def _back_keyboard() -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("◀ Назад", callback_data="menu:main"))
     return kb
 
 
@@ -405,6 +470,124 @@ def _help_text() -> str:
     )
 
 
+def _spot_fills_text(limit: int = 10) -> str:
+    """Last N spot fills from DB."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            if not _table_exists(conn, "spot_fills"):
+                return "Спот сделок нет"
+            rows = conn.execute(
+                "SELECT symbol, side, price, qty, fee, exec_time_ms "
+                "FROM spot_fills ORDER BY COALESCE(exec_time_ms,0) DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        if not rows:
+            return "Спот сделок нет"
+        import datetime as _dt
+        lines = ["Спот сделки (последние 10):"]
+        for r in rows:
+            sym, side, price, qty, fee, ts_ms = r[0], r[1], r[2], r[3], r[4], r[5]
+            ts = _dt.datetime.utcfromtimestamp(ts_ms / 1000).strftime("%m-%d %H:%M") if ts_ms else ""
+            lines.append(f"  {sym} {side} {float(price or 0):.4f} qty={float(qty or 0):.6f} fee={float(fee or 0):.4f} {ts}")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"Спот сделки: ошибка — {exc}"
+
+
+def _futures_fills_text(limit: int = 10) -> str:
+    """Last N futures fills from DB."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            if not _table_exists(conn, "futures_fills"):
+                return "Фьючерсных сделок нет (таблица будет создана после первой синхронизации)"
+            rows = conn.execute(
+                "SELECT symbol, side, price, qty, fee, pnl, exec_time_ms "
+                "FROM futures_fills ORDER BY COALESCE(exec_time_ms,0) DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        if not rows:
+            return "Фьючерсных сделок нет"
+        import datetime as _dt
+        lines = ["Фьючерсные сделки (последние 10):"]
+        for r in rows:
+            sym, side, price, qty, fee, pnl, ts_ms = r[0], r[1], r[2], r[3], r[4], r[5], r[6]
+            ts = _dt.datetime.utcfromtimestamp(ts_ms / 1000).strftime("%m-%d %H:%M") if ts_ms else ""
+            pnl_str = f" pnl={float(pnl):+.4f}" if pnl is not None else ""
+            lines.append(f"  {sym} {side} {float(price or 0):.4f} qty={float(qty or 0):.6f}{pnl_str} {ts}")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"Фьючерсные сделки: ошибка — {exc}"
+
+
+def _hist_stats_text() -> str:
+    """Win/loss/total stats from spot_fills + futures_fills."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            spot_total = 0
+            if _table_exists(conn, "spot_fills"):
+                row = conn.execute("SELECT COUNT(*) FROM spot_fills").fetchone()
+                spot_total = int(row[0] or 0) if row else 0
+            fut_total = 0
+            if _table_exists(conn, "futures_fills"):
+                row = conn.execute("SELECT COUNT(*) FROM futures_fills").fetchone()
+                fut_total = int(row[0] or 0) if row else 0
+            pnl_win, pnl_loss = 0, 0
+            if _table_exists(conn, "futures_fills"):
+                cols = _table_columns(conn, "futures_fills")
+                if "pnl" in cols:
+                    row = conn.execute(
+                        "SELECT "
+                        "SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), "
+                        "SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) "
+                        "FROM futures_fills WHERE pnl IS NOT NULL"
+                    ).fetchone()
+                    if row:
+                        pnl_win = int(row[0] or 0)
+                        pnl_loss = int(row[1] or 0)
+        total = pnl_win + pnl_loss
+        winrate = f"{pnl_win / total * 100:.1f}%" if total > 0 else "—"
+        return (
+            "Статистика:\n"
+            f"Спот сделок в БД: {spot_total}\n"
+            f"Фьючерс сделок в БД: {fut_total}\n"
+            f"Фьючерс win/loss: {pnl_win}/{pnl_loss} win rate: {winrate}"
+        )
+    except Exception as exc:
+        return f"Статистика: ошибка — {exc}"
+
+
+def _backfill_progress_text() -> str:
+    """Read backfill_progress from bot_settings table."""
+    try:
+        db = get_db()
+        with db.connect() as conn:
+            if not _table_exists(conn, "bot_settings"):
+                return "Прогресс backfill: нет данных"
+            row = conn.execute(
+                "SELECT value FROM bot_settings WHERE key='backfill_progress'"
+            ).fetchone()
+        if not row or not row[0]:
+            return "Backfill сейчас не запущен"
+        import json as _json
+        try:
+            p = _json.loads(row[0])
+            sym = p.get("symbol", "—")
+            tf = p.get("interval", "—")
+            processed = p.get("processed", 0)
+            total = p.get("total", "?")
+            done = p.get("done", False)
+            if done:
+                return "Backfill завершён"
+            return f"Backfill: {sym} TF={tf} ({processed}/{total} символов)"
+        except Exception:
+            return f"Backfill прогресс: {row[0]}"
+    except Exception as exc:
+        return f"Прогресс backfill: ошибка — {exc}"
+
+
 def run_telegram_bot(
     token: str,
     state: "TradingState",
@@ -523,12 +706,13 @@ def run_telegram_bot(
         if not is_allowed_message(message):
             return
         logger.info("Telegram command: /start from chat_id=%s", message.chat.id)
+        _set_state(message.chat.id, "main")
         bot.reply_to(
             message,
-            "Botik control запущен.\n" + _help_text(),
+            "Botik control запущен.",
             reply_markup=reply_kb,
         )
-        bot.send_message(message.chat.id, "Быстрые кнопки:", reply_markup=inline_kb)
+        bot.send_message(message.chat.id, "Главное меню:", reply_markup=_main_menu_keyboard())
 
     @bot.message_handler(commands=["help"])
     def cmd_help(message: types.Message) -> None:
@@ -661,6 +845,68 @@ def run_telegram_bot(
             bot.reply_to(message, _futures_text(), reply_markup=reply_kb)
         elif text == BTN_TRAINING:
             bot.reply_to(message, _training_text(), reply_markup=reply_kb)
+
+    @bot.callback_query_handler(
+        func=lambda call: any(
+            str(call.data).startswith(p)
+            for p in ("menu:", "data:", "hist:", "trading:")
+        )
+    )
+    def callback_nav(call: types.CallbackQuery) -> None:
+        chat_id = call.message.chat.id if call.message else 0
+        msg_id  = call.message.message_id if call.message else 0
+        if not is_allowed_chat(chat_id):
+            bot.answer_callback_query(call.id, "Доступ запрещён")
+            return
+
+        data = str(call.data)
+        logger.info("Telegram nav callback: %s from chat_id=%s", data, chat_id)
+
+        def edit(text: str, markup: types.InlineKeyboardMarkup | None = None) -> None:
+            try:
+                bot.edit_message_text(text, chat_id=chat_id, message_id=msg_id, reply_markup=markup)
+            except Exception:
+                bot.send_message(chat_id, text, reply_markup=markup)
+
+        if data == "menu:main":
+            _set_state(chat_id, "main")
+            edit("Главное меню:", _main_menu_keyboard())
+        elif data == "menu:status":
+            _set_state(chat_id, "status")
+            edit(_runtime_status_text(state) + "\n\n" + _balance_text(), _back_keyboard())
+        elif data == "menu:data":
+            _set_state(chat_id, "data")
+            edit("Управление данными:", _data_menu_keyboard())
+        elif data == "menu:trading":
+            _set_state(chat_id, "trading")
+            edit("Управление торговлей:", _trading_menu_keyboard())
+        elif data == "menu:history":
+            _set_state(chat_id, "history")
+            edit("История сделок:", _history_menu_keyboard())
+        elif data == "data:backfill_start":
+            edit("Используйте Dashboard для управления сбором данных.", _data_menu_keyboard())
+        elif data == "data:backfill_stop":
+            edit("Используйте Dashboard для управления сбором данных.", _data_menu_keyboard())
+        elif data == "data:progress":
+            edit(_backfill_progress_text(), _data_menu_keyboard())
+        elif data == "hist:spot":
+            edit(_spot_fills_text(), _history_menu_keyboard())
+        elif data == "hist:futures":
+            edit(_futures_fills_text(), _history_menu_keyboard())
+        elif data == "hist:stats":
+            edit(_hist_stats_text(), _history_menu_keyboard())
+        elif data == "trading:start":
+            state.set_paused(False)
+            edit("Торговля запущена. Новые ордера разрешены.", _trading_menu_keyboard())
+        elif data == "trading:stop":
+            state.set_paused(True)
+            edit("Торговля остановлена.", _trading_menu_keyboard())
+        elif data == "trading:panic":
+            state.set_panic_requested(True)
+            state.set_paused(True)
+            edit("PANIC: cancel-all запрошен. Торговля остановлена.", _trading_menu_keyboard())
+
+        bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: str(call.data).startswith("ctl:"))
     def callback_controls(call: types.CallbackQuery) -> None:

@@ -17,11 +17,21 @@
             <button class="btn btn-ghost" onclick="logsScrollBottom()">↓ В конец</button>
           </div>
         </div>
-        <div class="log-box" id="log-ch-sys"></div>
-        <div class="log-box" id="log-ch-spot"   style="display:none"></div>
-        <div class="log-box" id="log-ch-futures" style="display:none"></div>
-        <div class="log-box" id="log-ch-ml"      style="display:none"></div>
-        <div class="log-box" id="log-ch-telegram" style="display:none"></div>
+        <div class="log-box" id="log-ch-sys">
+          <div class="log-empty-hint" id="log-hint-sys">Дашборд запущен. Системные события появятся здесь автоматически.</div>
+        </div>
+        <div class="log-box" id="log-ch-spot" style="display:none">
+          <div class="log-empty-hint" id="log-hint-spot">Нет логов Спот. Запустите <strong>Spot Runner</strong> через вкладку Главная → Control Panel.</div>
+        </div>
+        <div class="log-box" id="log-ch-futures" style="display:none">
+          <div class="log-empty-hint" id="log-hint-futures">Нет логов Фьючерсы. Запустите <strong>Futures Runner</strong> через вкладку Главная → Control Panel.</div>
+        </div>
+        <div class="log-box" id="log-ch-ml" style="display:none">
+          <div class="log-empty-hint" id="log-hint-ml">Нет ML логов. Запустите обучение через вкладку <strong>Модели</strong>.</div>
+        </div>
+        <div class="log-box" id="log-ch-telegram" style="display:none">
+          <div class="log-empty-hint" id="log-hint-telegram">Нет Telegram логов. Проверьте токен бота в <strong>Настройках</strong> и перезапустите Botik.</div>
+        </div>
         <!-- legacy alias for old polling code -->
         <div id="log-container" style="display:none"></div>
       </div>

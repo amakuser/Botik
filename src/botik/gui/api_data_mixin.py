@@ -162,6 +162,22 @@ class DataMixin:
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)})
 
+    def sync_account_data(self) -> str:
+        """Trigger AccountSyncWorker.run_once() to pull fills and positions from Bybit."""
+        import threading as _threading
+        def _run() -> None:
+            try:
+                from src.botik.marketdata.account_sync_worker import AccountSyncWorker
+                raw_cfg = _load_yaml()
+                api_key    = raw_cfg.get("api_key", "")
+                api_secret = raw_cfg.get("api_secret", "")
+                AccountSyncWorker(api_key=api_key, api_secret=api_secret).run_once()
+                self._add_log("[data] sync_account_data: завершено", "sys")  # type: ignore[attr-defined]
+            except Exception as exc:
+                log.warning("sync_account_data error: %s", exc)
+        _threading.Thread(target=_run, daemon=True, name="account-sync-manual").start()
+        return json.dumps({"ok": True, "msg": "Синхронизация запущена"})
+
     def start_backfill(self) -> str:
         """Start BackfillWorker subprocess."""
         if self._backfill_process.running:  # type: ignore[attr-defined]

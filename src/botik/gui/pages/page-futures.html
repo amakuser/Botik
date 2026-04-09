@@ -20,11 +20,17 @@
           <div class="metric-change muted" id="ml-status-sub">—</div>
         </div>
       </div>
+      <div class="subtabs" style="margin-bottom:14px">
+        <div class="subtab active" data-futures-view="positions">Позиции</div>
+        <div class="subtab" data-futures-view="orders">Ордера</div>
+        <div class="subtab" data-futures-view="history">История</div>
+      </div>
       <div class="grid-21">
         <div class="card">
-          <div class="section-title">Futures позиции (paper)</div>
+          <div class="section-title" id="futures-table-title">Futures позиции (paper)</div>
+          <div id="futures-stats-bar" style="display:none"></div>
           <div id="futures-empty-state" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
-            Загрузка futures-позиций…
+            Загрузка futures-данных…
           </div>
           <table class="tbl" id="futures-table" style="display:none"></table>
         </div>

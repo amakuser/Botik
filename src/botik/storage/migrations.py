@@ -759,6 +759,14 @@ def _m014_price_history_drop_created_at(conn: Conn) -> None:
         pass
 
 
+def _m015_futures_fills_closed_pnl(conn: Conn) -> None:
+    """Add closed_pnl column to futures_fills for AccountSyncWorker data."""
+    try:
+        conn.execute("ALTER TABLE futures_fills ADD COLUMN closed_pnl REAL")
+    except Exception:
+        pass  # Already exists or not supported
+
+
 def _m013_orderbook_snapshots(conn: Conn) -> None:
     """
     Orderbook snapshots table for the order book poller (T41).
@@ -804,4 +812,5 @@ MIGRATIONS: dict[int, tuple[str, Callable[[Conn], None]]] = {
     12: ("symbol_labeling_status",   _m012_symbol_labeling_status),
     13: ("orderbook_snapshots",      _m013_orderbook_snapshots),
     14: ("price_history_drop_created_at", _m014_price_history_drop_created_at),
+    15: ("futures_fills_closed_pnl",      _m015_futures_fills_closed_pnl),
 }

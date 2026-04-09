@@ -925,12 +925,25 @@ function buildTable(tableEl, headers, rows) {
   }
 })();
 
+var _apiCache = {};
+var _API_CACHE_TTL = 10000;
+function _cachedApi(key, apiFn) {
+  var now = Date.now();
+  if (_apiCache[key] && (now - _apiCache[key].ts) < _API_CACHE_TTL) {
+    return Promise.resolve(_apiCache[key].data);
+  }
+  return apiFn().then(function(r) { _apiCache[key] = {ts: Date.now(), data: r}; return r; });
+}
+
 var spotPositionHeaders = ['Символ','Base','Free','Locked','Avg entry','uPnL','Причина','Обновлено',''];
 var spotOrderHeaders = ['Символ','Сторона','Тип','Цена','Qty','Filled','Статус','Обновлено'];
 var spotHistoryHeaders = ['Символ','Сторона','Цена','Qty','Fee','Время'];
 var _spotActiveView = 'positions';
 
 var futuresHeaders = ['Символ','Сторона','Размер','Вход','Mark','Liq','uPnL','Защита','Обновлено',''];
+var futuresOrderHeaders = ['Символ','Сторона','Тип','Цена','Qty','Filled','Статус','Обновлено'];
+var futuresHistoryHeaders = ['Символ','Сторона','Цена','Qty','Fee','PnL','Время'];
+var _futuresActiveView = 'positions';
 var modelRunHeaders = ['Scope','Версия','Режим','Статус','Epoch','Accuracy','Sharpe','Trades','Обновлено'];
 var _modelsPayloadSignature = '';
 
@@ -2085,6 +2098,11 @@ function _applyDataStatus(d) {
     if (exePathEl) exePathEl.textContent = stor.exe_path || 'не найден';
     if (exeBtnEl) exeBtnEl.style.display = stor.exe_path ? '' : 'none';
   }
+  // ── Storage in Management panel ──
+  var mgmtPath = document.getElementById('mgmt-db-path');
+  var mgmtSize = document.getElementById('mgmt-db-size');
+  if (mgmtPath && stor.db_path) mgmtPath.textContent = stor.db_path;
+  if (mgmtSize && stor.db_size_mb != null) mgmtSize.textContent = stor.db_size_mb + ' MB';
 
   // ── Symbol table ──
   var empty = document.getElementById('data-empty-state');
@@ -2108,6 +2126,7 @@ function _applyDataStatus(d) {
   var tbody = tbl.createTBody();
   symbols.forEach(function(s) {
     var tr  = tbody.insertRow();
+    tr.setAttribute('data-symbol', (s.symbol || '').toLowerCase());
     var stColor = s.data_status === 'ready' ? 'var(--green)' :
                   s.data_status === 'partial' ? 'var(--yellow)' : 'var(--text3)';
 
@@ -3080,49 +3099,146 @@ function _applyFuturesTable(rows) {
   }));
 }
 
+function _buildStatsBar(bar, wins, losses, even) {
+  if (!bar) return;
+  bar.style.display = '';
+  _clearEl(bar);
+  var s1 = document.createElement('span'); s1.style.color = 'var(--green)'; s1.textContent = 'Win: ' + wins;
+  var s2 = document.createElement('span'); s2.style.color = 'var(--red)';   s2.textContent = 'Loss: ' + losses;
+  var s3 = document.createElement('span'); s3.style.color = 'var(--text2)'; s3.textContent = 'Even: ' + even;
+  bar.appendChild(s1); bar.appendChild(document.createTextNode(' \u00b7 '));
+  bar.appendChild(s2); bar.appendChild(document.createTextNode(' \u00b7 '));
+  bar.appendChild(s3);
+}
+
+function _applyFuturesOrdersTable(rows) {
+  var tbl   = document.getElementById('futures-table');
+  var empty = document.getElementById('futures-empty-state');
+  var title = document.getElementById('futures-table-title');
+  if (!tbl || !empty) return;
+  if (title) title.textContent = 'Futures \u043e\u0440\u0434\u0435\u0440\u0430';
+  if (!rows || !rows.length) {
+    tbl.style.display = 'none'; _clearEl(tbl);
+    empty.style.display = ''; empty.textContent = '\u041d\u0435\u0442 \u043e\u0442\u043a\u0440\u044b\u0442\u044b\u0445 futures-\u043e\u0440\u0434\u0435\u0440\u043e\u0432';
+    return;
+  }
+  empty.style.display = 'none'; tbl.style.display = ''; _clearEl(tbl);
+  buildTable(tbl, futuresOrderHeaders, rows.map(function(r) {
+    var side = String(r.side || '').toUpperCase();
+    var status = String(r.status || '').toLowerCase();
+    return [
+      {text: r.symbol || '', cls: 'col-blue'},
+      {text: side || '\u2014', cls: side === 'BUY' ? 'col-green' : (side === 'SELL' ? 'col-red' : '')},
+      {text: r.order_type || '\u2014'},
+      {text: r.price !== undefined && r.price !== null ? Number(r.price).toFixed(4) : '\u2014'},
+      {text: r.qty !== undefined && r.qty !== null ? Number(r.qty).toFixed(6) : '\u2014'},
+      {text: r.filled_qty !== undefined && r.filled_qty !== null ? Number(r.filled_qty).toFixed(6) : '\u2014'},
+      {text: (r.status || '\u2014').toUpperCase(), tag: _spotOrderStatusTag(status)},
+      {text: _fmtTimeText(r.updated_at_utc), cls: 'col-dim'}
+    ];
+  }));
+}
+
+function _applyFuturesFillsTable(rows) {
+  var tbl   = document.getElementById('futures-table');
+  var empty = document.getElementById('futures-empty-state');
+  var title = document.getElementById('futures-table-title');
+  var bar   = document.getElementById('futures-stats-bar');
+  if (!tbl || !empty) return;
+  if (title) title.textContent = '\u0418\u0441\u0442\u043e\u0440\u0438\u044f futures fills';
+  if (!rows || !rows.length) {
+    tbl.style.display = 'none'; _clearEl(tbl);
+    empty.style.display = ''; empty.textContent = '\u0418\u0441\u0442\u043e\u0440\u0438\u044f futures fills \u043f\u043e\u043a\u0430 \u043f\u0443\u0441\u0442\u0430';
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+  var wins = 0, losses = 0, even = 0;
+  rows.forEach(function(r) {
+    var pnl = Number(r.pnl || 0);
+    if (pnl > 0) wins++; else if (pnl < 0) losses++; else even++;
+  });
+  _buildStatsBar(bar, wins, losses, even);
+  empty.style.display = 'none'; tbl.style.display = ''; _clearEl(tbl);
+  buildTable(tbl, futuresHistoryHeaders, rows.map(function(r) {
+    var side = String(r.side || '').toUpperCase();
+    var pnl  = Number(r.pnl || 0);
+    var feeText = r.fee !== undefined && r.fee !== null ? Number(r.fee).toFixed(6) + ' ' + String(r.fee_currency || '').trim() : '\u2014';
+    return [
+      {text: r.symbol || '', cls: 'col-blue'},
+      {text: side || '\u2014', cls: side === 'BUY' ? 'col-green' : (side === 'SELL' ? 'col-red' : '')},
+      {text: r.price !== undefined && r.price !== null ? Number(r.price).toFixed(4) : '\u2014'},
+      {text: r.qty !== undefined && r.qty !== null ? Number(r.qty).toFixed(6) : '\u2014'},
+      {text: feeText, cls: 'col-dim'},
+      {text: _fmtSignedNumber(r.pnl, 4), cls: pnl >= 0 ? 'col-green' : 'col-red'},
+      {text: _fmtTimeText(r.created_at_utc), cls: 'col-dim'}
+    ];
+  }));
+}
+
+function _loadFuturesPageData() {
+  var api = _getAPI();
+  var empty = document.getElementById('futures-empty-state');
+  var bar   = document.getElementById('futures-stats-bar');
+  if (!api) { if (empty) empty.textContent = 'API \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d'; return; }
+  if (bar) bar.style.display = 'none';
+  if (_futuresActiveView === 'orders') {
+    _cachedApi('futures_orders', function() { return api.get_futures_orders(); })
+      .then(function(r) { try { _applyFuturesOrdersTable(JSON.parse(r)); } catch(e) {} })
+      .catch(function(e) {
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c futures-\u043e\u0440\u0434\u0435\u0440\u0430';
+        console.warn('[botik] futures orders error', e);
+      });
+    return;
+  }
+  if (_futuresActiveView === 'history') {
+    _cachedApi('futures_fills', function() { return api.get_futures_fills(); })
+      .then(function(r) { try { _applyFuturesFillsTable(JSON.parse(r)); } catch(e) {} })
+      .catch(function(e) {
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e futures fills';
+        console.warn('[botik] futures fills error', e);
+      });
+    return;
+  }
+  _cachedApi('futures_positions', function() { return api.get_futures_positions(); })
+    .then(function(r) { try { _applyFuturesTable(JSON.parse(r)); } catch(e) { console.warn('[botik] futures parse error', e); } })
+    .catch(function(e) {
+      if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c futures-\u043f\u043e\u0437\u0438\u0446\u0438\u0438';
+      console.warn('[botik] futures positions error', e);
+    });
+}
+
 function _loadSpotPageData() {
   var api = _getAPI();
   if (!api) return;
   var empty = document.getElementById('spot-empty-state');
   if (_spotActiveView === 'orders') {
-    api.get_spot_orders().then(function(r) {
-      try { _applySpotOrdersTable(JSON.parse(r)); } catch(e) {}
-    }).catch(function(e) {
-      if (empty) empty.textContent = 'Не удалось загрузить spot-ордера';
-      console.warn('[botik] spot orders error', e);
-    });
+    _cachedApi('spot_orders', function() { return api.get_spot_orders(); })
+      .then(function(r) { try { _applySpotOrdersTable(JSON.parse(r)); } catch(e) {} })
+      .catch(function(e) {
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c spot-\u043e\u0440\u0434\u0435\u0440\u0430';
+        console.warn('[botik] spot orders error', e);
+      });
     return;
   }
   if (_spotActiveView === 'history') {
-    api.get_spot_fills().then(function(r) {
-      try { _applySpotFillsTable(JSON.parse(r)); } catch(e) {}
-    }).catch(function(e) {
-      if (empty) empty.textContent = 'Не удалось загрузить историю spot fills';
-      console.warn('[botik] spot fills error', e);
-    });
+    _cachedApi('spot_fills', function() { return api.get_spot_fills(); })
+      .then(function(r) { try { _applySpotFillsTable(JSON.parse(r)); } catch(e) {} })
+      .catch(function(e) {
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e spot fills';
+        console.warn('[botik] spot fills error', e);
+      });
     return;
   }
-  api.get_spot_positions().then(function(r) {
-    try { _applySpotPositionsTable(JSON.parse(r)); } catch(e) {}
-  }).catch(function(e) {
-    if (empty) empty.textContent = 'Не удалось загрузить spot-позиции';
-    console.warn('[botik] spot positions error', e);
-  });
+  _cachedApi('spot_positions', function() { return api.get_spot_positions(); })
+    .then(function(r) { try { _applySpotPositionsTable(JSON.parse(r)); } catch(e) {} })
+    .catch(function(e) {
+      if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c spot-\u043f\u043e\u0437\u0438\u0446\u0438\u0438';
+      console.warn('[botik] spot positions error', e);
+    });
 }
 
 function _loadFuturesPositions() {
-  var api = _getAPI();
-  var empty = document.getElementById('futures-empty-state');
-  if (!api) {
-    if (empty) empty.textContent = 'API недоступен';
-    return;
-  }
-  api.get_futures_positions().then(function(r) {
-    try { _applyFuturesTable(JSON.parse(r)); } catch(e) { console.warn('[botik] futures parse error', e); }
-  }).catch(function(e) {
-    if (empty) empty.textContent = 'Не удалось загрузить futures-позиции';
-    console.warn('[botik] futures positions error', e);
-  });
+  _loadFuturesPageData();
 }
 
 /* ─── OPS / СОСТОЯНИЕ СИСТЕМЫ ────────────────────────────── */
@@ -3277,9 +3393,43 @@ document.querySelectorAll('.nav-item').forEach(function(item) {
 document.querySelectorAll('[data-spot-view]').forEach(function(tab) {
   tab.addEventListener('click', function() {
     _spotActiveView = this.getAttribute('data-spot-view') || 'positions';
+    _apiCache['spot_positions'] = null; _apiCache['spot_orders'] = null; _apiCache['spot_fills'] = null;
     _loadSpotPageData();
   });
 });
+
+document.querySelectorAll('[data-futures-view]').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    _futuresActiveView = this.getAttribute('data-futures-view') || 'positions';
+    _apiCache['futures_positions'] = null; _apiCache['futures_orders'] = null; _apiCache['futures_fills'] = null;
+    _loadFuturesPageData();
+  });
+});
+
+function filterDataSymbols(query) {
+  var q = (query || '').toLowerCase().trim();
+  var tbl = document.getElementById('data-table');
+  if (!tbl) return;
+  var rows = tbl.querySelectorAll('tbody tr');
+  rows.forEach(function(tr) {
+    var sym = tr.getAttribute('data-symbol') || '';
+    tr.style.display = (!q || sym.indexOf(q) >= 0) ? '' : 'none';
+  });
+}
+
+function apiSyncAccount() {
+  var api = _getAPI(); if (!api) return;
+  var msg = document.getElementById('data-status-msg');
+  if (msg) { msg.textContent = '\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u0441 Bybit\u2026'; msg.style.color = 'var(--yellow)'; }
+  api.sync_account_data().then(function(r) {
+    try {
+      var d = JSON.parse(r);
+      if (msg) { msg.textContent = d.msg || '\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u0430'; msg.style.color = 'var(--green)'; }
+    } catch(e) {}
+  }).catch(function() {
+    if (msg) { msg.textContent = '\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438'; msg.style.color = 'var(--red)'; }
+  });
+}
 
 /* ─── SETTINGS ───────────────────────────────────────────── */
 function settingsToggleShow(inputId, btn) {

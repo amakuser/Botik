@@ -133,10 +133,10 @@
 | T37 | Balance poller (Bybit demo REST) | ✅ done | api_balance_mixin.py: daemon-поток, hmac-подпись, INSERT в account_snapshots каждые 30с; баланс 428k USDT отображается |
 | T38 | CMD-окно flashing | ✅ done | CREATE_NO_WINDOW в ManagedProcess.start() и ProcessManager.start_training(); больше нет вспышек консоли |
 | T39 | Control panel: раздельные Spot/Futures кнопки | ✅ done | Удалён select-dropdown, добавлены две строки Start/Stop per scope с state-тегами |
-| T40 | SSE / EventBus — реактивные обновления | ⬜ waiting | Вместо polling каждые 2с — SSE через BotikDevServer; Python шлёт события при изменении |
-| T41 | Стакан (order book) — персистентный сбор | ⬜ waiting | Новая таблица orderbook_snapshots + REST-поллер /v5/market/orderbook каждые 10-30с |
-| T42 | Компонентный HTML — разбить dashboard на page-*.html | ⬜ waiting | BotikDevServer собирает страницы из отдельных файлов; упрощает review и работу |
-| T43 | Таймфреймы backfill — добавить 4h/D/W в конфиг | ⬜ waiting | Константа DEFAULT_INTERVALS вынести в config.yaml |
+| T40 | SSE / EventBus — реактивные обновления | ✅ done | event_bus.py: EventBus + EventDispatcher; evaluate_js push; _onServerEvent в JS; log_entry + balance_update; v0.0.65 |
+| T41 | Стакан (order book) — персистентный сбор | ✅ done | api_orderbook_mixin.py: REST-поллер 20с, migration 13 orderbook_snapshots, page-orderbook, 9 тестов; v0.0.65 |
+| T42 | Компонентный HTML — разбить dashboard на page-*.html | ✅ done | 13 page-*.html компонентов, dashboard_template.html, assemble_dashboard_html(), /rebuild-html endpoint; v0.0.65 |
+| T43 | Таймфреймы backfill — добавить 4h/D/W в конфиг | ✅ done | data.backfill_intervals в config.example.yaml (1/5/15/60/240/D/W); backfill_entry.py + api_data_mixin читают из конфига; v0.0.65 |
 | W1 | Редизайн HTML (glassmorphism) | ⬜ waiting | Опционально — после M0-M6 |
 | W3 | Рефакторинг webview_app.py → 8 модулей | ✅ done | Разбито на api_helpers, api_db_mixin, api_models_mixin, api_spot_mixin, api_futures_mixin, api_system_mixin, api_settings_mixin, api_trading_mixin; 186 тестов OK |
 | W2 | Пересборка exe — bundled_file + html= фикс | ✅ done | 68 МБ |

@@ -99,7 +99,13 @@
 
       <div class="grid-21 mb-14">
         <div class="card">
-          <div class="section-title">Символы (symbol_registry)</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Символы (symbol_registry)</div>
+            <input type="text" id="data-search" placeholder="🔍 Поиск символа…"
+              style="background:rgba(10,22,40,0.8);border:1px solid var(--border);border-radius:6px;
+                     padding:4px 10px;font-size:12px;color:var(--text1);outline:none;width:180px"
+              oninput="filterDataSymbols(this.value)" />
+          </div>
           <div id="data-empty-state" style="padding:36px;text-align:center;color:var(--text3);font-size:13px">
             Загрузка символов…
           </div>
@@ -117,6 +123,14 @@
           <button class="btn btn-accent" id="btn-live-start" style="width:100%;justify-content:center" onclick="apiStartLiveData()">▶ Запустить Live Data</button>
           <button class="btn btn-red" id="btn-live-stop" style="width:100%;justify-content:center;display:none" onclick="apiStopLiveData()">■ Стоп Live Data</button>
           <div id="data-status-msg" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);min-height:16px"></div>
+          <div class="divider" style="margin:4px 0"></div>
+          <div style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px">АККАУНТ BYBIT</div>
+          <button class="btn" style="width:100%;justify-content:center" onclick="apiSyncAccount()">🔄 Синхронизировать с Bybit</button>
+          <div class="divider" style="margin:4px 0"></div>
+          <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;letter-spacing:0.5px;margin-bottom:4px">ХРАНИЛИЩЕ</div>
+          <div style="font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;word-break:break-all" id="mgmt-db-path">—</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Размер: <span id="mgmt-db-size" style="color:var(--text2)">—</span></div>
+          <button class="btn" style="width:100%;justify-content:center;margin-top:4px" onclick="pywebview.api.open_storage_folder()">📂 Открыть папку</button>
         </div>
       </div>
     </div>

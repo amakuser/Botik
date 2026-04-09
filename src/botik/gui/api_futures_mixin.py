@@ -91,6 +91,32 @@ class FuturesMixin:
         except Exception:
             return []
 
+    def _read_futures_orders(self, conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
+        try:
+            if not self._table_exists(conn, "futures_orders"):  # type: ignore[attr-defined]
+                return []
+            rows = conn.execute(
+                "SELECT symbol, side, order_type, price, qty, filled_qty, status, updated_at_utc "
+                "FROM futures_orders ORDER BY updated_at_utc DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
+
+    def _read_futures_fills(self, conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
+        try:
+            if not self._table_exists(conn, "futures_fills"):  # type: ignore[attr-defined]
+                return []
+            rows = conn.execute(
+                "SELECT symbol, side, price, qty, fee, fee_currency, pnl, exec_time_ms, created_at_utc "
+                "FROM futures_fills ORDER BY COALESCE(exec_time_ms,0) DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
+
     # ── Public API ────────────────────────────────────────────
 
     def get_futures_positions(self) -> str:
@@ -100,6 +126,26 @@ class FuturesMixin:
             return json.dumps([])
         try:
             return json.dumps(self._read_futures_positions(conn), default=str)
+        finally:
+            conn.close()
+
+    def get_futures_orders(self) -> str:
+        """Returns JSON list of recent futures orders."""
+        conn = self._db_connect(_resolve_db_path(_load_yaml()))  # type: ignore[attr-defined]
+        if not conn:
+            return json.dumps([])
+        try:
+            return json.dumps(self._read_futures_orders(conn), default=str)
+        finally:
+            conn.close()
+
+    def get_futures_fills(self) -> str:
+        """Returns JSON list of recent futures fills."""
+        conn = self._db_connect(_resolve_db_path(_load_yaml()))  # type: ignore[attr-defined]
+        if not conn:
+            return json.dumps([])
+        try:
+            return json.dumps(self._read_futures_fills(conn), default=str)
         finally:
             conn.close()
 
