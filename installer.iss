@@ -48,10 +48,10 @@ Name: "{group}\Запустить Botik Bot (без GUI)"; Filename: "{app}\{#My
 Name: "{commondesktop}\Запустить Botik (GUI)"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-Name: "HKCU\Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Botik"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
-Name: "HKCU\Software\Botik"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
-Name: "HKCU\Software\Botik"; ValueType: string; ValueName: "InstallVersion"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
-Name: "HKCU\Software\Botik"; ValueType: string; ValueName: "VersionFile"; ValueData: "{app}\version.txt"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Botik"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKCU; Subkey: "Software\Botik"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Botik"; ValueType: string; ValueName: "InstallVersion"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Botik"; ValueType: string; ValueName: "VersionFile"; ValueData: "{app}\version.txt"; Flags: uninsdeletekey
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Botik"; Flags: nowait postinstall skipifsilent
