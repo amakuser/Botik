@@ -6,13 +6,30 @@ on:
     branches: [ master, main ]
     paths:
       - "src/**"
+      - "dashboard_template.html"
+      - "dashboard_preview.html"
+      - "dashboard_workspace_manifest.yaml"
+      - "dashboard_release_manifest.yaml"
+      - "active_models.yaml"
       - "botik.spec"
       - "installer.iss"
       - "requirements.txt"
+      - "build_portable_exe.bat"
+      - "build_windows_installer.bat"
+      - "tools/bump_version.py"
+      - ".env.example"
+      - "config.example.yaml"
       - "VERSION"
       - ".github/workflows/windows-package.yml"
     tags:
       - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-package-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -20,6 +37,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Auto bump VERSION for branch push
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        shell: pwsh
+        run: |
+          python tools/bump_version.py
+          $raw = Get-Content VERSION -Raw
+          $v = ($raw | Select-String "version=(.+)").Matches[0].Groups[1].Value.Trim()
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "ci: bump version to $v [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
+          Write-Host "Bumped VERSION to $v"
 
       - name: Read VERSION
         id: ver
@@ -29,12 +67,7 @@ jobs:
           $v = ($raw | Select-String "version=(.+)").Matches[0].Groups[1].Value.Trim()
           "VERSION=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Building version: $v"
-          # version.txt used by installer.iss
           (git rev-parse HEAD).Trim() | Set-Content -Path version.txt -Encoding utf8
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
 
       - name: Install dependencies
         run: |
