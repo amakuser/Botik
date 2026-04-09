@@ -84,14 +84,49 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $candidates = @(
-            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-          ) | Where-Object { $_ -and (Test-Path $_) }
-          if (-not $candidates) {
-            throw "Inno Setup Compiler (ISCC.exe) not found in Program Files paths."
+          $resolved = $null
+          $command = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          if ($command) {
+            $resolved = $command.Source
           }
-          $iscc = $candidates[0]
+
+          if (-not $resolved) {
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+              "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe",
+              "${env:ChocolateyInstall}\lib\innosetup\tools\ISCC.exe",
+              "C:\ProgramData\chocolatey\lib\innosetup\tools\ISCC.exe"
+            ) | Where-Object { $_ -and (Test-Path $_) }
+            if ($candidates) {
+              $resolved = $candidates[0]
+            }
+          }
+
+          if (-not $resolved) {
+            $searchRoots = @(
+              "${env:ProgramFiles(x86)}",
+              "${env:ProgramFiles}",
+              "${env:LOCALAPPDATA}\Programs",
+              "${env:ChocolateyInstall}\lib",
+              "C:\ProgramData\chocolatey\lib"
+            ) | Where-Object { $_ -and (Test-Path $_) }
+
+            foreach ($root in $searchRoots) {
+              $match = Get-ChildItem -Path $root -Recurse -Filter ISCC.exe -File -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+              if ($match) {
+                $resolved = $match
+                break
+              }
+            }
+          }
+
+          if (-not $resolved) {
+            throw "Inno Setup Compiler (ISCC.exe) not found after install."
+          }
+
+          $iscc = $resolved
           Write-Host "Using ISCC: $iscc"
           & $iscc /DMyAppVersion="${{ steps.ver.outputs.VERSION }}" installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
