@@ -1,19 +1,71 @@
     <div class="page" id="page-telegram">
       <div class="page-header">
         <div class="page-title">Telegram</div>
-        <div class="page-sub">Управление ботом уведомлений</div>
+        <div class="page-sub">Состояние control bot, health-check, команды и история активности</div>
       </div>
+
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-label">Состояние</div>
+          <div class="metric-value plain" id="tg-state-val">—</div>
+          <div class="metric-change muted" id="tg-state-sub">control bot</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Handshake</div>
+          <div class="metric-value plain" id="tg-handshake-val">—</div>
+          <div class="metric-change muted" id="tg-handshake-sub">Telegram API</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Ping</div>
+          <div class="metric-value plain" id="tg-ping-val">—</div>
+          <div class="metric-change muted" id="tg-ping-sub">последняя проверка</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Команд получено</div>
+          <div class="metric-value plain" id="tg-activity-val">—</div>
+          <div class="metric-change muted" id="tg-activity-sub">за историю workspace</div>
+        </div>
+      </div>
+
       <div class="grid-21 mb-14">
         <div class="card">
-          <div class="section-title">Доступные команды</div>
-          <div id="cmd-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Control Bot</div>
+            <div id="tg-checked-at" style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace">Проверка: —</div>
+          </div>
+          <table class="status-list" id="tg-summary-table"></table>
         </div>
         <div class="card" style="display:flex;flex-direction:column;gap:8px">
           <div class="section-title">Действия</div>
-          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiReloadConfig()">⟳ Обновить конфиг</button>
-          <button class="btn btn-accent" style="width:100%;justify-content:center" onclick="apiTelegramTest()">✉ Test Send</button>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiReloadTelegramStatus()">↻ Обновить статус</button>
+          <button class="btn btn-accent" id="btn-tg-page-test" style="width:100%;justify-content:center" onclick="apiTelegramTest()">✉ Test Send</button>
+          <button class="btn" style="width:100%;justify-content:center" onclick="openTelegramLogsView()">↗ Открыть Telegram логи</button>
+        </div>
+      </div>
+
+      <div class="card mb-14">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+          <div class="section-title" style="margin:0">Поддерживаемые команды</div>
+          <div id="tg-command-count" style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace">—</div>
+        </div>
+        <div id="cmd-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="section-title" style="margin-bottom:10px">Последние команды</div>
+          <div id="tg-commands-empty" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Команд пока нет</div>
+          <table class="tbl" id="tg-commands-table" style="display:none"></table>
+        </div>
+        <div class="card">
+          <div class="section-title" style="margin-bottom:10px">События</div>
+          <div id="tg-alerts-empty" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Событий пока нет</div>
+          <table class="tbl" id="tg-alerts-table" style="display:none"></table>
+        </div>
+        <div class="card">
+          <div class="section-title" style="margin-bottom:10px">Ошибки</div>
+          <div id="tg-errors-empty" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Ошибок пока нет</div>
+          <table class="tbl" id="tg-errors-table" style="display:none"></table>
         </div>
       </div>
     </div>
-
-    <!-- НАСТРОЙКИ -->

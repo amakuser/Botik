@@ -55,6 +55,7 @@ from .api_spot_mixin import SpotMixin
 from .api_futures_mixin import FuturesMixin
 from .api_system_mixin import SystemMixin
 from .api_settings_mixin import SettingsMixin
+from .api_telegram_mixin import TelegramMixin
 from .api_trading_mixin import TradingMixin
 from .api_data_mixin import DataMixin
 from .api_ticker_mixin import TickerMixin
@@ -151,6 +152,7 @@ class DashboardAPI(
     FuturesMixin,
     SystemMixin,
     SettingsMixin,
+    TelegramMixin,
     TradingMixin,
     DataMixin,
     TickerMixin,
@@ -182,6 +184,7 @@ class DashboardAPI(
         self._init_ticker()
         self._init_balance()
         self._init_orderbook()
+        self._init_telegram()
         self._add_log("[sys] Dashboard loaded", "sys")
 
     # ── Core internal helpers ─────────────────────────────────

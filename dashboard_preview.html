@@ -321,11 +321,6 @@
   }
   .log-box::-webkit-scrollbar { width: 4px; }
   .log-box::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-  .log-empty-hint {
-    color: var(--text3); font-size: 11px; font-style: italic;
-    padding: 20px 0; text-align: center; line-height: 1.6;
-  }
-  .log-empty-hint strong { color: var(--accent2); font-style: normal; }
   .log-line { display: flex; gap: 12px; }
   .log-ts  { color: var(--text3); white-space: nowrap; flex-shrink: 0; }
   .log-ch  { width: 70px; flex-shrink: 0; }
@@ -777,6 +772,7 @@
           <button class="btn btn-red" id="spot-sell-all-btn" style="display:none;font-size:12px;padding:4px 12px"
                   onclick="apiSellAllSpot()">Продать всё → USDT</button>
         </div>
+        <div id="spot-stats-bar" style="display:none"></div>
         <div id="spot-empty-state" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
           Загрузка spot-данных…
         </div>
@@ -808,11 +804,17 @@
           <div class="metric-change muted" id="ml-status-sub">—</div>
         </div>
       </div>
+      <div class="subtabs" style="margin-bottom:14px">
+        <div class="subtab active" data-futures-view="positions">Позиции</div>
+        <div class="subtab" data-futures-view="orders">Ордера</div>
+        <div class="subtab" data-futures-view="history">История</div>
+      </div>
       <div class="grid-21">
         <div class="card">
-          <div class="section-title">Futures позиции (paper)</div>
+          <div class="section-title" id="futures-table-title">Futures позиции (paper)</div>
+          <div id="futures-stats-bar" style="display:none"></div>
           <div id="futures-empty-state" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
-            Загрузка futures-позиций…
+            Загрузка futures-данных…
           </div>
           <table class="tbl" id="futures-table" style="display:none"></table>
         </div>
@@ -924,7 +926,7 @@
       <div class="card mb-14">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div class="subtabs" id="log-subtabs">
-            <div class="subtab active" data-log-ch="sys">⬡ Приложение</div>
+            <div class="subtab active" data-log-ch="sys">⬡ Дашборд</div>
             <div class="subtab" data-log-ch="spot">◈ Спот</div>
             <div class="subtab" data-log-ch="futures">◇ Фьючерсы</div>
             <div class="subtab" data-log-ch="ml">⬟ ML</div>
@@ -935,11 +937,21 @@
             <button class="btn btn-ghost" onclick="logsScrollBottom()">↓ В конец</button>
           </div>
         </div>
-        <div class="log-box" id="log-ch-sys"></div>
-        <div class="log-box" id="log-ch-spot"   style="display:none"></div>
-        <div class="log-box" id="log-ch-futures" style="display:none"></div>
-        <div class="log-box" id="log-ch-ml"      style="display:none"></div>
-        <div class="log-box" id="log-ch-telegram" style="display:none"></div>
+        <div class="log-box" id="log-ch-sys">
+          <div class="log-empty-hint" id="log-hint-sys">Дашборд запущен. Здесь показываются только системные и UI события дашборда.</div>
+        </div>
+        <div class="log-box" id="log-ch-spot" style="display:none">
+          <div class="log-empty-hint" id="log-hint-spot">Нет логов Спот. Запустите <strong>Spot Runner</strong> через вкладку Главная → Control Panel.</div>
+        </div>
+        <div class="log-box" id="log-ch-futures" style="display:none">
+          <div class="log-empty-hint" id="log-hint-futures">Нет логов Фьючерсы. Запустите <strong>Futures Runner</strong> через вкладку Главная → Control Panel.</div>
+        </div>
+        <div class="log-box" id="log-ch-ml" style="display:none">
+          <div class="log-empty-hint" id="log-hint-ml">Нет ML логов. Запустите обучение через вкладку <strong>Модели</strong>.</div>
+        </div>
+        <div class="log-box" id="log-ch-telegram" style="display:none">
+          <div class="log-empty-hint" id="log-hint-telegram">Нет Telegram логов. Проверьте токен бота в <strong>Настройках</strong> и перезапустите Botik.</div>
+        </div>
         <!-- legacy alias for old polling code -->
         <div id="log-container" style="display:none"></div>
       </div>
@@ -1029,22 +1041,74 @@
         <div class="page" id="page-telegram">
       <div class="page-header">
         <div class="page-title">Telegram</div>
-        <div class="page-sub">Управление ботом уведомлений</div>
+        <div class="page-sub">Состояние control bot, health-check, команды и история активности</div>
       </div>
+
+      <div class="grid-4 mb-14">
+        <div class="card">
+          <div class="metric-label">Состояние</div>
+          <div class="metric-value plain" id="tg-state-val">—</div>
+          <div class="metric-change muted" id="tg-state-sub">control bot</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Handshake</div>
+          <div class="metric-value plain" id="tg-handshake-val">—</div>
+          <div class="metric-change muted" id="tg-handshake-sub">Telegram API</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Ping</div>
+          <div class="metric-value plain" id="tg-ping-val">—</div>
+          <div class="metric-change muted" id="tg-ping-sub">последняя проверка</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Команд получено</div>
+          <div class="metric-value plain" id="tg-activity-val">—</div>
+          <div class="metric-change muted" id="tg-activity-sub">за историю workspace</div>
+        </div>
+      </div>
+
       <div class="grid-21 mb-14">
         <div class="card">
-          <div class="section-title">Доступные команды</div>
-          <div id="cmd-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Control Bot</div>
+            <div id="tg-checked-at" style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace">Проверка: —</div>
+          </div>
+          <table class="status-list" id="tg-summary-table"></table>
         </div>
         <div class="card" style="display:flex;flex-direction:column;gap:8px">
           <div class="section-title">Действия</div>
-          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiReloadConfig()">⟳ Обновить конфиг</button>
-          <button class="btn btn-accent" style="width:100%;justify-content:center" onclick="apiTelegramTest()">✉ Test Send</button>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="apiReloadTelegramStatus()">↻ Обновить статус</button>
+          <button class="btn btn-accent" id="btn-tg-page-test" style="width:100%;justify-content:center" onclick="apiTelegramTest()">✉ Test Send</button>
+          <button class="btn" style="width:100%;justify-content:center" onclick="openTelegramLogsView()">↗ Открыть Telegram логи</button>
+        </div>
+      </div>
+
+      <div class="card mb-14">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+          <div class="section-title" style="margin:0">Поддерживаемые команды</div>
+          <div id="tg-command-count" style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace">—</div>
+        </div>
+        <div id="cmd-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="section-title" style="margin-bottom:10px">Последние команды</div>
+          <div id="tg-commands-empty" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Команд пока нет</div>
+          <table class="tbl" id="tg-commands-table" style="display:none"></table>
+        </div>
+        <div class="card">
+          <div class="section-title" style="margin-bottom:10px">События</div>
+          <div id="tg-alerts-empty" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Событий пока нет</div>
+          <table class="tbl" id="tg-alerts-table" style="display:none"></table>
+        </div>
+        <div class="card">
+          <div class="section-title" style="margin-bottom:10px">Ошибки</div>
+          <div id="tg-errors-empty" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Ошибок пока нет</div>
+          <table class="tbl" id="tg-errors-table" style="display:none"></table>
         </div>
       </div>
     </div>
-
-    <!-- НАСТРОЙКИ -->
 
         <div class="page" id="page-settings">
       <div class="page-header">
@@ -1298,6 +1362,28 @@ DB_URL=sqlite:///data/botik.db</pre>
         <div class="page-title">Данные</div>
         <div class="page-sub">Сбор исторических и live OHLCV данных · symbol registry</div>
       </div>
+      <!-- ХРАНИЛИЩЕ -->
+      <div class="card mb-14" id="data-storage-card" style="display:none">
+        <div class="section-title" style="margin-bottom:10px">Хранилище</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px;letter-spacing:0.5px">БАЗА ДАННЫХ</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="data-db-path" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);word-break:break-all">—</span>
+              <button class="btn" style="padding:2px 8px;font-size:10px;white-space:nowrap" onclick="pywebview.api.open_storage_folder()">📂</button>
+            </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--text3)">Размер: <span id="data-db-size" style="color:var(--text2)">—</span></div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px;letter-spacing:0.5px">EXE (СБОРКА)</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="data-exe-path" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);word-break:break-all">—</span>
+              <button class="btn" id="btn-open-exe-folder" style="padding:2px 8px;font-size:10px;white-space:nowrap;display:none" onclick="pywebview.api.open_exe_folder()">📂</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid-4 mb-14">
         <div class="card">
           <div class="metric-label">Linear (futures)</div>
@@ -1372,7 +1458,13 @@ DB_URL=sqlite:///data/botik.db</pre>
 
       <div class="grid-21 mb-14">
         <div class="card">
-          <div class="section-title">Символы (symbol_registry)</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Символы (symbol_registry)</div>
+            <input type="text" id="data-search" placeholder="🔍 Поиск символа…"
+              style="background:rgba(10,22,40,0.8);border:1px solid var(--border);border-radius:6px;
+                     padding:4px 10px;font-size:12px;color:var(--text1);outline:none;width:180px"
+              oninput="filterDataSymbols(this.value)" />
+          </div>
           <div id="data-empty-state" style="padding:36px;text-align:center;color:var(--text3);font-size:13px">
             Загрузка символов…
           </div>
@@ -1390,6 +1482,14 @@ DB_URL=sqlite:///data/botik.db</pre>
           <button class="btn btn-accent" id="btn-live-start" style="width:100%;justify-content:center" onclick="apiStartLiveData()">▶ Запустить Live Data</button>
           <button class="btn btn-red" id="btn-live-stop" style="width:100%;justify-content:center;display:none" onclick="apiStopLiveData()">■ Стоп Live Data</button>
           <div id="data-status-msg" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);min-height:16px"></div>
+          <div class="divider" style="margin:4px 0"></div>
+          <div style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:4px">АККАУНТ BYBIT</div>
+          <button class="btn" style="width:100%;justify-content:center" onclick="apiSyncAccount()">🔄 Синхронизировать с Bybit</button>
+          <div class="divider" style="margin:4px 0"></div>
+          <div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;letter-spacing:0.5px;margin-bottom:4px">ХРАНИЛИЩЕ</div>
+          <div style="font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;word-break:break-all" id="mgmt-db-path">—</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Размер: <span id="mgmt-db-size" style="color:var(--text2)">—</span></div>
+          <button class="btn" style="width:100%;justify-content:center;margin-top:4px" onclick="pywebview.api.open_storage_folder()">📂 Открыть папку</button>
         </div>
       </div>
     </div>
@@ -2478,12 +2578,7 @@ verData.forEach(function(row) {
 });
 
 /* ─── TELEGRAM COMMANDS ─────────────────────────────────── */
-var cmds = ['/status','/balance','/orders','/starttrading','/stoptrading','/pull','/help'];
 var cmdList = document.getElementById('cmd-list');
-cmds.forEach(function(c) {
-  var badge = document.createElement('span'); badge.className = 'cmd-badge'; badge.textContent = c;
-  cmdList.appendChild(badge);
-});
 
 /* ─── LIVE PNL (demo fallback) ───────────────────────────── */
 var pnlBase = 0;
@@ -3194,17 +3289,6 @@ function _applyDataStatus(d) {
   });
 }
 
-function filterDataSymbols(query) {
-  var q = (query || '').toLowerCase().trim();
-  var tbl = document.getElementById('data-table');
-  if (!tbl) return;
-  var rows = tbl.querySelectorAll('tbody tr');
-  rows.forEach(function(tr) {
-    var sym = tr.getAttribute('data-symbol') || '';
-    tr.style.display = (!q || sym.indexOf(q) >= 0) ? '' : 'none';
-  });
-}
-
 function apiStartBackfill() {
   var api = _getAPI(); if (!api) return;
   var msg = document.getElementById('data-status-msg');
@@ -3239,20 +3323,6 @@ function apiStartLiveData() {
 function apiStopLiveData() {
   var api = _getAPI(); if (!api) return;
   api.stop_live_data().then(function() { _loadDataPage(); });
-}
-
-function apiSyncAccount() {
-  var api = _getAPI(); if (!api) return;
-  var msg = document.getElementById('data-status-msg');
-  if (msg) { msg.textContent = 'Синхронизация с Bybit…'; msg.style.color = 'var(--yellow)'; }
-  api.sync_account_data().then(function(r) {
-    try {
-      var d = JSON.parse(r);
-      if (msg) { msg.textContent = d.msg || 'Синхронизация запущена'; msg.style.color = 'var(--green)'; }
-    } catch(e) {}
-  }).catch(function() {
-    if (msg) { msg.textContent = 'Ошибка синхронизации'; msg.style.color = 'var(--red)'; }
-  });
 }
 
 function apiSeedSymbols() {
@@ -3699,56 +3769,108 @@ function _initLogSubtabs() {
     tab.addEventListener('click', function() {
       tabs.forEach(function(t) { t.classList.remove('active'); });
       this.classList.add('active');
-      var ch = this.getAttribute('data-log-ch');
-      _logActiveChannel = ch;
-      ['sys','spot','futures','ml','telegram'].forEach(function(c) {
-        var el = document.getElementById('log-ch-' + c);
-        if (el) el.style.display = c === ch ? '' : 'none';
-      });
+      _setActiveLogChannel(this.getAttribute('data-log-ch'));
     });
   });
 }
 
-function _pollLogs() {
-  var api = _getAPI();
-  if (!api) return;
-  api.get_logs(300).then(function(raw) {
-    try { _appendLogs(JSON.parse(raw)); } catch(e) {}
+function _setActiveLogChannel(channel) {
+  _logActiveChannel = channel || 'sys';
+  document.querySelectorAll('#log-subtabs .subtab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.getAttribute('data-log-ch') === _logActiveChannel);
   });
-  setTimeout(_pollLogs, 2500);
+  ['sys','spot','futures','ml','telegram'].forEach(function(c) {
+    var el = document.getElementById('log-ch-' + c);
+    if (el) el.style.display = c === _logActiveChannel ? '' : 'none';
+  });
+}
+
+var _logPollStarted = false;
+var _logEmptyHints = null;
+
+function _captureLogHints() {
+  if (_logEmptyHints) return;
+  _logEmptyHints = {};
+  ['sys','spot','futures','ml','telegram'].forEach(function(ch) {
+    var hint = document.getElementById('log-hint-' + ch);
+    _logEmptyHints[ch] = hint ? hint.outerHTML : '';
+  });
+}
+
+function _pollLogs() {
+  if (_logPollStarted) return;
+  _logPollStarted = true;
+
+  function _tick() {
+    var api = _getAPI();
+    if (!api) {
+      setTimeout(_tick, 2500);
+      return;
+    }
+    api.get_log_channels(200).then(function(raw) {
+      try { _renderLogChannels(JSON.parse(raw)); } catch(e) {}
+    }).finally(function() {
+      setTimeout(_tick, 2500);
+    });
+  }
+
+  _tick();
+}
+
+function _renderLogChannels(payload) {
+  _captureLogHints();
+  ['sys','spot','futures','ml','telegram'].forEach(function(channel) {
+    _renderLogChannel(channel, (payload && payload[channel]) || []);
+  });
+}
+
+function _renderLogChannelsEmptyState(channel, container) {
+  if (!container) return;
+  container.innerHTML = (_logEmptyHints && _logEmptyHints[channel]) || '';
+}
+
+function _renderLogChannelsRow(container, channel, row) {
+  var line = document.createElement('div'); line.className = 'log-line';
+  var ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = row.ts || '';
+  var ch = document.createElement('span');
+  ch.className = 'log-ch ' + ({spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-ml', sys:'ch-sys'}[channel] || 'ch-sys');
+  ch.textContent = '[' + (channel || 'sys') + ']';
+  var msg = document.createElement('span');
+  msg.className = _logMsgClass(row.message || '');
+  msg.textContent = row.message || '';
+  line.appendChild(ts);
+  line.appendChild(ch);
+  line.appendChild(msg);
+  container.appendChild(line);
+}
+
+function _renderLogChannel(channel, rows) {
+  var container = document.getElementById('log-ch-' + channel);
+  if (!container) return;
+  _clearEl(container);
+  if (!rows || !rows.length) {
+    _renderLogChannelsEmptyState(channel, container);
+    return;
+  }
+  rows.slice().reverse().forEach(function(row) {
+    _renderLogChannelsRow(container, channel, row || {});
+  });
+  if (_logActiveChannel === channel) {
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
 function _appendLogs(logs) {
-  if (!logs.length) return;
-  var newLogs = logs.slice(_logSeenCount);
-  if (!newLogs.length) return;
-  _logSeenCount = logs.length;
-  var chMap = {spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-telegram', sys:'ch-sys'};
-  var cssChMap = {spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-ml', sys:'ch-sys'};
-  newLogs.forEach(function(l) {
-    var targetId = 'log-ch-' + (l.ch || 'sys');
-    var container = document.getElementById(targetId) || document.getElementById('log-ch-sys');
-    // hide empty-hint on first real log entry
-    var hint = container.querySelector('.log-empty-hint');
-    if (hint) hint.style.display = 'none';
-    var line = document.createElement('div'); line.className = 'log-line';
-    var ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = l.ts;
-    var ch = document.createElement('span');
-    ch.className = 'log-ch ' + (cssChMap[l.ch] || 'ch-sys');
-    ch.textContent = '[' + (l.ch || 'sys') + ']';
-    var msg = document.createElement('span'); msg.className = _logMsgClass(l.msg); msg.textContent = l.msg;
-    line.appendChild(ts); line.appendChild(ch); line.appendChild(msg);
-    container.appendChild(line);
-    // auto-scroll active channel
-    if ((l.ch || 'sys') === _logActiveChannel) {
-      container.scrollTop = container.scrollHeight;
-    }
-  });
+  var api = _getAPI();
+  if (!api || !logs || !logs.length) return;
 }
 
 function logsClearActive() {
   var el = document.getElementById('log-ch-' + _logActiveChannel);
-  if (el) _clearEl(el);
+  if (el) {
+    _clearEl(el);
+    _renderLogChannelsEmptyState(_logActiveChannel, el);
+  }
 }
 
 function logsScrollBottom() {
@@ -3763,6 +3885,169 @@ function _logMsgClass(msg) {
   if (m.includes('warn')) return 'lm-warn';
   if (m.includes(' ok') || m.includes('success') || m.includes('started') || m.includes('filled')) return 'lm-ok';
   return 'lm-norm';
+}
+
+function _telegramMetricState(elId, subId, value, cls, subText) {
+  var el = document.getElementById(elId);
+  var sub = document.getElementById(subId);
+  if (el) {
+    el.textContent = value == null || value === '' ? '—' : String(value);
+    el.className = 'metric-value ' + (cls || 'plain');
+  }
+  if (sub && subText !== undefined) sub.textContent = subText;
+}
+
+function _renderTelegramSummaryRows(rows) {
+  var table = document.getElementById('tg-summary-table');
+  if (!table) return;
+  table.innerHTML = '';
+  rows.forEach(function(row) {
+    var tr = document.createElement('tr');
+    var td1 = document.createElement('td');
+    td1.style.cssText = 'padding:4px 8px 4px 0;color:var(--text3);font-size:12px;white-space:nowrap';
+    td1.textContent = row[0];
+    var td2 = document.createElement('td');
+    td2.style.cssText = 'padding:4px 0;font-size:12px;color:var(--text1);font-family:\'JetBrains Mono\',monospace';
+    td2.textContent = row[1];
+    tr.appendChild(td1);
+    tr.appendChild(td2);
+    table.appendChild(tr);
+  });
+}
+
+function _renderTelegramBadges(commands) {
+  if (!cmdList) return;
+  _clearEl(cmdList);
+  (commands || []).forEach(function(command) {
+    var badge = document.createElement('span');
+    badge.className = 'cmd-badge';
+    badge.textContent = command;
+    cmdList.appendChild(badge);
+  });
+  var count = document.getElementById('tg-command-count');
+  if (count) count.textContent = 'Команд: ' + ((commands || []).length || 0);
+}
+
+function _renderTelegramTable(tableId, emptyId, headers, rows, rowBuilder) {
+  var table = document.getElementById(tableId);
+  var empty = document.getElementById(emptyId);
+  if (!table || !empty) return;
+  _clearEl(table);
+  if (!rows || !rows.length) {
+    table.style.display = 'none';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = '';
+  buildTable(table, headers, rows.map(rowBuilder));
+}
+
+function _applyTelegramWorkspace(data) {
+  var state = data && data.state ? String(data.state).toUpperCase() : '—';
+  var stateCls = state === 'RUNNING' ? 'green' : (state.indexOf('DISABLED') >= 0 ? 'yellow' : 'plain');
+  _telegramMetricState('tg-state-val', 'tg-state-sub', state, stateCls, 'control bot');
+
+  var handshake = data && data.handshake ? String(data.handshake).toUpperCase() : '—';
+  var handshakeCls = handshake === 'OK' ? 'green' : (handshake.indexOf('ERROR') >= 0 ? 'red' : 'yellow');
+  _telegramMetricState('tg-handshake-val', 'tg-handshake-sub', handshake, handshakeCls, data && data.bot_username ? ('@' + data.bot_username) : 'Telegram API');
+
+  var pingValue = data && data.ping_ms != null ? (data.ping_ms + ' ms') : '—';
+  _telegramMetricState('tg-ping-val', 'tg-ping-sub', pingValue, data && data.ping_ms != null ? 'blue' : 'plain', 'последняя проверка');
+
+  _telegramMetricState(
+    'tg-activity-val',
+    'tg-activity-sub',
+    data && data.recent_commands_count != null ? data.recent_commands_count : '—',
+    'plain',
+    'за историю workspace'
+  );
+
+  var checked = document.getElementById('tg-checked-at');
+  if (checked) checked.textContent = 'Проверка: ' + ((data && data.checked_at_utc) || '—');
+
+  _renderTelegramSummaryRows([
+    ['Поток', state],
+    ['Handshake', handshake],
+    ['Username', (data && data.bot_username) ? ('@' + data.bot_username) : '—'],
+    ['Allowed Chats', data && data.allowed_chats_count != null ? String(data.allowed_chats_count) : '0'],
+    ['Chats', data && data.allowed_chats_masked && data.allowed_chats_masked.length ? data.allowed_chats_masked.join(', ') : 'not configured'],
+    ['Последняя ошибка', data && data.last_error && data.last_error.message ? data.last_error.message : '—']
+  ]);
+
+  _renderTelegramBadges((data && data.available_commands) || []);
+
+  _renderTelegramTable(
+    'tg-commands-table',
+    'tg-commands-empty',
+    ['Время', 'Команда', 'Пользователь', 'Статус'],
+    (data && data.recent_commands) || [],
+    function(row) {
+      return [
+        { text: row.ts || '—', cls: 'muted' },
+        { text: row.command || '—' },
+        { text: row.username ? ('@' + row.username) : (row.chat_id || '—'), cls: 'muted' },
+        { text: row.status || 'ok', tag: (row.status === 'error' ? 'tag-risk' : 'tag-active') }
+      ];
+    }
+  );
+
+  _renderTelegramTable(
+    'tg-alerts-table',
+    'tg-alerts-empty',
+    ['Время', 'Тип', 'Сообщение'],
+    (data && data.recent_alerts) || [],
+    function(row) {
+      return [
+        { text: row.ts || '—', cls: 'muted' },
+        { text: row.alert_type || 'activity' },
+        { text: row.message || '—' }
+      ];
+    }
+  );
+
+  _renderTelegramTable(
+    'tg-errors-table',
+    'tg-errors-empty',
+    ['Время', 'Уровень', 'Сообщение'],
+    (data && data.recent_errors) || [],
+    function(row) {
+      return [
+        { text: row.ts || '—', cls: 'muted' },
+        { text: row.level || 'ERROR', tag: 'tag-risk' },
+        { text: row.message || row.error || '—', cls: 'red' }
+      ];
+    }
+  );
+}
+
+function _loadTelegramPage(forceRefresh) {
+  var api = _getAPI();
+  if (!api || !api.get_telegram_workspace) return;
+  api.get_telegram_workspace(20, !!forceRefresh).then(function(raw) {
+    try { _applyTelegramWorkspace(JSON.parse(raw)); } catch(e) { console.warn('[botik] telegram workspace parse error', e); }
+  }).catch(function(e) {
+    console.warn('[botik] telegram workspace error', e);
+  });
+}
+
+function apiReloadTelegramStatus() {
+  var api = _getAPI();
+  if (!api || !api.reload_telegram_status) {
+    _loadTelegramPage(true);
+    return;
+  }
+  api.reload_telegram_status().then(function(raw) {
+    try { _applyTelegramWorkspace(JSON.parse(raw)); } catch(e) { _loadTelegramPage(true); }
+  }).catch(function() {
+    _loadTelegramPage(true);
+  });
+}
+
+function openTelegramLogsView() {
+  _navigateToPage('logs');
+  _setActiveLogChannel('telegram');
+  _pollLogs();
 }
 
 /* ─── BUTTON HANDLERS ────────────────────────────────────── */
@@ -3836,7 +4121,7 @@ function apiReloadConfig() {
 
 function apiTelegramTest() {
   var api = _getAPI();
-  var btn = document.getElementById('btn-tg-test');
+  var btn = document.getElementById('btn-tg-test') || document.getElementById('btn-tg-page-test');
   if (!api) { _settingsShowErr('API не готов'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Отправка…'; }
   api.send_telegram_test().then(function(raw) {
@@ -3850,13 +4135,16 @@ function apiTelegramTest() {
           banner.style.display = 'block';
           setTimeout(function(){ banner.style.display='none'; banner.textContent='✓ Настройки сохранены в .env'; }, 4000);
         }
+        _loadTelegramPage(true);
       } else {
         _settingsShowErr('Telegram: ' + (r.error || 'ошибка'));
+        _loadTelegramPage(true);
       }
     } catch(e) {}
   }).catch(function(e) {
     if (btn) { btn.disabled = false; btn.textContent = '✉ Тест Telegram'; }
     _settingsShowErr('Telegram: ' + String(e));
+    _loadTelegramPage(true);
   });
 }
 
@@ -4162,15 +4450,27 @@ function _applyFuturesTable(rows) {
   }));
 }
 
+function _buildStatsBar(bar, wins, losses, even) {
+  if (!bar) return;
+  bar.style.display = '';
+  _clearEl(bar);
+  var s1 = document.createElement('span'); s1.style.color = 'var(--green)'; s1.textContent = 'Win: ' + wins;
+  var s2 = document.createElement('span'); s2.style.color = 'var(--red)';   s2.textContent = 'Loss: ' + losses;
+  var s3 = document.createElement('span'); s3.style.color = 'var(--text2)'; s3.textContent = 'Even: ' + even;
+  bar.appendChild(s1); bar.appendChild(document.createTextNode(' \u00b7 '));
+  bar.appendChild(s2); bar.appendChild(document.createTextNode(' \u00b7 '));
+  bar.appendChild(s3);
+}
+
 function _applyFuturesOrdersTable(rows) {
   var tbl   = document.getElementById('futures-table');
   var empty = document.getElementById('futures-empty-state');
   var title = document.getElementById('futures-table-title');
   if (!tbl || !empty) return;
-  if (title) title.textContent = 'Futures ордера';
+  if (title) title.textContent = 'Futures \u043e\u0440\u0434\u0435\u0440\u0430';
   if (!rows || !rows.length) {
     tbl.style.display = 'none'; _clearEl(tbl);
-    empty.style.display = ''; empty.textContent = 'Нет открытых futures-ордеров';
+    empty.style.display = ''; empty.textContent = '\u041d\u0435\u0442 \u043e\u0442\u043a\u0440\u044b\u0442\u044b\u0445 futures-\u043e\u0440\u0434\u0435\u0440\u043e\u0432';
     return;
   }
   empty.style.display = 'none'; tbl.style.display = ''; _clearEl(tbl);
@@ -4196,10 +4496,10 @@ function _applyFuturesFillsTable(rows) {
   var title = document.getElementById('futures-table-title');
   var bar   = document.getElementById('futures-stats-bar');
   if (!tbl || !empty) return;
-  if (title) title.textContent = 'История futures fills';
+  if (title) title.textContent = '\u0418\u0441\u0442\u043e\u0440\u0438\u044f futures fills';
   if (!rows || !rows.length) {
     tbl.style.display = 'none'; _clearEl(tbl);
-    empty.style.display = ''; empty.textContent = 'История futures fills пока пуста';
+    empty.style.display = ''; empty.textContent = '\u0418\u0441\u0442\u043e\u0440\u0438\u044f futures fills \u043f\u043e\u043a\u0430 \u043f\u0443\u0441\u0442\u0430';
     if (bar) bar.style.display = 'none';
     return;
   }
@@ -4208,16 +4508,7 @@ function _applyFuturesFillsTable(rows) {
     var pnl = Number(r.pnl || 0);
     if (pnl > 0) wins++; else if (pnl < 0) losses++; else even++;
   });
-  if (bar) {
-    bar.style.display = '';
-    _clearEl(bar);
-    var _s1 = document.createElement('span'); _s1.style.color = 'var(--green)'; _s1.textContent = 'Win: ' + wins;
-    var _s2 = document.createElement('span'); _s2.style.color = 'var(--red)';   _s2.textContent = 'Loss: ' + losses;
-    var _s3 = document.createElement('span'); _s3.style.color = 'var(--text2)'; _s3.textContent = 'Even: ' + even;
-    bar.appendChild(_s1); bar.appendChild(document.createTextNode(' \u00b7 '));
-    bar.appendChild(_s2); bar.appendChild(document.createTextNode(' \u00b7 '));
-    bar.appendChild(_s3);
-  }
+  _buildStatsBar(bar, wins, losses, even);
   empty.style.display = 'none'; tbl.style.display = ''; _clearEl(tbl);
   buildTable(tbl, futuresHistoryHeaders, rows.map(function(r) {
     var side = String(r.side || '').toUpperCase();
@@ -4239,14 +4530,13 @@ function _loadFuturesPageData() {
   var api = _getAPI();
   var empty = document.getElementById('futures-empty-state');
   var bar   = document.getElementById('futures-stats-bar');
-  var title = document.getElementById('futures-table-title');
-  if (!api) { if (empty) empty.textContent = 'API недоступен'; return; }
+  if (!api) { if (empty) empty.textContent = 'API \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d'; return; }
   if (bar) bar.style.display = 'none';
   if (_futuresActiveView === 'orders') {
     _cachedApi('futures_orders', function() { return api.get_futures_orders(); })
       .then(function(r) { try { _applyFuturesOrdersTable(JSON.parse(r)); } catch(e) {} })
       .catch(function(e) {
-        if (empty) empty.textContent = 'Не удалось загрузить futures-ордера';
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c futures-\u043e\u0440\u0434\u0435\u0440\u0430';
         console.warn('[botik] futures orders error', e);
       });
     return;
@@ -4255,7 +4545,7 @@ function _loadFuturesPageData() {
     _cachedApi('futures_fills', function() { return api.get_futures_fills(); })
       .then(function(r) { try { _applyFuturesFillsTable(JSON.parse(r)); } catch(e) {} })
       .catch(function(e) {
-        if (empty) empty.textContent = 'Не удалось загрузить историю futures fills';
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e futures fills';
         console.warn('[botik] futures fills error', e);
       });
     return;
@@ -4263,7 +4553,7 @@ function _loadFuturesPageData() {
   _cachedApi('futures_positions', function() { return api.get_futures_positions(); })
     .then(function(r) { try { _applyFuturesTable(JSON.parse(r)); } catch(e) { console.warn('[botik] futures parse error', e); } })
     .catch(function(e) {
-      if (empty) empty.textContent = 'Не удалось загрузить futures-позиции';
+      if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c futures-\u043f\u043e\u0437\u0438\u0446\u0438\u0438';
       console.warn('[botik] futures positions error', e);
     });
 }
@@ -4276,7 +4566,7 @@ function _loadSpotPageData() {
     _cachedApi('spot_orders', function() { return api.get_spot_orders(); })
       .then(function(r) { try { _applySpotOrdersTable(JSON.parse(r)); } catch(e) {} })
       .catch(function(e) {
-        if (empty) empty.textContent = 'Не удалось загрузить spot-ордера';
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c spot-\u043e\u0440\u0434\u0435\u0440\u0430';
         console.warn('[botik] spot orders error', e);
       });
     return;
@@ -4285,7 +4575,7 @@ function _loadSpotPageData() {
     _cachedApi('spot_fills', function() { return api.get_spot_fills(); })
       .then(function(r) { try { _applySpotFillsTable(JSON.parse(r)); } catch(e) {} })
       .catch(function(e) {
-        if (empty) empty.textContent = 'Не удалось загрузить историю spot fills';
+        if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e spot fills';
         console.warn('[botik] spot fills error', e);
       });
     return;
@@ -4293,7 +4583,7 @@ function _loadSpotPageData() {
   _cachedApi('spot_positions', function() { return api.get_spot_positions(); })
     .then(function(r) { try { _applySpotPositionsTable(JSON.parse(r)); } catch(e) {} })
     .catch(function(e) {
-      if (empty) empty.textContent = 'Не удалось загрузить spot-позиции';
+      if (empty) empty.textContent = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c spot-\u043f\u043e\u0437\u0438\u0446\u0438\u0438';
       console.warn('[botik] spot positions error', e);
     });
 }
@@ -4444,6 +4734,8 @@ document.querySelectorAll('.nav-item').forEach(function(item) {
     if (page === 'spot')     { _loadSpotPageData(); }
     if (page === 'futures')  { _loadFuturesPositions(); }
     if (page === 'models')   { _loadModelsData(); }
+    if (page === 'logs')     { _pollLogs(); }
+    if (page === 'telegram') { _loadTelegramPage(); }
     if (page === 'ops')      { _loadOpsPage(); }
     if (page === 'settings') { settingsLoad(); }
     if (page === 'backtest')   { _loadBacktestPage(); }
@@ -4466,6 +4758,31 @@ document.querySelectorAll('[data-futures-view]').forEach(function(tab) {
     _loadFuturesPageData();
   });
 });
+
+function filterDataSymbols(query) {
+  var q = (query || '').toLowerCase().trim();
+  var tbl = document.getElementById('data-table');
+  if (!tbl) return;
+  var rows = tbl.querySelectorAll('tbody tr');
+  rows.forEach(function(tr) {
+    var sym = tr.getAttribute('data-symbol') || '';
+    tr.style.display = (!q || sym.indexOf(q) >= 0) ? '' : 'none';
+  });
+}
+
+function apiSyncAccount() {
+  var api = _getAPI(); if (!api) return;
+  var msg = document.getElementById('data-status-msg');
+  if (msg) { msg.textContent = '\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u0441 Bybit\u2026'; msg.style.color = 'var(--yellow)'; }
+  api.sync_account_data().then(function(r) {
+    try {
+      var d = JSON.parse(r);
+      if (msg) { msg.textContent = d.msg || '\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u0430'; msg.style.color = 'var(--green)'; }
+    } catch(e) {}
+  }).catch(function() {
+    if (msg) { msg.textContent = '\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438'; msg.style.color = 'var(--red)'; }
+  });
+}
 
 /* ─── SETTINGS ───────────────────────────────────────────── */
 function settingsToggleShow(inputId, btn) {

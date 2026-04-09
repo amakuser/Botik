@@ -5,7 +5,9 @@ All methods are @staticmethod or @classmethod — no instance state required.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -95,3 +97,79 @@ class DbMixin:
             return int(value)
         except Exception:
             return None
+
+    @classmethod
+    def _app_logs_ts_column(cls, conn: sqlite3.Connection) -> str | None:
+        columns = cls._table_columns(conn, "app_logs")
+        return cls._first_existing_column(columns, "created_at_utc", "recorded_at_utc")
+
+    @classmethod
+    def _read_app_logs(
+        cls,
+        conn: sqlite3.Connection,
+        *,
+        channels: tuple[str, ...] | list[str] | None = None,
+        limit: int = 120,
+        levels: tuple[str, ...] | list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        if not cls._table_exists(conn, "app_logs"):
+            return []
+        ts_column = cls._app_logs_ts_column(conn)
+        if not ts_column:
+            return []
+
+        where_parts: list[str] = []
+        params: list[Any] = []
+        if channels:
+            placeholders = ",".join("?" for _ in channels)
+            where_parts.append(f"channel IN ({placeholders})")
+            params.extend(str(channel or "") for channel in channels)
+        if levels:
+            placeholders = ",".join("?" for _ in levels)
+            where_parts.append(f"level IN ({placeholders})")
+            params.extend(str(level or "") for level in levels)
+
+        where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+        rows = conn.execute(
+            f"SELECT channel, level, message, {ts_column} AS ts "
+            "FROM app_logs "
+            f"{where_sql} "
+            f"ORDER BY {ts_column} DESC, id DESC LIMIT ?",
+            (*params, int(limit)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    @classmethod
+    def _write_app_log(
+        cls,
+        db_path: Path,
+        *,
+        channel: str,
+        message: str,
+        level: str = "INFO",
+        extra: dict[str, Any] | None = None,
+    ) -> bool:
+        conn = cls._db_connect(db_path)
+        if conn is None or not cls._table_exists(conn, "app_logs"):
+            if conn is not None:
+                conn.close()
+            return False
+        ts_column = cls._app_logs_ts_column(conn)
+        if not ts_column:
+            conn.close()
+            return False
+
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        extra_json = json.dumps(extra, ensure_ascii=False) if extra else None
+        try:
+            conn.execute(
+                f"INSERT INTO app_logs (channel, level, message, extra_json, {ts_column}) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (str(channel or "sys"), str(level or "INFO"), str(message or ""), extra_json, now_utc),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            return False
+        finally:
+            conn.close()

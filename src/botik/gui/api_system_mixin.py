@@ -83,15 +83,20 @@ class SystemMixin:
 
     def _read_recent_errors(self, conn: sqlite3.Connection, limit: int = 10) -> list[dict]:
         try:
-            if not self._table_exists(conn, "app_logs"):  # type: ignore[attr-defined]
-                return []
-            rows = conn.execute(
-                "SELECT channel, level, message, recorded_at_utc FROM app_logs "
-                "WHERE level IN ('ERROR','WARNING') "
-                "ORDER BY recorded_at_utc DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-            return [{"channel": r[0], "level": r[1], "message": r[2], "ts": r[3]} for r in rows]
+            rows = self._read_app_logs(  # type: ignore[attr-defined]
+                conn,
+                limit=limit,
+                levels=("ERROR", "WARNING"),
+            )
+            return [
+                {
+                    "channel": row.get("channel"),
+                    "level": row.get("level"),
+                    "message": row.get("message"),
+                    "ts": row.get("ts"),
+                }
+                for row in rows
+            ]
         except Exception:
             return []
 
@@ -173,6 +178,76 @@ class SystemMixin:
             result["models_spot"] = "training"
         return result
 
+    def _buffer_logs_for_channel(self, channel: str, limit: int = 120) -> list[dict[str, Any]]:
+        target = str(channel or "sys").strip().lower()
+
+        def _matches(entry_channel: str) -> bool:
+            if target == "sys":
+                return entry_channel in {"sys", "data"}
+            if target == "ml":
+                return entry_channel in {"ml", "ml_futures", "ml_spot"}
+            return entry_channel == target
+
+        with self._buf_lock:  # type: ignore[attr-defined]
+            logs = list(self._log_buffer)  # type: ignore[attr-defined]
+
+        matched: list[dict[str, Any]] = []
+        for entry in logs:
+            entry_channel = str(entry.get("ch") or "sys").strip().lower()
+            if not _matches(entry_channel):
+                continue
+            matched.append(
+                {
+                    "channel": "ml" if entry_channel.startswith("ml") else entry_channel,
+                    "level": "INFO",
+                    "message": entry.get("msg") or "",
+                    "ts": entry.get("ts") or "",
+                }
+            )
+        return matched[-int(limit):]
+
+    def _db_logs_for_channel(self, conn: sqlite3.Connection | None, channel: str, limit: int = 120) -> list[dict[str, Any]]:
+        if conn is None:
+            return []
+        normalized = str(channel or "sys").strip().lower()
+        channel_map: dict[str, tuple[str, ...]] = {
+            "sys": ("sys", "data"),
+            "spot": ("spot",),
+            "futures": ("futures",),
+            "ml": ("ml", "ml_futures", "ml_spot"),
+            "telegram": ("telegram",),
+        }
+        rows = self._read_app_logs(  # type: ignore[attr-defined]
+            conn,
+            channels=channel_map.get(normalized, (normalized,)),
+            limit=limit,
+        )
+        for row in rows:
+            row["channel"] = "ml" if str(row.get("channel") or "").startswith("ml") else row.get("channel")
+        return rows
+
+    @staticmethod
+    def _merge_log_rows(
+        primary: list[dict[str, Any]],
+        secondary: list[dict[str, Any]],
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        seen: set[tuple[str, str, str]] = set()
+        merged: list[dict[str, Any]] = []
+        for rows in (primary, secondary):
+            for row in rows:
+                key = (
+                    str(row.get("channel") or ""),
+                    str(row.get("message") or ""),
+                    str(row.get("ts") or ""),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(row)
+        return merged[: int(limit)]
+
     # ── Public API ────────────────────────────────────────────
 
     def get_snapshot(self) -> str:
@@ -220,6 +295,31 @@ class SystemMixin:
         with self._buf_lock:  # type: ignore[attr-defined]
             logs = list(self._log_buffer)[-int(limit):]  # type: ignore[attr-defined]
         return json.dumps(logs)
+
+    def get_log_channels(self, limit: int = 120) -> str:
+        """Return log rows grouped per dashboard channel."""
+        raw_cfg = _load_yaml()
+        db_path = _resolve_db_path(raw_cfg)
+        conn = self._db_connect(db_path)  # type: ignore[attr-defined]
+
+        result: dict[str, list[dict[str, Any]]] = {}
+        try:
+            for channel in ("sys", "spot", "futures", "ml", "telegram"):
+                db_rows = self._db_logs_for_channel(conn, channel, limit=int(limit))
+                buffer_rows = self._buffer_logs_for_channel(channel, limit=int(limit))
+                if channel in {"spot", "futures", "ml"} and db_rows:
+                    result[channel] = db_rows[: int(limit)]
+                else:
+                    result[channel] = self._merge_log_rows(
+                        db_rows,
+                        buffer_rows,
+                        limit=int(limit),
+                    )
+        finally:
+            if conn:
+                conn.close()
+
+        return json.dumps(result, default=str)
 
     def get_version_info(self) -> str:
         """Returns version / system info JSON."""

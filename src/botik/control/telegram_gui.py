@@ -37,6 +37,9 @@ class GuiTelegramActions:
         pull_updates: Callable[[], str],
         restart_soft: Callable[[], str],
         restart_hard: Callable[[], str],
+        record_command: Callable[..., None] | None = None,
+        record_alert: Callable[..., None] | None = None,
+        record_error: Callable[..., None] | None = None,
     ) -> None:
         self.status = status
         self.balance = balance
@@ -46,6 +49,9 @@ class GuiTelegramActions:
         self.pull_updates = pull_updates
         self.restart_soft = restart_soft
         self.restart_hard = restart_hard
+        self.record_command = record_command
+        self.record_alert = record_alert
+        self.record_error = record_error
 
 
 def _main_keyboard() -> types.ReplyKeyboardMarkup:
@@ -102,6 +108,29 @@ def run_gui_telegram_bot(
     def send_text(chat_id: int, text: str) -> None:
         bot.send_message(chat_id, text, reply_markup=reply_kb)
 
+    def record_command(command: str, message: types.Message | None = None, status: str = "received") -> None:
+        if actions.record_command is None:
+            return
+        try:
+            actions.record_command(
+                command=command,
+                chat_id=str(message.chat.id) if message else "",
+                username=str(getattr(message.from_user, "username", "") or "") if message else "",
+                args="",
+                source="telegram_gui",
+                status=status,
+            )
+        except Exception:
+            logger.debug("GUI Telegram record_command failed", exc_info=True)
+
+    def record_error(error: str, *, source: str = "telegram_gui", status: str = "error") -> None:
+        if actions.record_error is None:
+            return
+        try:
+            actions.record_error(source=source, error=error, status=status)
+        except Exception:
+            logger.debug("GUI Telegram record_error failed", exc_info=True)
+
     def run_async_action(chat_id: int, title: str, fn: Callable[[], str]) -> None:
         send_text(chat_id, f"{title}: выполняю...")
 
@@ -110,6 +139,7 @@ def run_gui_telegram_bot(
                 result = fn()
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Telegram GUI action failed: %s", title)
+                record_error(str(exc), source=title)
                 result = f"{title}: ошибка: {exc}"
             send_text(chat_id, result)
 
@@ -120,60 +150,70 @@ def run_gui_telegram_bot(
         if not is_allowed_message(message):
             return
         logger.info("GUI Telegram command: /start from chat_id=%s", message.chat.id)
+        record_command("/start", message)
         send_text(message.chat.id, "GUI-контроль запущен.\n" + _help_text())
 
     @bot.message_handler(commands=["help"])
     def cmd_help(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/help", message)
         send_text(message.chat.id, _help_text())
 
     @bot.message_handler(commands=["status"])
     def cmd_status(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/status", message)
         send_text(message.chat.id, actions.status())
 
     @bot.message_handler(commands=["balance"])
     def cmd_balance(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/balance", message)
         run_async_action(message.chat.id, "Средства", actions.balance)
 
     @bot.message_handler(commands=["orders"])
     def cmd_orders(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/orders", message)
         run_async_action(message.chat.id, "Ордера", actions.orders)
 
     @bot.message_handler(commands=["starttrading"])
     def cmd_start_trading(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/starttrading", message)
         run_async_action(message.chat.id, "Старт трейдинга", actions.start_trading)
 
     @bot.message_handler(commands=["stoptrading"])
     def cmd_stop_trading(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/stoptrading", message)
         run_async_action(message.chat.id, "Стоп трейдинга", actions.stop_trading)
 
     @bot.message_handler(commands=["pull"])
     def cmd_pull(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/pull", message)
         run_async_action(message.chat.id, "Обновление кода", actions.pull_updates)
 
     @bot.message_handler(commands=["restartsoft"])
     def cmd_restart_soft(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/restartsoft", message)
         run_async_action(message.chat.id, "Мягкий рестарт", actions.restart_soft)
 
     @bot.message_handler(commands=["restarthard"])
     def cmd_restart_hard(message: types.Message) -> None:
         if not is_allowed_message(message):
             return
+        record_command("/restarthard", message)
         run_async_action(message.chat.id, "Жесткий рестарт", actions.restart_hard)
 
     @bot.message_handler(func=lambda m: bool(m.text))
@@ -182,22 +222,31 @@ def run_gui_telegram_bot(
             return
         text = (message.text or "").strip()
         if text == BTN_STATUS:
+            record_command("/status", message)
             send_text(message.chat.id, actions.status())
         elif text == BTN_BALANCE:
+            record_command("/balance", message)
             run_async_action(message.chat.id, "Средства", actions.balance)
         elif text == BTN_ORDERS:
+            record_command("/orders", message)
             run_async_action(message.chat.id, "Ордера", actions.orders)
         elif text == BTN_START:
+            record_command("/starttrading", message)
             run_async_action(message.chat.id, "Старт трейдинга", actions.start_trading)
         elif text == BTN_STOP:
+            record_command("/stoptrading", message)
             run_async_action(message.chat.id, "Стоп трейдинга", actions.stop_trading)
         elif text == BTN_PULL:
+            record_command("/pull", message)
             run_async_action(message.chat.id, "Обновление кода", actions.pull_updates)
         elif text == BTN_RESTART_SOFT:
+            record_command("/restartsoft", message)
             run_async_action(message.chat.id, "Мягкий рестарт", actions.restart_soft)
         elif text == BTN_RESTART_HARD:
+            record_command("/restarthard", message)
             run_async_action(message.chat.id, "Жесткий рестарт", actions.restart_hard)
         elif text == BTN_HELP:
+            record_command("/help", message)
             send_text(message.chat.id, _help_text())
 
     try:

@@ -231,9 +231,18 @@ class SettingsMixin:
         env     = _read_env_map()
         token   = env.get("TELEGRAM_BOT_TOKEN", "").strip()
         chat_id = env.get("TELEGRAM_CHAT_ID", "").strip()
+        recorder = getattr(self, "_record_telegram_command", None)
+        if callable(recorder):
+            recorder(command="/testsend", source="dashboard", status="intent", chat_id=chat_id or "dashboard")
         if not token:
+            err_recorder = getattr(self, "_record_telegram_error", None)
+            if callable(err_recorder):
+                err_recorder(source="test_send", error="TELEGRAM_BOT_TOKEN не задан в .env", status="warning")
             return json.dumps({"ok": False, "error": "TELEGRAM_BOT_TOKEN не задан в .env"})
         if not chat_id:
+            err_recorder = getattr(self, "_record_telegram_error", None)
+            if callable(err_recorder):
+                err_recorder(source="test_send", error="TELEGRAM_CHAT_ID не задан в .env", status="warning")
             return json.dumps({"ok": False, "error": "TELEGRAM_CHAT_ID не задан в .env"})
         try:
             text    = f"✅ Botik Dashboard — тест соединения\nВерсия: {self._app_version}"  # type: ignore[attr-defined]
@@ -249,14 +258,32 @@ class SettingsMixin:
                 if body.get("ok"):
                     log.info("[telegram] test send OK chat_id=%s", chat_id)
                     self._add_log(f"[telegram] test send OK → chat {chat_id}", "telegram")  # type: ignore[attr-defined]
+                    alert_recorder = getattr(self, "_record_telegram_alert", None)
+                    if callable(alert_recorder):
+                        alert_recorder(
+                            alert_type="test_send",
+                            message=f"test message delivered to chat {chat_id}",
+                            delivered=True,
+                            source="dashboard",
+                            status="ok",
+                        )
                     return json.dumps({"ok": True, "msg": "Сообщение отправлено"})
+                err_recorder = getattr(self, "_record_telegram_error", None)
+                if callable(err_recorder):
+                    err_recorder(source="test_send", error=str(body), status="error")
                 return json.dumps({"ok": False, "error": str(body)})
         except urllib.error.HTTPError as exc:
             body = exc.read().decode(errors="replace")
             log.warning("[telegram] test send HTTP error %s: %s", exc.code, body)
+            err_recorder = getattr(self, "_record_telegram_error", None)
+            if callable(err_recorder):
+                err_recorder(source="test_send", error=f"HTTP {exc.code}: {body}", status="error")
             return json.dumps({"ok": False, "error": f"HTTP {exc.code}: {body}"})
         except Exception as exc:
             log.warning("[telegram] test send failed: %s", exc)
+            err_recorder = getattr(self, "_record_telegram_error", None)
+            if callable(err_recorder):
+                err_recorder(source="test_send", error=str(exc), status="error")
             return json.dumps({"ok": False, "error": str(exc)})
 
     # ── Misc ops ──────────────────────────────────────────────

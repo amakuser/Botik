@@ -1443,12 +1443,7 @@ verData.forEach(function(row) {
 });
 
 /* ─── TELEGRAM COMMANDS ─────────────────────────────────── */
-var cmds = ['/status','/balance','/orders','/starttrading','/stoptrading','/pull','/help'];
 var cmdList = document.getElementById('cmd-list');
-cmds.forEach(function(c) {
-  var badge = document.createElement('span'); badge.className = 'cmd-badge'; badge.textContent = c;
-  cmdList.appendChild(badge);
-});
 
 /* ─── LIVE PNL (demo fallback) ───────────────────────────── */
 var pnlBase = 0;
@@ -2639,53 +2634,108 @@ function _initLogSubtabs() {
     tab.addEventListener('click', function() {
       tabs.forEach(function(t) { t.classList.remove('active'); });
       this.classList.add('active');
-      var ch = this.getAttribute('data-log-ch');
-      _logActiveChannel = ch;
-      ['sys','spot','futures','ml','telegram'].forEach(function(c) {
-        var el = document.getElementById('log-ch-' + c);
-        if (el) el.style.display = c === ch ? '' : 'none';
-      });
+      _setActiveLogChannel(this.getAttribute('data-log-ch'));
     });
   });
 }
 
-function _pollLogs() {
-  var api = _getAPI();
-  if (!api) return;
-  api.get_logs(300).then(function(raw) {
-    try { _appendLogs(JSON.parse(raw)); } catch(e) {}
+function _setActiveLogChannel(channel) {
+  _logActiveChannel = channel || 'sys';
+  document.querySelectorAll('#log-subtabs .subtab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.getAttribute('data-log-ch') === _logActiveChannel);
   });
-  setTimeout(_pollLogs, 2500);
+  ['sys','spot','futures','ml','telegram'].forEach(function(c) {
+    var el = document.getElementById('log-ch-' + c);
+    if (el) el.style.display = c === _logActiveChannel ? '' : 'none';
+  });
+}
+
+var _logPollStarted = false;
+var _logEmptyHints = null;
+
+function _captureLogHints() {
+  if (_logEmptyHints) return;
+  _logEmptyHints = {};
+  ['sys','spot','futures','ml','telegram'].forEach(function(ch) {
+    var hint = document.getElementById('log-hint-' + ch);
+    _logEmptyHints[ch] = hint ? hint.outerHTML : '';
+  });
+}
+
+function _pollLogs() {
+  if (_logPollStarted) return;
+  _logPollStarted = true;
+
+  function _tick() {
+    var api = _getAPI();
+    if (!api) {
+      setTimeout(_tick, 2500);
+      return;
+    }
+    api.get_log_channels(200).then(function(raw) {
+      try { _renderLogChannels(JSON.parse(raw)); } catch(e) {}
+    }).finally(function() {
+      setTimeout(_tick, 2500);
+    });
+  }
+
+  _tick();
+}
+
+function _renderLogChannels(payload) {
+  _captureLogHints();
+  ['sys','spot','futures','ml','telegram'].forEach(function(channel) {
+    _renderLogChannel(channel, (payload && payload[channel]) || []);
+  });
+}
+
+function _renderLogChannelsEmptyState(channel, container) {
+  if (!container) return;
+  container.innerHTML = (_logEmptyHints && _logEmptyHints[channel]) || '';
+}
+
+function _renderLogChannelsRow(container, channel, row) {
+  var line = document.createElement('div'); line.className = 'log-line';
+  var ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = row.ts || '';
+  var ch = document.createElement('span');
+  ch.className = 'log-ch ' + ({spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-ml', sys:'ch-sys'}[channel] || 'ch-sys');
+  ch.textContent = '[' + (channel || 'sys') + ']';
+  var msg = document.createElement('span');
+  msg.className = _logMsgClass(row.message || '');
+  msg.textContent = row.message || '';
+  line.appendChild(ts);
+  line.appendChild(ch);
+  line.appendChild(msg);
+  container.appendChild(line);
+}
+
+function _renderLogChannel(channel, rows) {
+  var container = document.getElementById('log-ch-' + channel);
+  if (!container) return;
+  _clearEl(container);
+  if (!rows || !rows.length) {
+    _renderLogChannelsEmptyState(channel, container);
+    return;
+  }
+  rows.slice().reverse().forEach(function(row) {
+    _renderLogChannelsRow(container, channel, row || {});
+  });
+  if (_logActiveChannel === channel) {
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
 function _appendLogs(logs) {
-  if (!logs.length) return;
-  var newLogs = logs.slice(_logSeenCount);
-  if (!newLogs.length) return;
-  _logSeenCount = logs.length;
-  var chMap = {spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-telegram', sys:'ch-sys'};
-  var cssChMap = {spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-ml', sys:'ch-sys'};
-  newLogs.forEach(function(l) {
-    var targetId = 'log-ch-' + (l.ch || 'sys');
-    var container = document.getElementById(targetId) || document.getElementById('log-ch-sys');
-    var line = document.createElement('div'); line.className = 'log-line';
-    var ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = l.ts;
-    var ch = document.createElement('span');
-    ch.className = 'log-ch ' + (cssChMap[l.ch] || 'ch-sys');
-    ch.textContent = '[' + (l.ch || 'sys') + ']';
-    var msg = document.createElement('span'); msg.className = _logMsgClass(l.msg); msg.textContent = l.msg;
-    line.appendChild(ts); line.appendChild(ch); line.appendChild(msg);
-    container.appendChild(line);
-    // auto-scroll active channel
-    if ((l.ch || 'sys') === _logActiveChannel) {
-      container.scrollTop = container.scrollHeight;
-    }
-  });
+  var api = _getAPI();
+  if (!api || !logs || !logs.length) return;
 }
 
 function logsClearActive() {
   var el = document.getElementById('log-ch-' + _logActiveChannel);
-  if (el) _clearEl(el);
+  if (el) {
+    _clearEl(el);
+    _renderLogChannelsEmptyState(_logActiveChannel, el);
+  }
 }
 
 function logsScrollBottom() {
@@ -2700,6 +2750,169 @@ function _logMsgClass(msg) {
   if (m.includes('warn')) return 'lm-warn';
   if (m.includes(' ok') || m.includes('success') || m.includes('started') || m.includes('filled')) return 'lm-ok';
   return 'lm-norm';
+}
+
+function _telegramMetricState(elId, subId, value, cls, subText) {
+  var el = document.getElementById(elId);
+  var sub = document.getElementById(subId);
+  if (el) {
+    el.textContent = value == null || value === '' ? '—' : String(value);
+    el.className = 'metric-value ' + (cls || 'plain');
+  }
+  if (sub && subText !== undefined) sub.textContent = subText;
+}
+
+function _renderTelegramSummaryRows(rows) {
+  var table = document.getElementById('tg-summary-table');
+  if (!table) return;
+  table.innerHTML = '';
+  rows.forEach(function(row) {
+    var tr = document.createElement('tr');
+    var td1 = document.createElement('td');
+    td1.style.cssText = 'padding:4px 8px 4px 0;color:var(--text3);font-size:12px;white-space:nowrap';
+    td1.textContent = row[0];
+    var td2 = document.createElement('td');
+    td2.style.cssText = 'padding:4px 0;font-size:12px;color:var(--text1);font-family:\'JetBrains Mono\',monospace';
+    td2.textContent = row[1];
+    tr.appendChild(td1);
+    tr.appendChild(td2);
+    table.appendChild(tr);
+  });
+}
+
+function _renderTelegramBadges(commands) {
+  if (!cmdList) return;
+  _clearEl(cmdList);
+  (commands || []).forEach(function(command) {
+    var badge = document.createElement('span');
+    badge.className = 'cmd-badge';
+    badge.textContent = command;
+    cmdList.appendChild(badge);
+  });
+  var count = document.getElementById('tg-command-count');
+  if (count) count.textContent = 'Команд: ' + ((commands || []).length || 0);
+}
+
+function _renderTelegramTable(tableId, emptyId, headers, rows, rowBuilder) {
+  var table = document.getElementById(tableId);
+  var empty = document.getElementById(emptyId);
+  if (!table || !empty) return;
+  _clearEl(table);
+  if (!rows || !rows.length) {
+    table.style.display = 'none';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = '';
+  buildTable(table, headers, rows.map(rowBuilder));
+}
+
+function _applyTelegramWorkspace(data) {
+  var state = data && data.state ? String(data.state).toUpperCase() : '—';
+  var stateCls = state === 'RUNNING' ? 'green' : (state.indexOf('DISABLED') >= 0 ? 'yellow' : 'plain');
+  _telegramMetricState('tg-state-val', 'tg-state-sub', state, stateCls, 'control bot');
+
+  var handshake = data && data.handshake ? String(data.handshake).toUpperCase() : '—';
+  var handshakeCls = handshake === 'OK' ? 'green' : (handshake.indexOf('ERROR') >= 0 ? 'red' : 'yellow');
+  _telegramMetricState('tg-handshake-val', 'tg-handshake-sub', handshake, handshakeCls, data && data.bot_username ? ('@' + data.bot_username) : 'Telegram API');
+
+  var pingValue = data && data.ping_ms != null ? (data.ping_ms + ' ms') : '—';
+  _telegramMetricState('tg-ping-val', 'tg-ping-sub', pingValue, data && data.ping_ms != null ? 'blue' : 'plain', 'последняя проверка');
+
+  _telegramMetricState(
+    'tg-activity-val',
+    'tg-activity-sub',
+    data && data.recent_commands_count != null ? data.recent_commands_count : '—',
+    'plain',
+    'за историю workspace'
+  );
+
+  var checked = document.getElementById('tg-checked-at');
+  if (checked) checked.textContent = 'Проверка: ' + ((data && data.checked_at_utc) || '—');
+
+  _renderTelegramSummaryRows([
+    ['Поток', state],
+    ['Handshake', handshake],
+    ['Username', (data && data.bot_username) ? ('@' + data.bot_username) : '—'],
+    ['Allowed Chats', data && data.allowed_chats_count != null ? String(data.allowed_chats_count) : '0'],
+    ['Chats', data && data.allowed_chats_masked && data.allowed_chats_masked.length ? data.allowed_chats_masked.join(', ') : 'not configured'],
+    ['Последняя ошибка', data && data.last_error && data.last_error.message ? data.last_error.message : '—']
+  ]);
+
+  _renderTelegramBadges((data && data.available_commands) || []);
+
+  _renderTelegramTable(
+    'tg-commands-table',
+    'tg-commands-empty',
+    ['Время', 'Команда', 'Пользователь', 'Статус'],
+    (data && data.recent_commands) || [],
+    function(row) {
+      return [
+        { text: row.ts || '—', cls: 'muted' },
+        { text: row.command || '—' },
+        { text: row.username ? ('@' + row.username) : (row.chat_id || '—'), cls: 'muted' },
+        { text: row.status || 'ok', tag: (row.status === 'error' ? 'tag-risk' : 'tag-active') }
+      ];
+    }
+  );
+
+  _renderTelegramTable(
+    'tg-alerts-table',
+    'tg-alerts-empty',
+    ['Время', 'Тип', 'Сообщение'],
+    (data && data.recent_alerts) || [],
+    function(row) {
+      return [
+        { text: row.ts || '—', cls: 'muted' },
+        { text: row.alert_type || 'activity' },
+        { text: row.message || '—' }
+      ];
+    }
+  );
+
+  _renderTelegramTable(
+    'tg-errors-table',
+    'tg-errors-empty',
+    ['Время', 'Уровень', 'Сообщение'],
+    (data && data.recent_errors) || [],
+    function(row) {
+      return [
+        { text: row.ts || '—', cls: 'muted' },
+        { text: row.level || 'ERROR', tag: 'tag-risk' },
+        { text: row.message || row.error || '—', cls: 'red' }
+      ];
+    }
+  );
+}
+
+function _loadTelegramPage(forceRefresh) {
+  var api = _getAPI();
+  if (!api || !api.get_telegram_workspace) return;
+  api.get_telegram_workspace(20, !!forceRefresh).then(function(raw) {
+    try { _applyTelegramWorkspace(JSON.parse(raw)); } catch(e) { console.warn('[botik] telegram workspace parse error', e); }
+  }).catch(function(e) {
+    console.warn('[botik] telegram workspace error', e);
+  });
+}
+
+function apiReloadTelegramStatus() {
+  var api = _getAPI();
+  if (!api || !api.reload_telegram_status) {
+    _loadTelegramPage(true);
+    return;
+  }
+  api.reload_telegram_status().then(function(raw) {
+    try { _applyTelegramWorkspace(JSON.parse(raw)); } catch(e) { _loadTelegramPage(true); }
+  }).catch(function() {
+    _loadTelegramPage(true);
+  });
+}
+
+function openTelegramLogsView() {
+  _navigateToPage('logs');
+  _setActiveLogChannel('telegram');
+  _pollLogs();
 }
 
 /* ─── BUTTON HANDLERS ────────────────────────────────────── */
@@ -2773,7 +2986,7 @@ function apiReloadConfig() {
 
 function apiTelegramTest() {
   var api = _getAPI();
-  var btn = document.getElementById('btn-tg-test');
+  var btn = document.getElementById('btn-tg-test') || document.getElementById('btn-tg-page-test');
   if (!api) { _settingsShowErr('API не готов'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Отправка…'; }
   api.send_telegram_test().then(function(raw) {
@@ -2787,13 +3000,16 @@ function apiTelegramTest() {
           banner.style.display = 'block';
           setTimeout(function(){ banner.style.display='none'; banner.textContent='✓ Настройки сохранены в .env'; }, 4000);
         }
+        _loadTelegramPage(true);
       } else {
         _settingsShowErr('Telegram: ' + (r.error || 'ошибка'));
+        _loadTelegramPage(true);
       }
     } catch(e) {}
   }).catch(function(e) {
     if (btn) { btn.disabled = false; btn.textContent = '✉ Тест Telegram'; }
     _settingsShowErr('Telegram: ' + String(e));
+    _loadTelegramPage(true);
   });
 }
 
@@ -3383,6 +3599,8 @@ document.querySelectorAll('.nav-item').forEach(function(item) {
     if (page === 'spot')     { _loadSpotPageData(); }
     if (page === 'futures')  { _loadFuturesPositions(); }
     if (page === 'models')   { _loadModelsData(); }
+    if (page === 'logs')     { _pollLogs(); }
+    if (page === 'telegram') { _loadTelegramPage(); }
     if (page === 'ops')      { _loadOpsPage(); }
     if (page === 'settings') { settingsLoad(); }
     if (page === 'backtest')   { _loadBacktestPage(); }

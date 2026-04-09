@@ -160,7 +160,7 @@ _PAGE_LOAD_JS: dict[str, str] = {
     "logs":       "_pollLogs();",
     "home":       "",
     "market":     "",
-    "telegram":   "",
+    "telegram":   "_loadTelegramPage();",
     "settings":   "settingsLoad();",
 }
 

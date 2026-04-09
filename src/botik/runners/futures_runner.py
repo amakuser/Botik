@@ -79,7 +79,7 @@ def _write_app_log(msg: str, channel: str = "futures") -> None:
         db = get_db()
         with db.connect() as conn:
             conn.execute(
-                "INSERT INTO app_logs (channel, level, message, recorded_at_utc) "
+                "INSERT INTO app_logs (channel, level, message, created_at_utc) "
                 "VALUES (?, 'INFO', ?, ?)",
                 (channel, msg, _utc_now()),
             )
