@@ -14,6 +14,7 @@ export type LogEvent = components["schemas"]["LogEvent"];
 export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"];
 export type SampleDataImportJobPayload = components["schemas"]["SampleDataImportJobPayload"];
 export type DataBackfillJobPayload = components["schemas"]["DataBackfillJobPayload"];
+export type DataIntegrityJobPayload = components["schemas"]["DataIntegrityJobPayload"];
 export type LogChannel = components["schemas"]["LogChannel"];
 export type LogEntry = components["schemas"]["LogEntry"];
 export type LogChannelSnapshot = components["schemas"]["LogChannelSnapshot"];
@@ -37,6 +38,7 @@ export const contractSchemaNames = [
   "ErrorEnvelope",
   "SampleDataImportJobPayload",
   "DataBackfillJobPayload",
+  "DataIntegrityJobPayload",
   "LogChannel",
   "LogEntry",
   "LogChannelSnapshot",

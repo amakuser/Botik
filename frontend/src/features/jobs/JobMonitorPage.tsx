@@ -4,6 +4,7 @@ import { getJob, listJobs, startJob, stopJob } from "../../shared/api/client";
 import { JobDetails, JobState, JobSummary, StartJobRequest } from "../../shared/contracts";
 import { AppShell } from "../../shared/ui/AppShell";
 import { DataBackfillJobCard } from "./components/DataBackfillJobCard";
+import { DataIntegrityJobCard } from "./components/DataIntegrityJobCard";
 import { JobLogPanel } from "./components/JobLogPanel";
 import { JobStatusCard } from "./components/JobStatusCard";
 import { JobToolbar } from "./components/JobToolbar";
@@ -137,6 +138,20 @@ export function JobMonitorPage() {
     );
   }
 
+  async function handleStartDataIntegrity() {
+    await handleStart(
+      {
+        job_type: "data_integrity",
+        payload: {
+          symbol: "BTCUSDT",
+          category: "spot",
+          intervals: ["1m"],
+        },
+      },
+      "Failed to start the fixed data integrity job.",
+    );
+  }
+
   async function handleStop() {
     if (!selectedJobId) {
       return;
@@ -163,6 +178,7 @@ export function JobMonitorPage() {
             onStop={handleStop}
           />
           <DataBackfillJobCard disabled={Boolean(activeJob)} onStart={handleStartDataBackfill} />
+          <DataIntegrityJobCard disabled={Boolean(activeJob)} onStart={handleStartDataIntegrity} />
 
           <section className="panel" aria-labelledby="job-list-title">
             <h2 id="job-list-title">Job History</h2>

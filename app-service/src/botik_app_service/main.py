@@ -17,6 +17,7 @@ from botik_app_service.infra.config import Settings
 from botik_app_service.infra.logging import configure_logging
 from botik_app_service.jobs.event_publisher import EventPublisher
 from botik_app_service.jobs.data_backfill_job import create_data_backfill_job_definition
+from botik_app_service.jobs.data_integrity_job import create_data_integrity_job_definition
 from botik_app_service.jobs.manager import JobManager
 from botik_app_service.jobs.process_adapter import ProcessAdapter
 from botik_app_service.jobs.recovery_guard import RecoveryGuard
@@ -61,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         registry.register(create_sample_data_job_definition())
         registry.register(create_data_backfill_job_definition())
+        registry.register(create_data_integrity_job_definition())
         runtime_status_service = RuntimeStatusService(
             repo_root=Path(__file__).resolve().parents[3],
             heartbeat_stale_seconds=resolved_settings.runtime_status_heartbeat_stale_seconds,

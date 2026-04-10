@@ -3,18 +3,19 @@ import sys
 from pathlib import Path
 
 from botik_app_service.contracts.jobs import JobDetails, StartJobRequest
+from botik_app_service.jobs.data_backfill_job import resolve_data_backfill_db_url
 from botik_app_service.jobs.interfaces import JobDefinition, JobLaunchSpec
 
-JOB_TYPE = "data_backfill"
+JOB_TYPE = "data_integrity"
 FIXED_SYMBOL = "BTCUSDT"
 FIXED_CATEGORY = "spot"
 FIXED_INTERVALS = ["1m"]
 
 
-def create_data_backfill_job_definition() -> JobDefinition:
+def create_data_integrity_job_definition() -> JobDefinition:
     return JobDefinition(
         job_type=JOB_TYPE,
-        description="Run one fixed-preset data backfill through the Job Manager flow.",
+        description="Validate the fixed-preset data backfill DB without touching the legacy runtime DB.",
         launcher=_build_launch_spec,
     )
 
@@ -25,15 +26,14 @@ def _build_launch_spec(request: StartJobRequest, details: JobDetails) -> JobLaun
     category = str(payload.get("category", FIXED_CATEGORY)).lower()
     intervals = [str(interval) for interval in payload.get("intervals", FIXED_INTERVALS)]
     if symbol != FIXED_SYMBOL:
-        raise ValueError(f"Unsupported backfill symbol: {symbol}")
+        raise ValueError(f"Unsupported integrity symbol: {symbol}")
     if category != FIXED_CATEGORY:
-        raise ValueError(f"Unsupported backfill category: {category}")
+        raise ValueError(f"Unsupported integrity category: {category}")
     if intervals != FIXED_INTERVALS:
-        raise ValueError(f"Unsupported backfill intervals: {intervals}")
+        raise ValueError(f"Unsupported integrity intervals: {intervals}")
 
     repo_root = Path(__file__).resolve().parents[4]
     app_service_src = repo_root / "app-service" / "src"
-    fixture_path = repo_root / "app-service" / "src" / "botik_app_service" / "runtime" / "fixtures" / "data_backfill_klines.json"
 
     env = os.environ.copy()
     existing_pythonpath = env.get("PYTHONPATH")
@@ -49,7 +49,7 @@ def _build_launch_spec(request: StartJobRequest, details: JobDetails) -> JobLaun
         sys.executable,
         "-u",
         "-m",
-        "botik_app_service.runtime.data_backfill_worker",
+        "botik_app_service.runtime.data_integrity_worker",
         "--job-id",
         details.job_id,
         "--symbol",
@@ -60,20 +60,5 @@ def _build_launch_spec(request: StartJobRequest, details: JobDetails) -> JobLaun
         *intervals,
         "--db-url",
         db_url,
-        "--source",
-        "fixture",
-        "--fixture",
-        str(fixture_path),
     ]
     return JobLaunchSpec(command=command, cwd=str(repo_root), env=env)
-
-
-def resolve_data_backfill_db_url(repo_root: Path, env: dict[str, str]) -> str:
-    artifacts_root = env.get("BOTIK_ARTIFACTS_DIR")
-    if artifacts_root:
-        state_dir = Path(artifacts_root) / "state"
-    else:
-        state_dir = repo_root / ".artifacts" / "local" / "state" / "data-backfill"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    db_path = (state_dir / "data_backfill.sqlite3").resolve()
-    return f"sqlite:///{db_path.as_posix()}"

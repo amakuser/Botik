@@ -50,6 +50,18 @@ def test_contract_models_roundtrip():
     )
     assert backfill_request.payload_dict()["intervals"] == ("1m",)
 
+    integrity_request = StartJobRequest.model_validate(
+        {
+            "job_type": "data_integrity",
+            "payload": {
+                "symbol": "BTCUSDT",
+                "category": "spot",
+                "intervals": ["1m"],
+            },
+        }
+    )
+    assert integrity_request.payload_dict()["symbol"] == "BTCUSDT"
+
     snapshot = LogChannelSnapshot.model_validate(
         {
             "channel": "app",

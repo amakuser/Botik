@@ -56,7 +56,7 @@ describe("JobMonitorPage", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the job monitor shell and the fixed data backfill preset", async () => {
+  it("renders the job monitor shell with the fixed data backfill and integrity presets", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -79,8 +79,10 @@ describe("JobMonitorPage", () => {
 
     expect(screen.getByRole("button", { name: "Start Sample Import" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Start Data Backfill" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start Data Integrity" })).toBeTruthy();
     expect(await screen.findByText("data_backfill")).toBeTruthy();
     expect(screen.getByTestId("jobs.backfill.interval").textContent).toContain("1m");
+    expect(screen.getByTestId("jobs.integrity.interval").textContent).toContain("1m");
     const state = await screen.findByTestId("jobs.selected.state");
     expect(state.textContent).toContain("completed");
   });
