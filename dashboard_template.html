@@ -1492,6 +1492,32 @@ function _activePageKey() {
   return active.id.replace('page-', '');
 }
 
+function _ensureInitialPageVisible() {
+  var activePage = _activePageKey();
+  if (activePage) return activePage;
+  var activeNav = document.querySelector('.nav-item.active');
+  var page = activeNav && activeNav.getAttribute('data-page')
+    ? activeNav.getAttribute('data-page')
+    : 'home';
+  _navigateToPage(page);
+  return page;
+}
+
+function _loadPageOnDemand(page, forceRefresh) {
+  if (page === 'home')      { _loadHomeHoldings(); return; }
+  if (page === 'spot')      { _loadSpotPageData(); return; }
+  if (page === 'futures')   { _loadFuturesPositions(); return; }
+  if (page === 'models')    { _loadModelsData(); return; }
+  if (page === 'logs')      { _setActiveLogChannel(_logActiveChannel); _pollLogs(); return; }
+  if (page === 'telegram')  { _loadTelegramPage(!!forceRefresh); return; }
+  if (page === 'ops')       { _loadOpsPage(); return; }
+  if (page === 'settings')  { settingsLoad(); return; }
+  if (page === 'backtest')  { _loadBacktestPage(); return; }
+  if (page === 'orderbook') { _pollOrderbook(); return; }
+  if (page === 'data')      { _loadDataPage(); return; }
+  if (page === 'analytics') { _loadAnalytics(); return; }
+}
+
 /* ─── API BRIDGE INIT ────────────────────────────────────── */
 // pywebviewready event (standard) + polling fallback for frozen exe
 var _apiInitDone = false;
@@ -1508,6 +1534,8 @@ function _initAPI() {
     _pollTickers();
     _pollOrderbook();
     settingsLoad();
+    _loadPageOnDemand(_ensureInitialPageVisible(), true);
+    setTimeout(function() { _loadTelegramPage(false); }, 120);
   }
 }
 window.addEventListener('pywebviewready', _initAPI);
@@ -3602,16 +3630,7 @@ function _fmt_str(v) {
 document.querySelectorAll('.nav-item').forEach(function(item) {
   item.addEventListener('click', function() {
     var page = this.getAttribute('data-page');
-    if (page === 'home')     { _loadHomeHoldings(); }
-    if (page === 'spot')     { _loadSpotPageData(); }
-    if (page === 'futures')  { _loadFuturesPositions(); }
-    if (page === 'models')   { _loadModelsData(); }
-    if (page === 'logs')     { _setActiveLogChannel(_logActiveChannel); _pollLogs(); }
-    if (page === 'telegram') { _loadTelegramPage(); }
-    if (page === 'ops')      { _loadOpsPage(); }
-    if (page === 'settings') { settingsLoad(); }
-    if (page === 'backtest')   { _loadBacktestPage(); }
-    if (page === 'orderbook')  { _pollOrderbook(); }
+    _loadPageOnDemand(page, true);
   });
 });
 
