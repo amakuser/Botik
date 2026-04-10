@@ -18,6 +18,8 @@ export type LogChannel = components["schemas"]["LogChannel"];
 export type LogEntry = components["schemas"]["LogEntry"];
 export type LogChannelSnapshot = components["schemas"]["LogChannelSnapshot"];
 export type LogStreamEvent = components["schemas"]["LogStreamEvent"];
+export type RuntimeStatus = components["schemas"]["RuntimeStatus"];
+export type RuntimeStatusSnapshot = components["schemas"]["RuntimeStatusSnapshot"];
 
 export const contractSchemaNames = [
   "HealthResponse",
@@ -38,4 +40,6 @@ export const contractSchemaNames = [
   "LogEntry",
   "LogChannelSnapshot",
   "LogStreamEvent",
+  "RuntimeStatus",
+  "RuntimeStatusSnapshot",
 ] as const;

@@ -24,3 +24,4 @@ def test_bootstrap_returns_loopback_session_info():
         assert payload["capabilities"]["jobs"] is True
         assert "/jobs" in payload["routes"]
         assert "/logs" in payload["routes"]
+        assert "/runtime" in payload["routes"]

@@ -9,6 +9,7 @@ from botik_app_service.contracts.bootstrap import BootstrapPayload
 from botik_app_service.contracts.errors import ErrorEnvelope
 from botik_app_service.contracts.health import HealthResponse
 from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
+from botik_app_service.contracts.runtime_status import RuntimeStatusSnapshot
 
 
 def test_contract_models_roundtrip():
@@ -30,9 +31,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs", "/logs"],
+                "routes": ["/", "/jobs", "/logs", "/runtime"],
             },
-            "routes": ["/", "/jobs", "/logs"],
+            "routes": ["/", "/jobs", "/logs", "/runtime"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -64,3 +65,25 @@ def test_contract_models_roundtrip():
         }
     )
     assert isinstance(snapshot.entries[0], LogEntry)
+
+    runtime_snapshot = RuntimeStatusSnapshot.model_validate(
+        {
+            "generated_at": "2026-04-11T10:00:00Z",
+            "runtimes": [
+                {
+                    "runtime_id": "spot",
+                    "label": "Spot Runtime",
+                    "state": "running",
+                    "pids": [1111],
+                    "pid_count": 1,
+                    "last_heartbeat_at": "2026-04-11T09:59:55Z",
+                    "last_heartbeat_age_seconds": 5,
+                    "last_error": None,
+                    "last_error_at": None,
+                    "status_reason": "process present with recent heartbeat activity",
+                    "source_mode": "fixture",
+                }
+            ],
+        }
+    )
+    assert runtime_snapshot.runtimes[0].runtime_id == "spot"

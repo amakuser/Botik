@@ -7,6 +7,7 @@ import {
   LogChannelSnapshot,
   LogStreamEvent,
   LogEvent,
+  RuntimeStatusSnapshot,
   JobSummary,
   StartJobRequest,
   StopJobRequest,
@@ -99,6 +100,11 @@ export async function createLogEventSource(channelId: string): Promise<EventSour
   const url = new URL(`/logs/${channelId}/stream`, runtime.appServiceUrl);
   url.searchParams.set("session_token", runtime.sessionToken);
   return new EventSource(url);
+}
+
+export async function getRuntimeStatus(): Promise<RuntimeStatusSnapshot> {
+  const response = await authenticatedFetch("/runtime-status");
+  return parseJsonOrThrow<RuntimeStatusSnapshot>(response);
 }
 
 export interface EventPayloadMap {

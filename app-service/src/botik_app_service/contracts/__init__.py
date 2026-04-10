@@ -4,6 +4,7 @@ from .events import JobEvent, LogEvent, SystemEvent
 from .health import HealthResponse
 from .jobs import JobDetails, JobState, JobSummary, StartJobRequest, StopJobRequest
 from .logs import LogChannel, LogChannelSnapshot, LogEntry, LogStreamEvent
+from .runtime_status import RuntimeStatus, RuntimeStatusSnapshot
 
 __all__ = [
     "AppSessionInfo",
@@ -19,6 +20,8 @@ __all__ = [
     "LogChannelSnapshot",
     "LogEntry",
     "LogStreamEvent",
+    "RuntimeStatus",
+    "RuntimeStatusSnapshot",
     "StartJobRequest",
     "StopJobRequest",
     "SystemEvent",

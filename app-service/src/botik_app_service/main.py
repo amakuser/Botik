@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from botik_app_service.api.routes_events import router as events_router
 from botik_app_service.api.routes_health import router as health_router
 from botik_app_service.api.routes_jobs import router as jobs_router
 from botik_app_service.api.routes_logs import router as logs_router
+from botik_app_service.api.routes_runtime_status import router as runtime_status_router
 from botik_app_service.infra.config import Settings
 from botik_app_service.infra.logging import configure_logging
 from botik_app_service.jobs.event_publisher import EventPublisher
@@ -22,6 +24,7 @@ from botik_app_service.jobs.sample_data_job import create_sample_data_job_defini
 from botik_app_service.jobs.store import JobStore
 from botik_app_service.jobs.supervisor import JobSupervisor
 from botik_app_service.logs.manager import LogsManager
+from botik_app_service.runtime_status.service import RuntimeStatusService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,6 +39,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             snapshot_limit=resolved_settings.log_snapshot_limit,
             artifacts_dir=resolved_settings.artifacts_dir,
             legacy_runtime_log_path=resolved_settings.legacy_runtime_log_path,
+        )
+        runtime_status_service = RuntimeStatusService(
+            repo_root=Path(__file__).resolve().parents[3],
+            heartbeat_stale_seconds=resolved_settings.runtime_status_heartbeat_stale_seconds,
+            fixture_path=resolved_settings.runtime_status_fixture_path,
         )
         log_handler = logs_manager.create_capture_handler()
         logger.addHandler(log_handler)
@@ -53,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.logger = logger
         app.state.event_publisher = publisher
         app.state.logs_manager = logs_manager
+        app.state.runtime_status_service = runtime_status_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -95,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(events_router)
     app.include_router(logs_router)
+    app.include_router(runtime_status_router)
     app.include_router(admin_router)
     return app
 

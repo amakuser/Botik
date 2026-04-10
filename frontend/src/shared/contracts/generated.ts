@@ -158,6 +158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Runtime Status */
+        get: operations["get_runtime_status_runtime_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -345,6 +362,53 @@ export interface components {
             message: string;
             /** Source */
             source: string;
+        };
+        /** RuntimeStatus */
+        RuntimeStatus: {
+            /**
+             * Runtime Id
+             * @enum {string}
+             */
+            runtime_id: "spot" | "futures";
+            /** Label */
+            label: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "degraded" | "offline" | "unknown";
+            /** Pids */
+            pids?: number[];
+            /**
+             * Pid Count
+             * @default 0
+             */
+            pid_count: number;
+            /** Last Heartbeat At */
+            last_heartbeat_at?: string | null;
+            /** Last Heartbeat Age Seconds */
+            last_heartbeat_age_seconds?: number | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Error At */
+            last_error_at?: string | null;
+            /** Status Reason */
+            status_reason: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "fixture" | "compatibility";
+        };
+        /** RuntimeStatusSnapshot */
+        RuntimeStatusSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /** Runtimes */
+            runtimes: components["schemas"]["RuntimeStatus"][];
         };
         /** SampleDataImportJobPayload */
         SampleDataImportJobPayload: {
@@ -654,6 +718,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_status_runtime_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeStatusSnapshot"];
                 };
             };
         };

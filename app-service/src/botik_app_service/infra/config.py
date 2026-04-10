@@ -27,6 +27,8 @@ class Settings(BaseModel):
     log_snapshot_limit: int = 100
     artifacts_dir: Path | None = None
     legacy_runtime_log_path: Path | None = None
+    runtime_status_heartbeat_stale_seconds: float = 120.0
+    runtime_status_fixture_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -46,5 +48,9 @@ class Settings(BaseModel):
             artifacts_dir=Path(os.getenv("BOTIK_ARTIFACTS_DIR")) if os.getenv("BOTIK_ARTIFACTS_DIR") else None,
             legacy_runtime_log_path=Path(os.getenv("BOTIK_LEGACY_RUNTIME_LOG_PATH"))
             if os.getenv("BOTIK_LEGACY_RUNTIME_LOG_PATH")
+            else None,
+            runtime_status_heartbeat_stale_seconds=float(os.getenv("BOTIK_RUNTIME_STATUS_STALE_SECONDS", "120.0")),
+            runtime_status_fixture_path=Path(os.getenv("BOTIK_RUNTIME_STATUS_FIXTURE_PATH"))
+            if os.getenv("BOTIK_RUNTIME_STATUS_FIXTURE_PATH")
             else None,
         )

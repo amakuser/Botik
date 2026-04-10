@@ -13,7 +13,41 @@ $desktopOut = Join-Path $logsDir "desktop.stdout.log"
 $desktopErr = Join-Path $logsDir "desktop.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
-Remove-Item $frontendOut, $frontendErr, $desktopOut, $desktopErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb -ErrorAction SilentlyContinue
+$runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
+Remove-Item $frontendOut, $frontendErr, $desktopOut, $desktopErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $runtimeStatusFixture -ErrorAction SilentlyContinue
+
+$runtimeStatusPayload = [pscustomobject]@{
+  generated_at = "2026-04-11T10:00:00Z"
+  runtimes = @(
+    [pscustomobject]@{
+      runtime_id = "spot"
+      label = "Spot Runtime"
+      state = "running"
+      pids = @(1234)
+      pid_count = 1
+      last_heartbeat_at = "2026-04-11T09:59:55Z"
+      last_heartbeat_age_seconds = 5
+      last_error = $null
+      last_error_at = $null
+      status_reason = "process present with recent heartbeat activity"
+      source_mode = "fixture"
+    },
+    [pscustomobject]@{
+      runtime_id = "futures"
+      label = "Futures Runtime"
+      state = "degraded"
+      pids = @(4567)
+      pid_count = 1
+      last_heartbeat_at = "2026-04-11T09:55:00Z"
+      last_heartbeat_age_seconds = 300
+      last_error = "stale heartbeat"
+      last_error_at = "2026-04-11T09:58:00Z"
+      status_reason = "process present but heartbeat is stale"
+      source_mode = "fixture"
+    }
+  )
+}
+$runtimeStatusPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeStatusFixture -Encoding UTF8
 
 function Add-JsonLine([string]$path, [object]$payload) {
   ($payload | ConvertTo-Json -Compress -Depth 8) | Add-Content -LiteralPath $path -Encoding UTF8
@@ -102,6 +136,7 @@ $desktop = $null
 $desktopProcess = $null
 $startedAt = Get-Date
 $testsPassed = $false
+$env:BOTIK_RUNTIME_STATUS_FIXTURE_PATH = $runtimeStatusFixture
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -211,6 +246,7 @@ finally {
       stderr = (Join-Path $logsDir "app-service.stderr.log")
     }
     lifecycleLog = $lifecycleLog
+    runtimeStatusFixture = $runtimeStatusFixture
     dataBackfillDb = @{
       path = $dataBackfillDb
       existsAfterCleanup = Test-Path $dataBackfillDb
