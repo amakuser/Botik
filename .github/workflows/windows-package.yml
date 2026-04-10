@@ -26,6 +26,10 @@ on:
 
 permissions:
   contents: write
+  statuses: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: windows-package-${{ github.ref }}
@@ -46,6 +50,7 @@ jobs:
           python-version: "3.11"
 
       - name: Auto bump VERSION for branch push
+        id: bump
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
         shell: pwsh
         run: |
@@ -57,6 +62,8 @@ jobs:
           git add VERSION
           git commit -m "ci: bump version to $v [skip ci]"
           git push origin HEAD:${{ github.ref_name }}
+          $sha = (git rev-parse HEAD).Trim()
+          "bumped_sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Bumped VERSION to $v"
 
       - name: Read VERSION
@@ -145,6 +152,43 @@ jobs:
         with:
           name: botik-${{ steps.ver.outputs.VERSION }}-installer
           path: dist/installer/BotikInstaller.exe
+
+      - name: Publish status for bumped VERSION commit
+        if: always() && steps.bump.outputs.bumped_sha != ''
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMPED_SHA: ${{ steps.bump.outputs.bumped_sha }}
+          JOB_STATUS: ${{ job.status }}
+          TARGET_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $state = switch ($env:JOB_STATUS) {
+            "success" { "success" }
+            "cancelled" { "error" }
+            default { "failure" }
+          }
+          $description = switch ($env:JOB_STATUS) {
+            "success" { "windows-package completed successfully" }
+            "cancelled" { "windows-package was cancelled" }
+            default { "windows-package failed" }
+          }
+          $body = @{
+            state       = $state
+            context     = "windows-package/follow-up"
+            description = $description
+            target_url  = $env:TARGET_URL
+          } | ConvertTo-Json
+          Invoke-RestMethod `
+            -Method Post `
+            -Uri "https://api.github.com/repos/${{ github.repository }}/statuses/$($env:BUMPED_SHA)" `
+            -Headers @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept        = "application/vnd.github+json"
+              "User-Agent"  = "github-actions"
+            } `
+            -ContentType "application/json" `
+            -Body $body | Out-Null
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
