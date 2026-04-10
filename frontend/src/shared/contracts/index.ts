@@ -12,6 +12,8 @@ export type StopJobRequest = components["schemas"]["StopJobRequest"];
 export type JobEvent = components["schemas"]["JobEvent"];
 export type LogEvent = components["schemas"]["LogEvent"];
 export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"];
+export type SampleDataImportJobPayload = components["schemas"]["SampleDataImportJobPayload"];
+export type DataBackfillJobPayload = components["schemas"]["DataBackfillJobPayload"];
 
 export const contractSchemaNames = [
   "HealthResponse",
@@ -26,4 +28,6 @@ export const contractSchemaNames = [
   "JobEvent",
   "LogEvent",
   "ErrorEnvelope",
+  "SampleDataImportJobPayload",
+  "DataBackfillJobPayload",
 ] as const;

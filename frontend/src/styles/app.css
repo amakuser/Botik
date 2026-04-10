@@ -170,6 +170,17 @@ body {
   margin: 0;
 }
 
+.job-preset-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 14px;
+  margin: 16px 0 18px;
+}
+
+.job-preset-grid dd {
+  margin: 0;
+}
+
 .status-grid dd {
   margin: 0;
 }

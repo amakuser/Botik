@@ -4,6 +4,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "app-service" / "src"))
 
+from botik_app_service.contracts.jobs import StartJobRequest
 from botik_app_service.contracts.bootstrap import BootstrapPayload
 from botik_app_service.contracts.errors import ErrorEnvelope
 from botik_app_service.contracts.health import HealthResponse
@@ -34,3 +35,15 @@ def test_contract_models_roundtrip():
         }
     )
     assert payload.session.session_id == "abc"
+
+    backfill_request = StartJobRequest.model_validate(
+        {
+            "job_type": "data_backfill",
+            "payload": {
+                "symbol": "BTCUSDT",
+                "category": "spot",
+                "intervals": ["1m"],
+            },
+        }
+    )
+    assert backfill_request.payload_dict()["intervals"] == ("1m",)

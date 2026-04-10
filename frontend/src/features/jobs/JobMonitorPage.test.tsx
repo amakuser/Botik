@@ -27,7 +27,7 @@ describe("JobMonitorPage", () => {
     mocks.listJobs.mockResolvedValue([
       {
         job_id: "job-1",
-        job_type: "sample_data_import",
+        job_type: "data_backfill",
         state: "completed",
         progress: 1,
         updated_at: "2026-04-10T00:00:00Z",
@@ -35,7 +35,7 @@ describe("JobMonitorPage", () => {
     ]);
     mocks.getJob.mockResolvedValue({
       job_id: "job-1",
-      job_type: "sample_data_import",
+      job_type: "data_backfill",
       state: "completed",
       progress: 1,
       started_at: "2026-04-10T00:00:00Z",
@@ -56,7 +56,7 @@ describe("JobMonitorPage", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the job monitor shell and the sample job history", async () => {
+  it("renders the job monitor shell and the fixed data backfill preset", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -78,7 +78,9 @@ describe("JobMonitorPage", () => {
     );
 
     expect(screen.getByRole("button", { name: "Start Sample Import" })).toBeTruthy();
-    expect(await screen.findByText("sample_data_import")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start Data Backfill" })).toBeTruthy();
+    expect(await screen.findByText("data_backfill")).toBeTruthy();
+    expect(screen.getByTestId("jobs.backfill.interval").textContent).toContain("1m");
     const state = await screen.findByTestId("jobs.selected.state");
     expect(state.textContent).toContain("completed");
   });

@@ -3,7 +3,9 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $artifactsRoot = Join-Path $repoRoot ".artifacts\local\latest\desktop-smoke"
 $logsDir = Join-Path $artifactsRoot "logs"
 $structuredDir = Join-Path $artifactsRoot "structured"
-New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir | Out-Null
+$stateDir = Join-Path $artifactsRoot "state"
+$dataBackfillDb = Join-Path $stateDir "data_backfill.sqlite3"
+New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
 
 $frontendOut = Join-Path $logsDir "frontend.stdout.log"
 $frontendErr = Join-Path $logsDir "frontend.stderr.log"
@@ -11,7 +13,7 @@ $desktopOut = Join-Path $logsDir "desktop.stdout.log"
 $desktopErr = Join-Path $logsDir "desktop.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
-Remove-Item $frontendOut, $frontendErr, $desktopOut, $desktopErr, $lifecycleLog, $cleanupSummary -ErrorAction SilentlyContinue
+Remove-Item $frontendOut, $frontendErr, $desktopOut, $desktopErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb -ErrorAction SilentlyContinue
 
 function Add-JsonLine([string]$path, [object]$payload) {
   ($payload | ConvertTo-Json -Compress -Depth 8) | Add-Content -LiteralPath $path -Encoding UTF8
@@ -99,6 +101,7 @@ $frontend = $null
 $desktop = $null
 $desktopProcess = $null
 $startedAt = Get-Date
+$testsPassed = $false
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -148,6 +151,7 @@ try {
   }
 
   corepack pnpm --dir $repoRoot exec playwright test --config "$repoRoot\tests\desktop-smoke\playwright.desktop.config.ts"
+  $testsPassed = $true
 }
 finally {
   foreach ($proc in @($desktop, $frontend)) {
@@ -186,6 +190,10 @@ finally {
     }
   }
 
+  if ($testsPassed -and (Test-Path $dataBackfillDb)) {
+    Remove-Item -LiteralPath $dataBackfillDb -Force -ErrorAction SilentlyContinue
+  }
+
   $summary = [pscustomobject]@{
     startedAt = $startedAt.ToString("o")
     finishedAt = (Get-Date).ToString("o")
@@ -203,6 +211,10 @@ finally {
       stderr = (Join-Path $logsDir "app-service.stderr.log")
     }
     lifecycleLog = $lifecycleLog
+    dataBackfillDb = @{
+      path = $dataBackfillDb
+      existsAfterCleanup = Test-Path $dataBackfillDb
+    }
   }
   $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $cleanupSummary -Encoding UTF8
 }

@@ -197,6 +197,13 @@ class JobSupervisor:
                     state=updated.state,
                     progress=updated.progress,
                     message=payload.get("message"),
+                    phase=payload.get("phase"),
+                    symbol=payload.get("symbol"),
+                    category=payload.get("category"),
+                    interval=payload.get("interval"),
+                    completed_units=int(payload["completed_units"]) if payload.get("completed_units") is not None else None,
+                    total_units=int(payload["total_units"]) if payload.get("total_units") is not None else None,
+                    rows_written=int(payload["rows_written"]) if payload.get("rows_written") is not None else None,
                 )
             )
             return

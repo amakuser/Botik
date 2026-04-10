@@ -20,7 +20,8 @@ def _build_launch_spec(request: StartJobRequest, details: JobDetails) -> JobLaun
     repo_root = Path(__file__).resolve().parents[4]
     app_service_src = repo_root / "app-service" / "src"
     fixture_path = repo_root / "app-service" / "src" / "botik_app_service" / "runtime" / "fixtures" / "sample_data.csv"
-    sleep_ms = max(20, min(int(request.payload.get("sleep_ms", 80)), 1_000))
+    payload = request.payload_dict()
+    sleep_ms = max(20, min(int(payload.get("sleep_ms", 80)), 1_000))
 
     env = os.environ.copy()
     existing_pythonpath = env.get("PYTHONPATH")

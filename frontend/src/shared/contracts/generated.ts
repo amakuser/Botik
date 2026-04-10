@@ -148,6 +148,32 @@ export interface components {
             /** Routes */
             routes: string[];
         };
+        /** DataBackfillJobPayload */
+        DataBackfillJobPayload: {
+            /**
+             * Symbol
+             * @default BTCUSDT
+             * @constant
+             */
+            symbol: "BTCUSDT";
+            /**
+             * Category
+             * @default spot
+             * @constant
+             */
+            category: "spot";
+            /**
+             * Intervals
+             * @default [
+             *       "1m"
+             *     ]
+             */
+            intervals: [
+                "1m"
+            ];
+        };
+        /** EmptyJobPayload */
+        EmptyJobPayload: Record<string, never>;
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -213,14 +239,20 @@ export interface components {
              */
             updated_at?: string;
         };
+        /** SampleDataImportJobPayload */
+        SampleDataImportJobPayload: {
+            /**
+             * Sleep Ms
+             * @default 80
+             */
+            sleep_ms: number;
+        };
         /** StartJobRequest */
         StartJobRequest: {
             /** Job Type */
             job_type: string;
             /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            };
+            payload?: components["schemas"]["SampleDataImportJobPayload"] | components["schemas"]["DataBackfillJobPayload"] | components["schemas"]["EmptyJobPayload"];
         };
         /** StopJobRequest */
         StopJobRequest: {

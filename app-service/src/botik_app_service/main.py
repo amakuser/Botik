@@ -12,6 +12,7 @@ from botik_app_service.api.routes_jobs import router as jobs_router
 from botik_app_service.infra.config import Settings
 from botik_app_service.infra.logging import configure_logging
 from botik_app_service.jobs.event_publisher import EventPublisher
+from botik_app_service.jobs.data_backfill_job import create_data_backfill_job_definition
 from botik_app_service.jobs.manager import JobManager
 from botik_app_service.jobs.process_adapter import ProcessAdapter
 from botik_app_service.jobs.recovery_guard import RecoveryGuard
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         recovery_guard = RecoveryGuard()
         manager = JobManager(registry=registry, store=store, supervisor=supervisor, publisher=publisher)
         registry.register(create_sample_data_job_definition())
+        registry.register(create_data_backfill_job_definition())
 
         app.state.settings = resolved_settings
         app.state.logger = logger

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getJob, listJobs, startJob, stopJob } from "../../shared/api/client";
-import { JobDetails, JobState, JobSummary } from "../../shared/contracts";
+import { JobDetails, JobState, JobSummary, StartJobRequest } from "../../shared/contracts";
 import { AppShell } from "../../shared/ui/AppShell";
+import { DataBackfillJobCard } from "./components/DataBackfillJobCard";
 import { JobLogPanel } from "./components/JobLogPanel";
 import { JobStatusCard } from "./components/JobStatusCard";
 import { JobToolbar } from "./components/JobToolbar";
@@ -94,15 +95,10 @@ export function JobMonitorPage() {
   const activeJob = jobs.find((job) => ACTIVE_STATES.includes(job.state));
   const logs = selectedJobId ? logsByJob[selectedJobId] ?? [] : [];
 
-  async function handleStart() {
+  async function handleStart(request: StartJobRequest, fallbackMessage: string) {
     setActionError(null);
     try {
-      const created = await startJob({
-        job_type: "sample_data_import",
-        payload: {
-          sleep_ms: 140,
-        },
-      });
+      const created = await startJob(request);
       setSelectedJobId(created.job_id);
       queryClient.setQueryData<JobSummary[]>(["jobs"], (current) => {
         const next = current ? [...current] : [];
@@ -111,8 +107,34 @@ export function JobMonitorPage() {
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["job", created.job_id] });
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Failed to start the sample data import.");
+      setActionError(error instanceof Error ? error.message : fallbackMessage);
     }
+  }
+
+  async function handleStartSampleImport() {
+    await handleStart(
+      {
+        job_type: "sample_data_import",
+        payload: {
+          sleep_ms: 140,
+        },
+      },
+      "Failed to start the sample data import.",
+    );
+  }
+
+  async function handleStartDataBackfill() {
+    await handleStart(
+      {
+        job_type: "data_backfill",
+        payload: {
+          symbol: "BTCUSDT",
+          category: "spot",
+          intervals: ["1m"],
+        },
+      },
+      "Failed to start the fixed data backfill job.",
+    );
   }
 
   async function handleStop() {
@@ -135,11 +157,12 @@ export function JobMonitorPage() {
       <div className="jobs-layout">
         <div className="jobs-sidebar">
           <JobToolbar
-            startDisabled={Boolean(activeJob)}
+            sampleImportDisabled={Boolean(activeJob)}
             stopDisabled={!selectedJob || !ACTIVE_STATES.includes(selectedJob.state)}
-            onStart={handleStart}
+            onStartSampleImport={handleStartSampleImport}
             onStop={handleStop}
           />
+          <DataBackfillJobCard disabled={Boolean(activeJob)} onStart={handleStartDataBackfill} />
 
           <section className="panel" aria-labelledby="job-list-title">
             <h2 id="job-list-title">Job History</h2>

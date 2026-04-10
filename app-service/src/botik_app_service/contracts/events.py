@@ -24,6 +24,13 @@ class JobEvent(BaseModel):
     state: JobState
     progress: float = 0.0
     message: str | None = None
+    phase: str | None = None
+    symbol: str | None = None
+    category: str | None = None
+    interval: str | None = None
+    completed_units: int | None = None
+    total_units: int | None = None
+    rows_written: int | None = None
 
 
 class LogEvent(BaseModel):

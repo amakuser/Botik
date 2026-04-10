@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,9 +36,26 @@ class JobDetails(BaseModel):
     log_stream_id: str | None = None
 
 
+class EmptyJobPayload(BaseModel):
+    pass
+
+
+class SampleDataImportJobPayload(BaseModel):
+    sleep_ms: int = Field(default=80, ge=20, le=1_000)
+
+
+class DataBackfillJobPayload(BaseModel):
+    symbol: Literal["BTCUSDT"] = "BTCUSDT"
+    category: Literal["spot"] = "spot"
+    intervals: tuple[Literal["1m"]] = ("1m",)
+
+
 class StartJobRequest(BaseModel):
     job_type: str
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: SampleDataImportJobPayload | DataBackfillJobPayload | EmptyJobPayload = Field(default_factory=EmptyJobPayload)
+
+    def payload_dict(self) -> dict[str, Any]:
+        return self.payload.model_dump()
 
 
 class StopJobRequest(BaseModel):
