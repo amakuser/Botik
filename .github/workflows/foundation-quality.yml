@@ -1,0 +1,63 @@
+name: foundation-quality
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "app-service/**"
+      - "apps/desktop/**"
+      - "tests/e2e/**"
+      - "tests/integration/**"
+      - "tests/unit/**"
+      - "test-utils/**"
+      - "scripts/**"
+      - ".github/workflows/foundation-quality.yml"
+      - ".github/pull_request_template.md"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+  push:
+    branches:
+      - master
+    paths:
+      - "frontend/**"
+      - "app-service/**"
+      - "apps/desktop/**"
+      - "tests/e2e/**"
+      - "tests/integration/**"
+      - "tests/unit/**"
+      - "test-utils/**"
+      - "scripts/**"
+      - ".github/workflows/foundation-quality.yml"
+      - ".github/pull_request_template.md"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+
+jobs:
+  foundation-checks:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install JS deps
+        run: corepack pnpm install --frozen-lockfile=false
+      - name: Install app-service deps
+        run: python -m pip install -e .\app-service
+      - name: Generate contracts
+        run: pwsh ./scripts/generate-contracts.ps1
+      - name: Guardrails
+        run: pwsh ./scripts/check-forbidden-imports.ps1
+      - name: Unit
+        run: pwsh ./scripts/test-unit.ps1
+      - name: Integration
+        run: pwsh ./scripts/test-integration.ps1
+      - name: E2E
+        run: pwsh ./scripts/test-e2e.ps1
+      - name: Desktop scaffold smoke
+        run: pwsh ./scripts/test-desktop-smoke.ps1

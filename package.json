@@ -1,0 +1,15 @@
+{
+  "name": "botik-foundation",
+  "private": true,
+  "version": "0.0.0-phase-a",
+  "scripts": {
+    "generate:contracts": "pwsh ./scripts/generate-contracts.ps1",
+    "test:e2e": "pwsh ./scripts/test-e2e.ps1",
+    "test:desktop-smoke": "pwsh ./scripts/test-desktop-smoke.ps1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "openapi-typescript": "^7.10.1",
+    "typescript": "^5.9.2"
+  }
+}

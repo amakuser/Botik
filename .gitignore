@@ -28,6 +28,12 @@ env/
 .coverage
 htmlcov/
 .tox/
+.artifacts/
+node_modules/
+**/node_modules/
+playwright-report/
+test-results/
+apps/desktop/src-tauri/target/
 
 # Logs and runtime data
 logs/

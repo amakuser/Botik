@@ -1,0 +1,16 @@
+{
+  "name": "@botik/desktop",
+  "private": true,
+  "version": "0.0.0-phase-a",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0"
+  }
+}
