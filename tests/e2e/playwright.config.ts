@@ -5,6 +5,7 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 
 export default defineConfig({
   testDir: __dirname,
+  workers: 1,
   outputDir: path.join(repoRoot, ".artifacts", "local", "latest", "e2e", "test-results"),
   reporter: [["html", { outputFolder: path.join(repoRoot, ".artifacts", "local", "latest", "e2e", "html-report") }]],
   use: {

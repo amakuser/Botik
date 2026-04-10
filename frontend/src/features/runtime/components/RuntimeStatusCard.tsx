@@ -10,13 +10,21 @@ function formatAge(value: number | null | undefined): string {
   return `${Math.round(value / 60)}m ago`;
 }
 
-export function RuntimeStatusCard({ runtime }: { runtime: RuntimeStatus }) {
+interface RuntimeStatusCardProps {
+  runtime: RuntimeStatus;
+  startDisabled: boolean;
+  stopDisabled: boolean;
+  onStart: () => void;
+  onStop: () => void;
+}
+
+export function RuntimeStatusCard({ runtime, startDisabled, stopDisabled, onStart, onStop }: RuntimeStatusCardProps) {
   return (
     <article className="runtime-card panel" data-testid={`runtime.card.${runtime.runtime_id}`}>
       <div className="runtime-card__header">
         <div>
           <h2>{runtime.label}</h2>
-          <p className="panel-muted">Read-only runtime presence and heartbeat status.</p>
+          <p className="panel-muted">Bounded start/stop with observable heartbeat and last-error status.</p>
         </div>
         <span className={`runtime-state runtime-state--${runtime.state}`} data-testid={`runtime.state.${runtime.runtime_id}`}>
           {runtime.state.toUpperCase()}
@@ -45,6 +53,27 @@ export function RuntimeStatusCard({ runtime }: { runtime: RuntimeStatus }) {
       <p className="runtime-card__reason" data-testid={`runtime.reason.${runtime.runtime_id}`}>
         {runtime.status_reason}
       </p>
+
+      <div className="runtime-card__actions">
+        <button
+          type="button"
+          className="button-primary"
+          data-testid={`runtime.start.${runtime.runtime_id}`}
+          disabled={startDisabled}
+          onClick={onStart}
+        >
+          Start
+        </button>
+        <button
+          type="button"
+          className="button-secondary"
+          data-testid={`runtime.stop.${runtime.runtime_id}`}
+          disabled={stopDisabled}
+          onClick={onStop}
+        >
+          Stop
+        </button>
+      </div>
     </article>
   );
 }

@@ -25,6 +25,14 @@ class StubLegacyAdapter:
         return self._activities[runtime_id]
 
 
+class StubObservationProvider:
+    def __init__(self, observations):
+        self._observations = observations
+
+    def observations(self):
+        return self._observations
+
+
 def test_runtime_status_service_uses_fixture_snapshot(tmp_path):
     fixture_path = tmp_path / "runtime-status.fixture.json"
     fixture_path.write_text(
@@ -100,6 +108,74 @@ def test_runtime_status_service_classifies_running_degraded_and_offline():
     assert running[0] == "running"
     assert degraded[0] == "degraded"
     assert offline[0] == "offline"
+
+
+def test_runtime_status_service_overlays_observations_over_fixture_snapshot():
+    from botik_app_service.runtime_status.interfaces import RuntimeObservation
+
+    fixture_path = REPO_ROOT / ".artifacts" / "runtime-status.test.fixture.json"
+    fixture_path.parent.mkdir(parents=True, exist_ok=True)
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-04-11T10:00:00Z",
+                "runtimes": [
+                    {
+                        "runtime_id": "spot",
+                        "label": "Spot Runtime",
+                        "state": "offline",
+                        "pids": [],
+                        "pid_count": 0,
+                        "last_heartbeat_at": None,
+                        "last_heartbeat_age_seconds": None,
+                        "last_error": None,
+                        "last_error_at": None,
+                        "status_reason": "no matching runtime process detected",
+                        "source_mode": "fixture",
+                    },
+                    {
+                        "runtime_id": "futures",
+                        "label": "Futures Runtime",
+                        "state": "offline",
+                        "pids": [],
+                        "pid_count": 0,
+                        "last_heartbeat_at": None,
+                        "last_heartbeat_age_seconds": None,
+                        "last_error": None,
+                        "last_error_at": None,
+                        "status_reason": "no matching runtime process detected",
+                        "source_mode": "fixture",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        service = RuntimeStatusService(
+            repo_root=REPO_ROOT,
+            heartbeat_stale_seconds=120.0,
+            fixture_path=fixture_path,
+            observation_provider=StubObservationProvider(
+                {
+                    "spot": RuntimeObservation(
+                        runtime_id="spot",
+                        label="Spot Runtime",
+                        pids=[9999],
+                        activity=RuntimeActivity(last_heartbeat_at=service_time("2026-04-11T09:59:59Z")),
+                    )
+                }
+            ),
+        )
+
+        snapshot = service.snapshot()
+        spot = snapshot.runtimes[0]
+        futures = snapshot.runtimes[1]
+        assert spot.state == "running"
+        assert spot.pid_count == 1
+        assert futures.state == "offline"
+    finally:
+        fixture_path.unlink(missing_ok=True)
 
 
 def service_time(value: str):

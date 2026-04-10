@@ -20,6 +20,7 @@ export type LogChannelSnapshot = components["schemas"]["LogChannelSnapshot"];
 export type LogStreamEvent = components["schemas"]["LogStreamEvent"];
 export type RuntimeStatus = components["schemas"]["RuntimeStatus"];
 export type RuntimeStatusSnapshot = components["schemas"]["RuntimeStatusSnapshot"];
+export type RuntimeId = RuntimeStatus["runtime_id"];
 
 export const contractSchemaNames = [
   "HealthResponse",

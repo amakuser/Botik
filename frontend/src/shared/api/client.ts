@@ -8,6 +8,7 @@ import {
   LogStreamEvent,
   LogEvent,
   RuntimeStatusSnapshot,
+  RuntimeId,
   JobSummary,
   StartJobRequest,
   StopJobRequest,
@@ -105,6 +106,20 @@ export async function createLogEventSource(channelId: string): Promise<EventSour
 export async function getRuntimeStatus(): Promise<RuntimeStatusSnapshot> {
   const response = await authenticatedFetch("/runtime-status");
   return parseJsonOrThrow<RuntimeStatusSnapshot>(response);
+}
+
+export async function startRuntime(runtimeId: RuntimeId): Promise<RuntimeStatus> {
+  const response = await authenticatedFetch(`/runtime-control/${runtimeId}/start`, {
+    method: "POST",
+  });
+  return parseJsonOrThrow<RuntimeStatus>(response);
+}
+
+export async function stopRuntime(runtimeId: RuntimeId): Promise<RuntimeStatus> {
+  const response = await authenticatedFetch(`/runtime-control/${runtimeId}/stop`, {
+    method: "POST",
+  });
+  return parseJsonOrThrow<RuntimeStatus>(response);
 }
 
 export interface EventPayloadMap {

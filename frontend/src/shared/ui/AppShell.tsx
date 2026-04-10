@@ -18,7 +18,7 @@ export function AppShell({ children }: PropsWithChildren) {
             Unified Logs
           </NavLink>
           <NavLink to="/runtime" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Runtime Status
+            Runtime Control
           </NavLink>
         </nav>
       </header>

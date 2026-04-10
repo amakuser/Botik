@@ -21,27 +21,27 @@ def test_runtime_status_endpoint_returns_fixture_snapshot(tmp_path):
                     {
                         "runtime_id": "spot",
                         "label": "Spot Runtime",
-                        "state": "running",
-                        "pids": [1234],
-                        "pid_count": 1,
-                        "last_heartbeat_at": "2026-04-11T09:59:55Z",
-                        "last_heartbeat_age_seconds": 5,
+                        "state": "offline",
+                        "pids": [],
+                        "pid_count": 0,
+                        "last_heartbeat_at": None,
+                        "last_heartbeat_age_seconds": None,
                         "last_error": None,
                         "last_error_at": None,
-                        "status_reason": "process present with recent heartbeat activity",
+                        "status_reason": "no matching runtime process detected",
                         "source_mode": "fixture",
                     },
                     {
                         "runtime_id": "futures",
                         "label": "Futures Runtime",
-                        "state": "degraded",
-                        "pids": [4567],
-                        "pid_count": 1,
-                        "last_heartbeat_at": "2026-04-11T09:55:00Z",
-                        "last_heartbeat_age_seconds": 300,
-                        "last_error": "stale heartbeat",
-                        "last_error_at": "2026-04-11T09:58:00Z",
-                        "status_reason": "process present but heartbeat is stale",
+                        "state": "offline",
+                        "pids": [],
+                        "pid_count": 0,
+                        "last_heartbeat_at": None,
+                        "last_heartbeat_age_seconds": None,
+                        "last_error": None,
+                        "last_error_at": None,
+                        "status_reason": "no matching runtime process detected",
                         "source_mode": "fixture",
                     },
                 ],
@@ -58,5 +58,5 @@ def test_runtime_status_endpoint_returns_fixture_snapshot(tmp_path):
         assert response.status_code == 200
         payload = response.json()
         assert [runtime["runtime_id"] for runtime in payload["runtimes"]] == ["spot", "futures"]
-        assert payload["runtimes"][0]["state"] == "running"
-        assert payload["runtimes"][1]["state"] == "degraded"
+        assert payload["runtimes"][0]["state"] == "offline"
+        assert payload["runtimes"][1]["state"] == "offline"

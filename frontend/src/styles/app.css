@@ -336,6 +336,13 @@ body {
   color: #94a3b8;
 }
 
+.runtime-card__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
 .runtime-state {
   display: inline-flex;
   align-items: center;

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Protocol
 
 from botik_app_service.contracts.runtime_status import RuntimeId
 
@@ -17,3 +18,7 @@ class RuntimeObservation:
     label: str
     pids: list[int] = field(default_factory=list)
     activity: RuntimeActivity = field(default_factory=RuntimeActivity)
+
+
+class RuntimeObservationProvider(Protocol):
+    def observations(self) -> dict[RuntimeId, RuntimeObservation]: ...

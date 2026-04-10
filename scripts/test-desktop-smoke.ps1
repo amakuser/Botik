@@ -5,6 +5,7 @@ $logsDir = Join-Path $artifactsRoot "logs"
 $structuredDir = Join-Path $artifactsRoot "structured"
 $stateDir = Join-Path $artifactsRoot "state"
 $dataBackfillDb = Join-Path $stateDir "data_backfill.sqlite3"
+$runtimeControlStateDir = Join-Path $stateDir "runtime-control"
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
 
 $frontendOut = Join-Path $logsDir "frontend.stdout.log"
@@ -15,6 +16,7 @@ $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
 Remove-Item $frontendOut, $frontendErr, $desktopOut, $desktopErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $runtimeStatusFixture -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
 $runtimeStatusPayload = [pscustomobject]@{
   generated_at = "2026-04-11T10:00:00Z"
@@ -22,27 +24,27 @@ $runtimeStatusPayload = [pscustomobject]@{
     [pscustomobject]@{
       runtime_id = "spot"
       label = "Spot Runtime"
-      state = "running"
-      pids = @(1234)
-      pid_count = 1
-      last_heartbeat_at = "2026-04-11T09:59:55Z"
-      last_heartbeat_age_seconds = 5
+      state = "offline"
+      pids = @()
+      pid_count = 0
+      last_heartbeat_at = $null
+      last_heartbeat_age_seconds = $null
       last_error = $null
       last_error_at = $null
-      status_reason = "process present with recent heartbeat activity"
+      status_reason = "no matching runtime process detected"
       source_mode = "fixture"
     },
     [pscustomobject]@{
       runtime_id = "futures"
       label = "Futures Runtime"
-      state = "degraded"
-      pids = @(4567)
-      pid_count = 1
-      last_heartbeat_at = "2026-04-11T09:55:00Z"
-      last_heartbeat_age_seconds = 300
-      last_error = "stale heartbeat"
-      last_error_at = "2026-04-11T09:58:00Z"
-      status_reason = "process present but heartbeat is stale"
+      state = "offline"
+      pids = @()
+      pid_count = 0
+      last_heartbeat_at = $null
+      last_heartbeat_age_seconds = $null
+      last_error = $null
+      last_error_at = $null
+      status_reason = "no matching runtime process detected"
       source_mode = "fixture"
     }
   )
@@ -137,6 +139,7 @@ $desktopProcess = $null
 $startedAt = Get-Date
 $testsPassed = $false
 $env:BOTIK_RUNTIME_STATUS_FIXTURE_PATH = $runtimeStatusFixture
+$env:BOTIK_RUNTIME_CONTROL_MODE = "fixture"
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -228,6 +231,9 @@ finally {
   if ($testsPassed -and (Test-Path $dataBackfillDb)) {
     Remove-Item -LiteralPath $dataBackfillDb -Force -ErrorAction SilentlyContinue
   }
+  if ($testsPassed -and (Test-Path $runtimeControlStateDir)) {
+    Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
 
   $summary = [pscustomobject]@{
     startedAt = $startedAt.ToString("o")
@@ -250,6 +256,10 @@ finally {
     dataBackfillDb = @{
       path = $dataBackfillDb
       existsAfterCleanup = Test-Path $dataBackfillDb
+    }
+    runtimeControlStateDir = @{
+      path = $runtimeControlStateDir
+      existsAfterCleanup = Test-Path $runtimeControlStateDir
     }
   }
   $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $cleanupSummary -Encoding UTF8

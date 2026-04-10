@@ -29,6 +29,9 @@ class Settings(BaseModel):
     legacy_runtime_log_path: Path | None = None
     runtime_status_heartbeat_stale_seconds: float = 120.0
     runtime_status_fixture_path: Path | None = None
+    runtime_control_mode: str = "auto"
+    runtime_control_heartbeat_interval_seconds: float = 1.0
+    runtime_control_stop_timeout_seconds: float = 8.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -53,4 +56,9 @@ class Settings(BaseModel):
             runtime_status_fixture_path=Path(os.getenv("BOTIK_RUNTIME_STATUS_FIXTURE_PATH"))
             if os.getenv("BOTIK_RUNTIME_STATUS_FIXTURE_PATH")
             else None,
+            runtime_control_mode=os.getenv("BOTIK_RUNTIME_CONTROL_MODE", "auto"),
+            runtime_control_heartbeat_interval_seconds=float(
+                os.getenv("BOTIK_RUNTIME_CONTROL_HEARTBEAT_SECONDS", "1.0")
+            ),
+            runtime_control_stop_timeout_seconds=float(os.getenv("BOTIK_RUNTIME_CONTROL_STOP_TIMEOUT_SECONDS", "8.0")),
         )
