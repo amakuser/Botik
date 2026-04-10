@@ -14,6 +14,9 @@ export function AppShell({ children }: PropsWithChildren) {
           <NavLink to="/jobs" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
             Job Monitor
           </NavLink>
+          <NavLink to="/logs" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
+            Unified Logs
+          </NavLink>
         </nav>
       </header>
       <main className="app-shell__content">{children}</main>

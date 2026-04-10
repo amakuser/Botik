@@ -23,6 +23,10 @@ class Settings(BaseModel):
     desktop_mode: bool = False
     sse_heartbeat_interval_seconds: float = 5.0
     event_buffer_size: int = 32
+    log_channel_buffer_size: int = 200
+    log_snapshot_limit: int = 100
+    artifacts_dir: Path | None = None
+    legacy_runtime_log_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -37,4 +41,10 @@ class Settings(BaseModel):
             desktop_mode=os.getenv("BOTIK_DESKTOP_MODE", "false").lower() == "true",
             sse_heartbeat_interval_seconds=float(os.getenv("BOTIK_SSE_HEARTBEAT_SECONDS", "5.0")),
             event_buffer_size=int(os.getenv("BOTIK_EVENT_BUFFER_SIZE", "32")),
+            log_channel_buffer_size=int(os.getenv("BOTIK_LOG_CHANNEL_BUFFER_SIZE", "200")),
+            log_snapshot_limit=int(os.getenv("BOTIK_LOG_SNAPSHOT_LIMIT", "100")),
+            artifacts_dir=Path(os.getenv("BOTIK_ARTIFACTS_DIR")) if os.getenv("BOTIK_ARTIFACTS_DIR") else None,
+            legacy_runtime_log_path=Path(os.getenv("BOTIK_LEGACY_RUNTIME_LOG_PATH"))
+            if os.getenv("BOTIK_LEGACY_RUNTIME_LOG_PATH")
+            else None,
         )

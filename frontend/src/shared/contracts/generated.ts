@@ -107,6 +107,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/logs/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Log Channels */
+        get: operations["list_log_channels_logs_channels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/logs/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Log Snapshot */
+        get: operations["get_log_snapshot_logs__channel_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/logs/{channel_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream Log Channel */
+        get: operations["stream_log_channel_logs__channel_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -238,6 +289,62 @@ export interface components {
              * Format: date-time
              */
             updated_at?: string;
+        };
+        /** LogChannel */
+        LogChannel: {
+            /**
+             * Channel Id
+             * @enum {string}
+             */
+            channel_id: "app" | "jobs" | "desktop" | "legacy-runtime";
+            /** Label */
+            label: string;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "memory" | "events" | "file" | "compatibility";
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+        };
+        /** LogChannelSnapshot */
+        LogChannelSnapshot: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "app" | "jobs" | "desktop" | "legacy-runtime";
+            /** Entries */
+            entries: components["schemas"]["LogEntry"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /** LogEntry */
+        LogEntry: {
+            /** Entry Id */
+            entry_id?: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "app" | "jobs" | "desktop" | "legacy-runtime";
+            /** Level */
+            level: string;
+            /** Message */
+            message: string;
+            /** Source */
+            source: string;
         };
         /** SampleDataImportJobPayload */
         SampleDataImportJobPayload: {
@@ -465,6 +572,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_log_channels_logs_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogChannel"][];
+                };
+            };
+        };
+    };
+    get_log_snapshot_logs__channel_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogChannelSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_log_channel_logs__channel_id__stream_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

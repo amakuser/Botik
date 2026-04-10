@@ -8,6 +8,7 @@ from botik_app_service.contracts.jobs import StartJobRequest
 from botik_app_service.contracts.bootstrap import BootstrapPayload
 from botik_app_service.contracts.errors import ErrorEnvelope
 from botik_app_service.contracts.health import HealthResponse
+from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
 
 
 def test_contract_models_roundtrip():
@@ -29,9 +30,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs"],
+                "routes": ["/", "/jobs", "/logs"],
             },
-            "routes": ["/", "/jobs"],
+            "routes": ["/", "/jobs", "/logs"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -47,3 +48,19 @@ def test_contract_models_roundtrip():
         }
     )
     assert backfill_request.payload_dict()["intervals"] == ("1m",)
+
+    snapshot = LogChannelSnapshot.model_validate(
+        {
+            "channel": "app",
+            "entries": [
+                {
+                    "channel": "app",
+                    "level": "INFO",
+                    "message": "hello",
+                    "source": "botik_app_service",
+                }
+            ],
+            "truncated": False,
+        }
+    )
+    assert isinstance(snapshot.entries[0], LogEntry)

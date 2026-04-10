@@ -3,6 +3,9 @@ import {
   HealthResponse,
   JobDetails,
   JobEvent,
+  LogChannel,
+  LogChannelSnapshot,
+  LogStreamEvent,
   LogEvent,
   JobSummary,
   StartJobRequest,
@@ -81,7 +84,28 @@ export async function createEventSource(): Promise<EventSource> {
   return new EventSource(url);
 }
 
+export async function listLogChannels(): Promise<LogChannel[]> {
+  const response = await authenticatedFetch("/logs/channels");
+  return parseJsonOrThrow<LogChannel[]>(response);
+}
+
+export async function getLogSnapshot(channelId: string): Promise<LogChannelSnapshot> {
+  const response = await authenticatedFetch(`/logs/${channelId}`);
+  return parseJsonOrThrow<LogChannelSnapshot>(response);
+}
+
+export async function createLogEventSource(channelId: string): Promise<EventSource> {
+  const runtime = await loadRuntimeConfig();
+  const url = new URL(`/logs/${channelId}/stream`, runtime.appServiceUrl);
+  url.searchParams.set("session_token", runtime.sessionToken);
+  return new EventSource(url);
+}
+
 export interface EventPayloadMap {
   job: JobEvent;
   log: LogEvent;
+}
+
+export interface LogStreamPayloadMap {
+  "log-entry": LogStreamEvent;
 }

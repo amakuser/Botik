@@ -43,6 +43,12 @@ data/
 *.sqlite
 *.sqlite3
 *.pkl
+!app-service/src/botik_app_service/logs/
+!app-service/src/botik_app_service/logs/**
+!frontend/src/features/logs/
+!frontend/src/features/logs/**
+app-service/src/botik_app_service/logs/**/__pycache__/
+app-service/src/botik_app_service/logs/**/*.py[cod]
 
 # IDE and OS files
 .idea/

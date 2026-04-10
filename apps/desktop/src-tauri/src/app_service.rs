@@ -118,7 +118,8 @@ pub fn start_managed_app_service() -> Result<ManagedAppService, String> {
         .env("BOTIK_APP_SERVICE_PORT", &port)
         .env("BOTIK_SESSION_TOKEN", &session_token)
         .env("BOTIK_FRONTEND_URL", &frontend_url)
-        .env("BOTIK_DESKTOP_MODE", "true");
+        .env("BOTIK_DESKTOP_MODE", "true")
+        .env("BOTIK_ARTIFACTS_DIR", &artifacts_root);
 
     #[cfg(windows)]
     {

@@ -80,8 +80,15 @@ body {
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
 }
 
+.logs-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+}
+
 .jobs-sidebar,
-.jobs-main {
+.jobs-main,
+.logs-main {
   display: grid;
   gap: 16px;
 }
@@ -250,12 +257,50 @@ body {
   margin: 0;
 }
 
+.log-channel-tabs {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.log-channel-tabs__button {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.7);
+  color: inherit;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.log-channel-tabs__button.is-selected {
+  border-color: rgba(190, 242, 100, 0.55);
+  box-shadow: 0 0 0 1px rgba(190, 242, 100, 0.25);
+}
+
+.log-status-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.log-viewer {
+  display: grid;
+  gap: 12px;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     padding: 20px;
   }
 
-  .jobs-layout {
+  .jobs-layout,
+  .logs-layout {
     grid-template-columns: 1fr;
   }
 }
