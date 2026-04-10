@@ -6,6 +6,7 @@ helper functions from here — never from each other or from webview_app.py.
 """
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -144,6 +145,29 @@ def _resolve_botik_log_path(raw_cfg: dict) -> Path:
 def _detect_launcher_mode() -> str:
     """Return 'packaged' when running as PyInstaller exe, else 'source'."""
     return "packaged" if bool(getattr(sys, "frozen", False)) else "source"
+
+
+def _dashboard_subprocess_popen_kwargs() -> dict[str, Any]:
+    """Return Windows-safe kwargs for subprocess calls from the dashboard process."""
+    kwargs: dict[str, Any] = {}
+    if sys.platform.startswith("win"):
+        creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+        if creationflags:
+            kwargs["creationflags"] = creationflags
+        if startupinfo_cls:
+            startupinfo = startupinfo_cls()
+            startupinfo.dwFlags |= int(getattr(subprocess, "STARTF_USESHOWWINDOW", 0))
+            startupinfo.wShowWindow = int(getattr(subprocess, "SW_HIDE", 0))
+            kwargs["startupinfo"] = startupinfo
+    return kwargs
+
+
+def _dashboard_subprocess_run_kwargs() -> dict[str, Any]:
+    """Return no-window kwargs for subprocess.run/check_output on the dashboard."""
+    kwargs = _dashboard_subprocess_popen_kwargs()
+    kwargs["stdin"] = subprocess.DEVNULL
+    return kwargs
 
 
 # ─────────────────────────────────────────────────────────────

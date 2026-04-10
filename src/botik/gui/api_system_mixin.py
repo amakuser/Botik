@@ -9,6 +9,7 @@ import json
 import logging
 import sqlite3
 import time
+from datetime import datetime
 from typing import Any
 
 from .api_helpers import CONFIG_PATH, _load_yaml, _read_env_map, _resolve_db_path
@@ -183,7 +184,9 @@ class SystemMixin:
 
         def _matches(entry_channel: str) -> bool:
             if target == "sys":
-                return entry_channel in {"sys", "data"}
+                return entry_channel == "sys"
+            if target == "data":
+                return entry_channel == "data"
             if target == "ml":
                 return entry_channel in {"ml", "ml_futures", "ml_spot"}
             return entry_channel == target
@@ -211,7 +214,8 @@ class SystemMixin:
             return []
         normalized = str(channel or "sys").strip().lower()
         channel_map: dict[str, tuple[str, ...]] = {
-            "sys": ("sys", "data"),
+            "sys": ("sys",),
+            "data": ("data",),
             "spot": ("spot",),
             "futures": ("futures",),
             "ml": ("ml", "ml_futures", "ml_spot"),
@@ -224,7 +228,19 @@ class SystemMixin:
         )
         for row in rows:
             row["channel"] = "ml" if str(row.get("channel") or "").startswith("ml") else row.get("channel")
-        return rows
+        return list(reversed(rows))
+
+    @staticmethod
+    def _log_ts_sort_value(value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        normalized = raw.replace("T", " ").replace("Z", "")
+        if normalized.count(":") == 2 and len(normalized) == 8:
+            return f"{datetime.now().strftime('%Y-%m-%d')} {normalized}"
+        if "." in normalized:
+            normalized = normalized.split(".", 1)[0]
+        return normalized[:19]
 
     @staticmethod
     def _merge_log_rows(
@@ -246,7 +262,8 @@ class SystemMixin:
                     continue
                 seen.add(key)
                 merged.append(row)
-        return merged[: int(limit)]
+        merged.sort(key=lambda row: SystemMixin._log_ts_sort_value(row.get("ts")))
+        return merged[-int(limit):]
 
     # ── Public API ────────────────────────────────────────────
 
@@ -304,17 +321,14 @@ class SystemMixin:
 
         result: dict[str, list[dict[str, Any]]] = {}
         try:
-            for channel in ("sys", "spot", "futures", "ml", "telegram"):
+            for channel in ("sys", "data", "spot", "futures", "ml", "telegram"):
                 db_rows = self._db_logs_for_channel(conn, channel, limit=int(limit))
                 buffer_rows = self._buffer_logs_for_channel(channel, limit=int(limit))
-                if channel in {"spot", "futures", "ml"} and db_rows:
-                    result[channel] = db_rows[: int(limit)]
-                else:
-                    result[channel] = self._merge_log_rows(
-                        db_rows,
-                        buffer_rows,
-                        limit=int(limit),
-                    )
+                result[channel] = self._merge_log_rows(
+                    db_rows,
+                    buffer_rows,
+                    limit=int(limit),
+                )
         finally:
             if conn:
                 conn.close()

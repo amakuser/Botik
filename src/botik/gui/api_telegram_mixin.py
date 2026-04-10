@@ -19,7 +19,13 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Any
 
-from .api_helpers import ROOT_DIR, _load_yaml, _read_env_map, _resolve_db_path
+from .api_helpers import (
+    ROOT_DIR,
+    _dashboard_subprocess_run_kwargs,
+    _load_yaml,
+    _read_env_map,
+    _resolve_db_path,
+)
 
 log = logging.getLogger("botik.webview")
 
@@ -369,6 +375,7 @@ class TelegramMixin:
             cwd=str(ROOT_DIR),
             capture_output=True,
             text=True,
+            **_dashboard_subprocess_run_kwargs(),
         )
         output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
         return proc.returncode == 0, output

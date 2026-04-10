@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from .api_helpers import ACTIVE_MODELS_PATH
+from .api_helpers import ACTIVE_MODELS_PATH, _dashboard_subprocess_run_kwargs
 
 
 class ModelsMixin:
@@ -556,7 +556,9 @@ class ModelsMixin:
                 ["nvidia-smi",
                  "--query-gpu=utilization.gpu,memory.used",
                  "--format=csv,noheader,nounits"],
-                timeout=2, text=True,
+                timeout=2,
+                text=True,
+                **_dashboard_subprocess_run_kwargs(),
             )
             parts = out.strip().split(",")
             if len(parts) >= 2:

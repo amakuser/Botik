@@ -67,7 +67,7 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _write_app_log(msg: str, channel: str = "sys") -> None:
+def _write_app_log(msg: str, channel: str = "data") -> None:
     try:
         db = get_db()
         with db.connect() as conn:
@@ -123,7 +123,7 @@ class DataRunner:
     async def _phase_backfill(self) -> None:
         """Фаза 1: качаем историю для всех символов и категорий."""
         log.info("=== PHASE 1: BACKFILL ===")
-        _write_app_log("DataRunner: начинаем backfill истории", "ml")
+        _write_app_log("DataRunner: начинаем backfill истории", "data")
 
         total = 0
         for symbol in SYMBOLS:
@@ -151,11 +151,11 @@ class DataRunner:
                 total += saved
                 _write_app_log(
                     f"Backfill {symbol}/{category}: +{saved} свечей",
-                    "ml",
+                    "data",
                 )
 
         log.info("=== BACKFILL DONE: %d свечей сохранено ===", total)
-        _write_app_log(f"Backfill завершён: итого {total} свечей", "ml")
+        _write_app_log(f"Backfill завершён: итого {total} свечей", "data")
 
     async def _phase_bootstrap(self) -> None:
         """Фаза 2: ML bootstrap если данных достаточно."""

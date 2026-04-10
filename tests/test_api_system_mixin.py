@@ -47,9 +47,17 @@ def _patch_db_path(db_path: Path):
     )
 
 
-def test_get_log_channels_keeps_spot_and_futures_separate(tmp_path: Path) -> None:
+def test_get_log_channels_keeps_dashboard_data_spot_and_futures_separate(tmp_path: Path) -> None:
     db_path = _make_db(tmp_path)
     conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "INSERT INTO app_logs (channel, level, message, created_at_utc) VALUES (?, ?, ?, ?)",
+        ("sys", "INFO", "dashboard-only event", "2026-04-09 09:59:00"),
+    )
+    conn.execute(
+        "INSERT INTO app_logs (channel, level, message, created_at_utc) VALUES (?, ?, ?, ?)",
+        ("data", "INFO", "data-only event", "2026-04-09 09:59:30"),
+    )
     conn.execute(
         "INSERT INTO app_logs (channel, level, message, created_at_utc) VALUES (?, ?, ?, ?)",
         ("spot", "INFO", "spot-only event", "2026-04-09 10:00:00"),
@@ -67,12 +75,14 @@ def test_get_log_channels_keeps_spot_and_futures_separate(tmp_path: Path) -> Non
 
     api = _StubSystemApi(db_path)
     api._add_buffer_log("10:03:00", "sys", "dashboard started")
+    api._add_buffer_log("10:03:01", "data", "backfill started")
 
     p1, p2 = _patch_db_path(db_path)
     with p1, p2:
         payload = json.loads(api.get_log_channels(20))
 
+    assert [row["message"] for row in payload["sys"]] == ["dashboard-only event", "dashboard started"]
+    assert [row["message"] for row in payload["data"]] == ["data-only event", "backfill started"]
     assert [row["message"] for row in payload["spot"]] == ["spot-only event"]
     assert [row["message"] for row in payload["futures"]] == ["futures-only event"]
     assert payload["telegram"][0]["message"] == "telegram failed"
-    assert any(row["message"] == "dashboard started" for row in payload["sys"])

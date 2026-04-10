@@ -324,9 +324,11 @@
   .log-line { display: flex; gap: 12px; }
   .log-ts  { color: var(--text3); white-space: nowrap; flex-shrink: 0; }
   .log-ch  { width: 70px; flex-shrink: 0; }
+  .ch-data    { color: var(--yellow); }
   .ch-spot    { color: var(--accent2); }
   .ch-futures { color: var(--teal); }
   .ch-ml      { color: var(--purple); }
+  .ch-telegram { color: var(--accent); }
   .ch-sys     { color: var(--text3); }
   .lm-ok   { color: #90EFC0; }
   .lm-warn { color: var(--yellow); }
@@ -695,6 +697,9 @@ document.querySelectorAll('.subtab').forEach(function(tab) {
   tab.addEventListener('click', function() {
     this.closest('.subtabs').querySelectorAll('.subtab').forEach(function(t) { t.classList.remove('active'); });
     this.classList.add('active');
+    if (this.hasAttribute('data-log-ch') && typeof _setActiveLogChannel === 'function') {
+      _setActiveLogChannel(this.getAttribute('data-log-ch'));
+    }
   });
 });
 
@@ -2644,7 +2649,7 @@ function _setActiveLogChannel(channel) {
   document.querySelectorAll('#log-subtabs .subtab').forEach(function(tab) {
     tab.classList.toggle('active', tab.getAttribute('data-log-ch') === _logActiveChannel);
   });
-  ['sys','spot','futures','ml','telegram'].forEach(function(c) {
+  ['sys','data','spot','futures','ml','telegram'].forEach(function(c) {
     var el = document.getElementById('log-ch-' + c);
     if (el) el.style.display = c === _logActiveChannel ? '' : 'none';
   });
@@ -2656,7 +2661,7 @@ var _logEmptyHints = null;
 function _captureLogHints() {
   if (_logEmptyHints) return;
   _logEmptyHints = {};
-  ['sys','spot','futures','ml','telegram'].forEach(function(ch) {
+  ['sys','data','spot','futures','ml','telegram'].forEach(function(ch) {
     var hint = document.getElementById('log-hint-' + ch);
     _logEmptyHints[ch] = hint ? hint.outerHTML : '';
   });
@@ -2684,7 +2689,7 @@ function _pollLogs() {
 
 function _renderLogChannels(payload) {
   _captureLogHints();
-  ['sys','spot','futures','ml','telegram'].forEach(function(channel) {
+  ['sys','data','spot','futures','ml','telegram'].forEach(function(channel) {
     _renderLogChannel(channel, (payload && payload[channel]) || []);
   });
 }
@@ -2697,9 +2702,11 @@ function _renderLogChannelsEmptyState(channel, container) {
 function _renderLogChannelsRow(container, channel, row) {
   var line = document.createElement('div'); line.className = 'log-line';
   var ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = row.ts || '';
+  var rowChannel = String((row && row.channel) || channel || 'sys').toLowerCase();
+  var displayChannel = rowChannel.indexOf('ml') === 0 ? 'ml' : rowChannel;
   var ch = document.createElement('span');
-  ch.className = 'log-ch ' + ({spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-ml', sys:'ch-sys'}[channel] || 'ch-sys');
-  ch.textContent = '[' + (channel || 'sys') + ']';
+  ch.className = 'log-ch ' + ({data:'ch-data', spot:'ch-spot', futures:'ch-futures', ml:'ch-ml', telegram:'ch-telegram', sys:'ch-sys'}[displayChannel] || 'ch-sys');
+  ch.textContent = '[' + (displayChannel || 'sys') + ']';
   var msg = document.createElement('span');
   msg.className = _logMsgClass(row.message || '');
   msg.textContent = row.message || '';
@@ -3599,7 +3606,7 @@ document.querySelectorAll('.nav-item').forEach(function(item) {
     if (page === 'spot')     { _loadSpotPageData(); }
     if (page === 'futures')  { _loadFuturesPositions(); }
     if (page === 'models')   { _loadModelsData(); }
-    if (page === 'logs')     { _pollLogs(); }
+    if (page === 'logs')     { _setActiveLogChannel(_logActiveChannel); _pollLogs(); }
     if (page === 'telegram') { _loadTelegramPage(); }
     if (page === 'ops')      { _loadOpsPage(); }
     if (page === 'settings') { settingsLoad(); }
