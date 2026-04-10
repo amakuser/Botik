@@ -118,7 +118,7 @@ try {
     payload = @{ target = "frontend"; url = "http://127.0.0.1:4173/" }
   }
 
-  corepack pnpm exec playwright test --config "$repoRoot\tests\e2e\playwright.config.ts"
+  corepack pnpm --dir $repoRoot exec playwright test --config "$repoRoot\tests\e2e\playwright.config.ts"
 }
 finally {
   $shutdownRequested = $false

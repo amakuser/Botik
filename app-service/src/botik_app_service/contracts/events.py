@@ -23,6 +23,7 @@ class JobEvent(BaseModel):
     job_type: str
     state: JobState
     progress: float = 0.0
+    message: str | None = None
 
 
 class LogEvent(BaseModel):

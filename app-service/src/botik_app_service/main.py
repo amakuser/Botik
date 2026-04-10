@@ -16,6 +16,7 @@ from botik_app_service.jobs.manager import JobManager
 from botik_app_service.jobs.process_adapter import ProcessAdapter
 from botik_app_service.jobs.recovery_guard import RecoveryGuard
 from botik_app_service.jobs.registry import JobRegistry
+from botik_app_service.jobs.sample_data_job import create_sample_data_job_definition
 from botik_app_service.jobs.store import JobStore
 from botik_app_service.jobs.supervisor import JobSupervisor
 
@@ -30,9 +31,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store = JobStore()
         registry = JobRegistry()
         process_adapter = ProcessAdapter()
-        supervisor = JobSupervisor(process_adapter)
+        supervisor = JobSupervisor(process_adapter=process_adapter, store=store, publisher=publisher)
         recovery_guard = RecoveryGuard()
         manager = JobManager(registry=registry, store=store, supervisor=supervisor, publisher=publisher)
+        registry.register(create_sample_data_job_definition())
 
         app.state.settings = resolved_settings
         app.state.logger = logger

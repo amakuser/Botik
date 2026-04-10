@@ -64,45 +64,13 @@ class JobManager:
                 progress=details.progress,
             )
         )
-        spawned = await self._supervisor.spawn(definition, request, details)
-        updated = self._store.update(
-            spawned.job_id,
-            state=spawned.state,
-            started_at=spawned.started_at,
-            progress=spawned.progress,
-        )
-        await self._publisher.publish_job_event(
-            JobEvent(
-                job_id=updated.job_id,
-                job_type=updated.job_type,
-                state=updated.state,
-                progress=updated.progress,
-            )
-        )
-        await self._publisher.publish_log_event(
-            LogEvent(job_id=updated.job_id, level="INFO", message=f"Job {updated.job_type} accepted by skeleton.")
-        )
-        return updated
+        await self._supervisor.spawn(definition, request, details)
+        return self.get(details.job_id)
 
     async def stop(self, job_id: str, request: StopJobRequest) -> JobDetails:
         details = self.get(job_id)
-        stopped = await self._supervisor.terminate(details, request)
-        updated = self._store.update(
-            stopped.job_id,
-            state=stopped.state,
-            exit_code=stopped.exit_code,
-            last_error=stopped.last_error,
-            progress=stopped.progress,
-        )
-        await self._publisher.publish_job_event(
-            JobEvent(
-                job_id=updated.job_id,
-                job_type=updated.job_type,
-                state=updated.state,
-                progress=updated.progress,
-            )
-        )
-        return updated
+        await self._supervisor.terminate(details, request)
+        return self.get(job_id)
 
     async def shutdown(self) -> None:
         for details in list(self._store.list()):

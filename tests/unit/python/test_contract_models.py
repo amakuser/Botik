@@ -28,9 +28,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/"],
+                "routes": ["/", "/jobs"],
             },
-            "routes": ["/"],
+            "routes": ["/", "/jobs"],
         }
     )
     assert payload.session.session_id == "abc"

@@ -2,6 +2,8 @@ import {
   BootstrapPayload,
   HealthResponse,
   JobDetails,
+  JobEvent,
+  LogEvent,
   JobSummary,
   StartJobRequest,
   StopJobRequest,
@@ -77,4 +79,9 @@ export async function createEventSource(): Promise<EventSource> {
   const url = new URL("/events", runtime.appServiceUrl);
   url.searchParams.set("session_token", runtime.sessionToken);
   return new EventSource(url);
+}
+
+export interface EventPayloadMap {
+  job: JobEvent;
+  log: LogEvent;
 }

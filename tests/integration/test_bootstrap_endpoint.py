@@ -22,3 +22,4 @@ def test_bootstrap_returns_loopback_session_info():
         assert payload["session"]["session_id"] == "bootstrap-token"
         assert payload["session"]["transport_base_url"] == "http://127.0.0.1:8765"
         assert payload["capabilities"]["jobs"] is True
+        assert "/jobs" in payload["routes"]

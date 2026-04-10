@@ -1,0 +1,32 @@
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT / "app-service" / "src"))
+
+from botik_app_service.contracts.jobs import JobDetails, JobState, StartJobRequest
+from botik_app_service.jobs.sample_data_job import JOB_TYPE, create_sample_data_job_definition
+
+
+def test_sample_data_job_definition_builds_python_worker_launch_spec():
+    definition = create_sample_data_job_definition()
+    details = JobDetails(
+        job_id="job-sample",
+        job_type=JOB_TYPE,
+        state=JobState.QUEUED,
+        progress=0.0,
+        started_at=None,
+        updated_at=datetime.now(timezone.utc),
+        exit_code=None,
+        last_error=None,
+        log_stream_id="stream-1",
+    )
+    request = StartJobRequest(job_type=JOB_TYPE, payload={"sleep_ms": 55})
+    launch_spec = definition.launcher(request, details)
+
+    assert definition.job_type == JOB_TYPE
+    assert launch_spec.command[0] == sys.executable
+    assert "botik_app_service.runtime.sample_data_worker" in launch_spec.command
+    assert launch_spec.env is not None
+    assert "PYTHONPATH" in launch_spec.env

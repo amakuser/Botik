@@ -10,7 +10,7 @@ router = APIRouter(tags=["bootstrap"])
 async def get_bootstrap(request: Request) -> BootstrapPayload:
     settings = request.app.state.settings
     base_url = f"http://{settings.host}:{settings.port}"
-    routes = ["/"]
+    routes = ["/", "/jobs"]
     return BootstrapPayload(
         app_name=settings.app_name,
         version=settings.version,

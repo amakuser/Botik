@@ -140,8 +140,14 @@ try {
     kind = "ready"
     payload = @{ target = "desktop-shell"; pid = $desktopProcess.Id }
   }
+  Wait-Http200 "http://127.0.0.1:4173/" @{}
+  Add-JsonLine $lifecycleLog @{
+    timestamp = (Get-Date).ToString("o")
+    kind = "ready"
+    payload = @{ target = "frontend"; url = "http://127.0.0.1:4173/" }
+  }
 
-  corepack pnpm exec playwright test --config "$repoRoot\tests\desktop-smoke\playwright.desktop.config.ts"
+  corepack pnpm --dir $repoRoot exec playwright test --config "$repoRoot\tests\desktop-smoke\playwright.desktop.config.ts"
 }
 finally {
   foreach ($proc in @($desktop, $frontend)) {

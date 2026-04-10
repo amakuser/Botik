@@ -5,10 +5,17 @@ from botik_app_service.contracts.jobs import JobDetails, StartJobRequest, StopJo
 
 
 @dataclass(slots=True)
+class JobLaunchSpec:
+    command: list[str]
+    cwd: str | None = None
+    env: dict[str, str] | None = None
+
+
+@dataclass(slots=True)
 class JobDefinition:
     job_type: str
     description: str
-    launcher: Callable[[StartJobRequest], Any] | None = None
+    launcher: Callable[[StartJobRequest, JobDetails], JobLaunchSpec] | None = None
 
 
 class JobRegistryProtocol(Protocol):

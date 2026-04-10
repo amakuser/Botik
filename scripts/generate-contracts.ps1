@@ -19,4 +19,4 @@ Path(sys.argv[2]).write_text(json.dumps(spec, ensure_ascii=True, indent=2), enco
 $scriptFile = Join-Path $env:TEMP "botik-write-openapi.py"
 Set-Content -LiteralPath $scriptFile -Value $pythonScript -Encoding UTF8
 python $scriptFile $repoRoot $tempJson
-corepack pnpm exec openapi-typescript $tempJson --output $generatedTs
+corepack pnpm --dir $repoRoot exec openapi-typescript $tempJson --output $generatedTs
