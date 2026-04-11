@@ -6,6 +6,7 @@ sys.path.insert(0, str(REPO_ROOT / "app-service" / "src"))
 
 from botik_app_service.contracts.jobs import StartJobRequest
 from botik_app_service.contracts.bootstrap import BootstrapPayload
+from botik_app_service.contracts.diagnostics import DiagnosticsSnapshot
 from botik_app_service.contracts.errors import ErrorEnvelope
 from botik_app_service.contracts.health import HealthResponse
 from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
@@ -36,9 +37,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics", "/models"],
+                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics", "/models", "/diagnostics"],
             },
-            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics", "/models"],
+            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics", "/models", "/diagnostics"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -383,6 +384,43 @@ def test_contract_models_roundtrip():
         }
     )
     assert analytics_snapshot.summary.total_closed_trades == 4
+
+    diagnostics_snapshot = DiagnosticsSnapshot.model_validate(
+        {
+            "source_mode": "resolved",
+            "summary": {
+                "app_name": "Botik Foundation",
+                "version": "1",
+                "app_service_base_url": "http://127.0.0.1:8765",
+                "desktop_mode": False,
+                "runtime_control_mode": "fixture",
+                "routes_count": 10,
+                "fixture_overrides_count": 2,
+                "missing_paths_count": 1,
+                "warnings_count": 1,
+            },
+            "config": [
+                {
+                    "key": "service_name",
+                    "label": "Service Name",
+                    "value": "botik-app-service",
+                    "masked": False,
+                }
+            ],
+            "paths": [
+                {
+                    "key": "repo_root",
+                    "label": "Repo Root",
+                    "path": "C:/ai/aiBotik",
+                    "source": "resolved",
+                    "exists": True,
+                    "kind": "directory",
+                }
+            ],
+            "warnings": ["Runtime control is currently configured in fixture mode."],
+        }
+    )
+    assert diagnostics_snapshot.summary.routes_count == 10
 
     models_snapshot = ModelsReadSnapshot.model_validate(
         {

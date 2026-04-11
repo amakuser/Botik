@@ -17,6 +17,8 @@ describe("generated contracts", () => {
     expect(contractSchemaNames).toContain("TelegramConnectivityCheckResult");
     expect(contractSchemaNames).toContain("AnalyticsReadSnapshot");
     expect(contractSchemaNames).toContain("AnalyticsSummary");
+    expect(contractSchemaNames).toContain("DiagnosticsSnapshot");
+    expect(contractSchemaNames).toContain("DiagnosticsSummary");
     expect(contractSchemaNames).toContain("ModelsReadSnapshot");
     expect(contractSchemaNames).toContain("ModelsSummary");
   });

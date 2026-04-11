@@ -116,6 +116,11 @@ body {
   gap: 16px;
 }
 
+.diagnostics-layout {
+  display: grid;
+  gap: 16px;
+}
+
 .jobs-sidebar,
 .jobs-main,
 .logs-main {
@@ -157,6 +162,13 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
+}
+
+.diagnostics-warning-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
 }
 
 .models-scope-grid {

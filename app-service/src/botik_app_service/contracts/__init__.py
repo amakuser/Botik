@@ -1,5 +1,6 @@
 from .analytics import AnalyticsClosedTrade, AnalyticsEquityPoint, AnalyticsReadSnapshot, AnalyticsReadTruncation, AnalyticsSummary
 from .bootstrap import AppSessionInfo, BootstrapPayload, UiCapabilities
+from .diagnostics import DiagnosticsConfigEntry, DiagnosticsPathEntry, DiagnosticsSnapshot, DiagnosticsSummary
 from .errors import ErrorEnvelope
 from .events import JobEvent, LogEvent, SystemEvent
 from .futures import (
@@ -34,6 +35,10 @@ __all__ = [
     "AnalyticsSummary",
     "AppSessionInfo",
     "BootstrapPayload",
+    "DiagnosticsConfigEntry",
+    "DiagnosticsPathEntry",
+    "DiagnosticsSnapshot",
+    "DiagnosticsSummary",
     "ErrorEnvelope",
     "FuturesFill",
     "FuturesOpenOrder",

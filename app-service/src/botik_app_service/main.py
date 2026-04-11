@@ -9,6 +9,7 @@ from botik_app_service.analytics_read.service import AnalyticsReadService
 from botik_app_service.api.routes_analytics import router as analytics_router
 from botik_app_service.api.routes_admin import router as admin_router
 from botik_app_service.api.routes_bootstrap import router as bootstrap_router
+from botik_app_service.api.routes_diagnostics import router as diagnostics_router
 from botik_app_service.api.routes_events import router as events_router
 from botik_app_service.api.routes_futures import router as futures_router
 from botik_app_service.api.routes_health import router as health_router
@@ -19,6 +20,7 @@ from botik_app_service.api.routes_spot import router as spot_router
 from botik_app_service.api.routes_telegram import router as telegram_router
 from botik_app_service.api.routes_runtime_control import router as runtime_control_router
 from botik_app_service.api.routes_runtime_status import router as runtime_status_router
+from botik_app_service.diagnostics_compat.service import DiagnosticsCompatibilityService
 from botik_app_service.futures_read.service import FuturesReadService
 from botik_app_service.infra.config import Settings
 from botik_app_service.infra.logging import configure_logging
@@ -104,6 +106,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             repo_root=Path(__file__).resolve().parents[3],
             fixture_db_path=resolved_settings.analytics_read_fixture_db_path,
         )
+        diagnostics_service = DiagnosticsCompatibilityService(
+            repo_root=Path(__file__).resolve().parents[3],
+            settings=resolved_settings,
+        )
         models_read_service = ModelsReadService(
             repo_root=Path(__file__).resolve().parents[3],
             fixture_db_path=resolved_settings.models_read_fixture_db_path,
@@ -121,6 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.futures_read_service = futures_read_service
         app.state.telegram_ops_service = telegram_ops_service
         app.state.analytics_read_service = analytics_read_service
+        app.state.diagnostics_service = diagnostics_service
         app.state.models_read_service = models_read_service
         app.state.job_store = store
         app.state.job_registry = registry
@@ -171,6 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(futures_router)
     app.include_router(telegram_router)
     app.include_router(analytics_router)
+    app.include_router(diagnostics_router)
     app.include_router(models_router)
     app.include_router(admin_router)
     return app

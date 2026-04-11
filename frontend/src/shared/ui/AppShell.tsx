@@ -35,6 +35,9 @@ export function AppShell({ children }: PropsWithChildren) {
           <NavLink to="/models" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
             Models / Status
           </NavLink>
+          <NavLink to="/diagnostics" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
+            Diagnostics
+          </NavLink>
         </nav>
       </header>
       <main className="app-shell__content">{children}</main>
