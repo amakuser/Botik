@@ -7,6 +7,7 @@ $stateDir = Join-Path $artifactsRoot "state"
 $dataBackfillDb = Join-Path $stateDir "data_backfill.sqlite3"
 $spotReadFixtureDb = Join-Path $stateDir "spot_read.fixture.sqlite3"
 $futuresReadFixtureDb = Join-Path $stateDir "futures_read.fixture.sqlite3"
+$analyticsReadFixtureDb = Join-Path $stateDir "analytics_read.fixture.sqlite3"
 $telegramOpsFixture = Join-Path $structuredDir "telegram-ops.fixture.json"
 $runtimeControlStateDir = Join-Path $stateDir "runtime-control"
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
@@ -18,7 +19,7 @@ $frontendErr = Join-Path $logsDir "frontend.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
-Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
+Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $analyticsReadFixtureDb, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
 $runtimeStatusPayload = [pscustomobject]@{
@@ -178,6 +179,58 @@ finally:
   }
 }
 
+function Initialize-AnalyticsReadFixtureDb([string]$dbPath) {
+  $script = @"
+import sqlite3
+import sys
+from pathlib import Path
+
+db_path = Path(sys.argv[1])
+connection = sqlite3.connect(db_path)
+try:
+    connection.executescript('''
+        CREATE TABLE futures_paper_trades (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT,
+            model_scope TEXT,
+            net_pnl REAL,
+            was_profitable INTEGER,
+            opened_at_utc TEXT,
+            closed_at_utc TEXT
+        );
+        CREATE TABLE outcomes (
+            signal_id TEXT PRIMARY KEY,
+            symbol TEXT,
+            model_scope TEXT,
+            net_pnl_quote REAL,
+            was_profitable INTEGER,
+            closed_at_utc TEXT
+        );
+    ''')
+    connection.executemany(
+        "INSERT INTO futures_paper_trades (symbol, model_scope, net_pnl, was_profitable, opened_at_utc, closed_at_utc) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("BTCUSDT", "futures", 12.5, 1, "2026-04-08 09:00:00", "2026-04-08 10:00:00"),
+            ("ETHUSDT", "futures", -3.0, 0, "2026-04-09 09:00:00", "2026-04-09 10:00:00"),
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO outcomes (signal_id, symbol, model_scope, net_pnl_quote, was_profitable, closed_at_utc) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("sig-1", "SOLUSDT", "spot", 5.0, 1, "2026-04-10 11:00:00"),
+            ("sig-2", "XRPUSDT", "spot", 1.5, 1, "2026-04-11 12:00:00"),
+        ],
+    )
+    connection.commit()
+finally:
+    connection.close()
+"@
+  $script | python - $dbPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to initialize analytics read fixture DB"
+  }
+}
+
 function Add-JsonLine([string]$path, [object]$payload) {
   ($payload | ConvertTo-Json -Compress -Depth 8) | Add-Content -LiteralPath $path -Encoding UTF8
 }
@@ -246,12 +299,14 @@ $startedAt = Get-Date
 $testsPassed = $false
 Initialize-SpotReadFixtureDb $repoRoot $spotReadFixtureDb
 Initialize-FuturesReadFixtureDb $repoRoot $futuresReadFixtureDb
+Initialize-AnalyticsReadFixtureDb $analyticsReadFixtureDb
 $env:BOTIK_ARTIFACTS_DIR = $artifactsRoot
 $env:BOTIK_RUNTIME_STATUS_FIXTURE_PATH = $runtimeStatusFixture
 $env:BOTIK_RUNTIME_CONTROL_MODE = "fixture"
 $env:BOTIK_SPOT_READ_FIXTURE_DB_PATH = $spotReadFixtureDb
 $env:BOTIK_FUTURES_READ_FIXTURE_DB_PATH = $futuresReadFixtureDb
 $env:BOTIK_TELEGRAM_OPS_FIXTURE_PATH = $telegramOpsFixture
+$env:BOTIK_ANALYTICS_READ_FIXTURE_DB_PATH = $analyticsReadFixtureDb
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -350,6 +405,9 @@ finally {
   if ($testsPassed -and (Test-Path $futuresReadFixtureDb)) {
     Remove-Item -LiteralPath $futuresReadFixtureDb -Force -ErrorAction SilentlyContinue
   }
+  if ($testsPassed -and (Test-Path $analyticsReadFixtureDb)) {
+    Remove-Item -LiteralPath $analyticsReadFixtureDb -Force -ErrorAction SilentlyContinue
+  }
   if ($testsPassed -and (Test-Path $runtimeControlStateDir)) {
     Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
   }
@@ -377,6 +435,10 @@ finally {
     futuresReadFixtureDb = @{
       path = $futuresReadFixtureDb
       existsAfterCleanup = Test-Path $futuresReadFixtureDb
+    }
+    analyticsReadFixtureDb = @{
+      path = $analyticsReadFixtureDb
+      existsAfterCleanup = Test-Path $analyticsReadFixtureDb
     }
     dataBackfillDb = @{
       path = $dataBackfillDb

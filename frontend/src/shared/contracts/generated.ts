@@ -277,6 +277,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Analytics Snapshot */
+        get: operations["get_analytics_snapshot_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -298,6 +315,110 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnalyticsClosedTrade */
+        AnalyticsClosedTrade: {
+            /** Symbol */
+            symbol: string;
+            /** Scope */
+            scope: string;
+            /**
+             * Net Pnl
+             * @default 0
+             */
+            net_pnl: number;
+            /**
+             * Was Profitable
+             * @default false
+             */
+            was_profitable: boolean;
+            /** Closed At */
+            closed_at: string;
+        };
+        /** AnalyticsEquityPoint */
+        AnalyticsEquityPoint: {
+            /** Date */
+            date: string;
+            /**
+             * Daily Pnl
+             * @default 0
+             */
+            daily_pnl: number;
+            /**
+             * Cumulative Pnl
+             * @default 0
+             */
+            cumulative_pnl: number;
+        };
+        /** AnalyticsReadSnapshot */
+        AnalyticsReadSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "fixture" | "compatibility";
+            summary?: components["schemas"]["AnalyticsSummary"];
+            /** Equity Curve */
+            equity_curve?: components["schemas"]["AnalyticsEquityPoint"][];
+            /** Recent Closed Trades */
+            recent_closed_trades?: components["schemas"]["AnalyticsClosedTrade"][];
+            truncated?: components["schemas"]["AnalyticsReadTruncation"];
+        };
+        /** AnalyticsReadTruncation */
+        AnalyticsReadTruncation: {
+            /**
+             * Equity Curve
+             * @default false
+             */
+            equity_curve: boolean;
+            /**
+             * Recent Closed Trades
+             * @default false
+             */
+            recent_closed_trades: boolean;
+        };
+        /** AnalyticsSummary */
+        AnalyticsSummary: {
+            /**
+             * Total Closed Trades
+             * @default 0
+             */
+            total_closed_trades: number;
+            /**
+             * Winning Trades
+             * @default 0
+             */
+            winning_trades: number;
+            /**
+             * Losing Trades
+             * @default 0
+             */
+            losing_trades: number;
+            /**
+             * Win Rate
+             * @default 0
+             */
+            win_rate: number;
+            /**
+             * Total Net Pnl
+             * @default 0
+             */
+            total_net_pnl: number;
+            /**
+             * Average Net Pnl
+             * @default 0
+             */
+            average_net_pnl: number;
+            /**
+             * Today Net Pnl
+             * @default 0
+             */
+            today_net_pnl: number;
+        };
         /** AppSessionInfo */
         AppSessionInfo: {
             /** Session Id */
@@ -1608,6 +1729,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TelegramConnectivityCheckResult"];
+                };
+            };
+        };
+    };
+    get_analytics_snapshot_analytics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsReadSnapshot"];
                 };
             };
         };

@@ -12,6 +12,7 @@ from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
 from botik_app_service.contracts.runtime_status import RuntimeStatusSnapshot
 from botik_app_service.contracts.futures import FuturesReadSnapshot
 from botik_app_service.contracts.spot import SpotReadSnapshot
+from botik_app_service.contracts.analytics import AnalyticsReadSnapshot
 from botik_app_service.contracts.telegram import TelegramConnectivityCheckResult, TelegramOpsSnapshot
 
 
@@ -34,9 +35,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram"],
+                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics"],
             },
-            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram"],
+            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -334,3 +335,39 @@ def test_contract_models_roundtrip():
         }
     )
     assert telegram_check.state == "healthy"
+
+    analytics_snapshot = AnalyticsReadSnapshot.model_validate(
+        {
+            "source_mode": "fixture",
+            "summary": {
+                "total_closed_trades": 4,
+                "winning_trades": 3,
+                "losing_trades": 1,
+                "win_rate": 0.75,
+                "total_net_pnl": 16.0,
+                "average_net_pnl": 4.0,
+                "today_net_pnl": 1.5,
+            },
+            "equity_curve": [
+                {
+                    "date": "2026-04-10",
+                    "daily_pnl": 5.0,
+                    "cumulative_pnl": 5.0,
+                }
+            ],
+            "recent_closed_trades": [
+                {
+                    "symbol": "XRPUSDT",
+                    "scope": "spot",
+                    "net_pnl": 1.5,
+                    "was_profitable": True,
+                    "closed_at": "2026-04-11 12:00",
+                }
+            ],
+            "truncated": {
+                "equity_curve": False,
+                "recent_closed_trades": False,
+            },
+        }
+    )
+    assert analytics_snapshot.summary.total_closed_trades == 4

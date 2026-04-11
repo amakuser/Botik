@@ -1,3 +1,4 @@
+from .analytics import AnalyticsClosedTrade, AnalyticsEquityPoint, AnalyticsReadSnapshot, AnalyticsReadTruncation, AnalyticsSummary
 from .bootstrap import AppSessionInfo, BootstrapPayload, UiCapabilities
 from .errors import ErrorEnvelope
 from .events import JobEvent, LogEvent, SystemEvent
@@ -25,6 +26,11 @@ from .telegram import (
 )
 
 __all__ = [
+    "AnalyticsClosedTrade",
+    "AnalyticsEquityPoint",
+    "AnalyticsReadSnapshot",
+    "AnalyticsReadTruncation",
+    "AnalyticsSummary",
     "AppSessionInfo",
     "BootstrapPayload",
     "ErrorEnvelope",

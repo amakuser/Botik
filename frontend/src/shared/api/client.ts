@@ -7,10 +7,12 @@ import {
   LogChannelSnapshot,
   LogStreamEvent,
   LogEvent,
+  RuntimeStatus,
   RuntimeStatusSnapshot,
   RuntimeId,
   JobSummary,
   FuturesReadSnapshot,
+  AnalyticsReadSnapshot,
   TelegramConnectivityCheckResult,
   TelegramOpsSnapshot,
   SpotReadSnapshot,
@@ -139,6 +141,11 @@ export async function getFuturesReadModel(): Promise<FuturesReadSnapshot> {
 export async function getTelegramOpsModel(): Promise<TelegramOpsSnapshot> {
   const response = await authenticatedFetch("/telegram");
   return parseJsonOrThrow<TelegramOpsSnapshot>(response);
+}
+
+export async function getAnalyticsReadModel(): Promise<AnalyticsReadSnapshot> {
+  const response = await authenticatedFetch("/analytics");
+  return parseJsonOrThrow<AnalyticsReadSnapshot>(response);
 }
 
 export async function runTelegramConnectivityCheck(): Promise<TelegramConnectivityCheckResult> {

@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
+import { AnalyticsRoute } from "./routes/analytics-route";
 import { HealthRoute } from "./routes/health-route";
 import { FuturesRoute } from "./routes/futures-route";
 import { JobsRoute } from "./routes/jobs-route";
@@ -35,5 +36,9 @@ export const router = createBrowserRouter([
   {
     path: "/telegram",
     element: <TelegramRoute />,
+  },
+  {
+    path: "/analytics",
+    element: <AnalyticsRoute />,
   },
 ]);

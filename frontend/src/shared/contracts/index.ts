@@ -33,6 +33,10 @@ export type TelegramErrorEntry = components["schemas"]["TelegramErrorEntry"];
 export type TelegramOpsSummary = components["schemas"]["TelegramOpsSummary"];
 export type TelegramOpsSnapshot = components["schemas"]["TelegramOpsSnapshot"];
 export type TelegramConnectivityCheckResult = components["schemas"]["TelegramConnectivityCheckResult"];
+export type AnalyticsSummary = components["schemas"]["AnalyticsSummary"];
+export type AnalyticsEquityPoint = components["schemas"]["AnalyticsEquityPoint"];
+export type AnalyticsClosedTrade = components["schemas"]["AnalyticsClosedTrade"];
+export type AnalyticsReadSnapshot = components["schemas"]["AnalyticsReadSnapshot"];
 export type SpotBalance = components["schemas"]["SpotBalance"];
 export type SpotHolding = components["schemas"]["SpotHolding"];
 export type SpotOrder = components["schemas"]["SpotOrder"];
@@ -73,6 +77,10 @@ export const contractSchemaNames = [
   "TelegramOpsSummary",
   "TelegramOpsSnapshot",
   "TelegramConnectivityCheckResult",
+  "AnalyticsSummary",
+  "AnalyticsEquityPoint",
+  "AnalyticsClosedTrade",
+  "AnalyticsReadSnapshot",
   "SpotBalance",
   "SpotHolding",
   "SpotOrder",

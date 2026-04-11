@@ -106,6 +106,11 @@ body {
   gap: 16px;
 }
 
+.analytics-layout {
+  display: grid;
+  gap: 16px;
+}
+
 .jobs-sidebar,
 .jobs-main,
 .logs-main {
@@ -132,6 +137,12 @@ body {
 }
 
 .telegram-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.analytics-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
@@ -427,6 +438,11 @@ body {
   font-size: 1.75rem;
   font-weight: 700;
   margin-bottom: 10px;
+}
+
+.summary-card__note {
+  margin: 0;
+  color: #94a3b8;
 }
 
 .runtime-state {

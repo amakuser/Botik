@@ -29,6 +29,9 @@ export function AppShell({ children }: PropsWithChildren) {
           <NavLink to="/telegram" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
             Telegram Ops
           </NavLink>
+          <NavLink to="/analytics" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
+            PnL / Analytics
+          </NavLink>
         </nav>
       </header>
       <main className="app-shell__content">{children}</main>

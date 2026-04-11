@@ -5,6 +5,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from botik_app_service.analytics_read.service import AnalyticsReadService
+from botik_app_service.api.routes_analytics import router as analytics_router
 from botik_app_service.api.routes_admin import router as admin_router
 from botik_app_service.api.routes_bootstrap import router as bootstrap_router
 from botik_app_service.api.routes_events import router as events_router
@@ -89,6 +91,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             repo_root=Path(__file__).resolve().parents[3],
             fixture_path=resolved_settings.telegram_ops_fixture_path,
         )
+        analytics_read_service = AnalyticsReadService(
+            repo_root=Path(__file__).resolve().parents[3],
+            fixture_db_path=resolved_settings.analytics_read_fixture_db_path,
+        )
         await logs_manager.start(publisher)
 
         app.state.settings = resolved_settings
@@ -100,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.spot_read_service = spot_read_service
         app.state.futures_read_service = futures_read_service
         app.state.telegram_ops_service = telegram_ops_service
+        app.state.analytics_read_service = analytics_read_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -148,6 +155,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(spot_router)
     app.include_router(futures_router)
     app.include_router(telegram_router)
+    app.include_router(analytics_router)
     app.include_router(admin_router)
     return app
 
