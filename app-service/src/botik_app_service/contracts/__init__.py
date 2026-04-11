@@ -1,6 +1,14 @@
 from .bootstrap import AppSessionInfo, BootstrapPayload, UiCapabilities
 from .errors import ErrorEnvelope
 from .events import JobEvent, LogEvent, SystemEvent
+from .futures import (
+    FuturesFill,
+    FuturesOpenOrder,
+    FuturesPosition,
+    FuturesReadSnapshot,
+    FuturesReadSummary,
+    FuturesReadTruncation,
+)
 from .health import HealthResponse
 from .jobs import JobDetails, JobState, JobSummary, StartJobRequest, StopJobRequest
 from .logs import LogChannel, LogChannelSnapshot, LogEntry, LogStreamEvent
@@ -11,6 +19,12 @@ __all__ = [
     "AppSessionInfo",
     "BootstrapPayload",
     "ErrorEnvelope",
+    "FuturesFill",
+    "FuturesOpenOrder",
+    "FuturesPosition",
+    "FuturesReadSnapshot",
+    "FuturesReadSummary",
+    "FuturesReadTruncation",
     "HealthResponse",
     "JobDetails",
     "JobEvent",

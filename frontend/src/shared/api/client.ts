@@ -10,6 +10,7 @@ import {
   RuntimeStatusSnapshot,
   RuntimeId,
   JobSummary,
+  FuturesReadSnapshot,
   SpotReadSnapshot,
   StartJobRequest,
   StopJobRequest,
@@ -126,6 +127,11 @@ export async function stopRuntime(runtimeId: RuntimeId): Promise<RuntimeStatus> 
 export async function getSpotReadModel(): Promise<SpotReadSnapshot> {
   const response = await authenticatedFetch("/spot");
   return parseJsonOrThrow<SpotReadSnapshot>(response);
+}
+
+export async function getFuturesReadModel(): Promise<FuturesReadSnapshot> {
+  const response = await authenticatedFetch("/futures");
+  return parseJsonOrThrow<FuturesReadSnapshot>(response);
 }
 
 export interface EventPayloadMap {

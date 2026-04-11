@@ -22,6 +22,11 @@ export type LogStreamEvent = components["schemas"]["LogStreamEvent"];
 export type RuntimeStatus = components["schemas"]["RuntimeStatus"];
 export type RuntimeStatusSnapshot = components["schemas"]["RuntimeStatusSnapshot"];
 export type RuntimeId = RuntimeStatus["runtime_id"];
+export type FuturesPosition = components["schemas"]["FuturesPosition"];
+export type FuturesOpenOrder = components["schemas"]["FuturesOpenOrder"];
+export type FuturesFill = components["schemas"]["FuturesFill"];
+export type FuturesReadSummary = components["schemas"]["FuturesReadSummary"];
+export type FuturesReadSnapshot = components["schemas"]["FuturesReadSnapshot"];
 export type SpotBalance = components["schemas"]["SpotBalance"];
 export type SpotHolding = components["schemas"]["SpotHolding"];
 export type SpotOrder = components["schemas"]["SpotOrder"];
@@ -51,6 +56,11 @@ export const contractSchemaNames = [
   "LogStreamEvent",
   "RuntimeStatus",
   "RuntimeStatusSnapshot",
+  "FuturesPosition",
+  "FuturesOpenOrder",
+  "FuturesFill",
+  "FuturesReadSummary",
+  "FuturesReadSnapshot",
   "SpotBalance",
   "SpotHolding",
   "SpotOrder",

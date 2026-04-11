@@ -10,6 +10,7 @@ from botik_app_service.contracts.errors import ErrorEnvelope
 from botik_app_service.contracts.health import HealthResponse
 from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
 from botik_app_service.contracts.runtime_status import RuntimeStatusSnapshot
+from botik_app_service.contracts.futures import FuturesReadSnapshot
 from botik_app_service.contracts.spot import SpotReadSnapshot
 
 
@@ -32,9 +33,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot"],
+                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures"],
             },
-            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot"],
+            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -100,6 +101,85 @@ def test_contract_models_roundtrip():
         }
     )
     assert runtime_snapshot.runtimes[0].runtime_id == "spot"
+
+    futures_snapshot = FuturesReadSnapshot.model_validate(
+        {
+            "source_mode": "fixture",
+            "summary": {
+                "account_type": "UNIFIED",
+                "positions_count": 1,
+                "protected_positions_count": 1,
+                "attention_positions_count": 0,
+                "recovered_positions_count": 0,
+                "open_orders_count": 1,
+                "recent_fills_count": 1,
+                "unrealized_pnl_total": 42.125,
+            },
+            "positions": [
+                {
+                    "account_type": "UNIFIED",
+                    "symbol": "ETHUSDT",
+                    "side": "Buy",
+                    "position_idx": 1,
+                    "margin_mode": "cross",
+                    "leverage": 5.0,
+                    "qty": 0.02,
+                    "entry_price": 3000.0,
+                    "mark_price": 3010.5,
+                    "liq_price": 2500.0,
+                    "unrealized_pnl": 42.125,
+                    "take_profit": 3050.0,
+                    "stop_loss": 2950.0,
+                    "protection_status": "protected",
+                    "source_of_truth": "fixture",
+                    "recovered_from_exchange": False,
+                    "strategy_owner": "futures_spike_reversal",
+                    "updated_at_utc": "2026-04-11T12:00:00Z",
+                }
+            ],
+            "active_orders": [
+                {
+                    "account_type": "UNIFIED",
+                    "symbol": "ETHUSDT",
+                    "side": "Sell",
+                    "order_id": "fut-order-1",
+                    "order_link_id": "fut-link-1",
+                    "order_type": "Limit",
+                    "time_in_force": "GTC",
+                    "price": 3050.0,
+                    "qty": 0.02,
+                    "status": "New",
+                    "reduce_only": True,
+                    "close_on_trigger": False,
+                    "strategy_owner": "futures_spike_reversal",
+                    "updated_at_utc": "2026-04-11T12:00:00Z",
+                }
+            ],
+            "recent_fills": [
+                {
+                    "account_type": "UNIFIED",
+                    "symbol": "ETHUSDT",
+                    "side": "Buy",
+                    "exec_id": "fut-exec-1",
+                    "order_id": "fut-order-1",
+                    "order_link_id": "fut-link-1",
+                    "price": 3001.0,
+                    "qty": 0.02,
+                    "exec_fee": 0.15,
+                    "fee_currency": "USDT",
+                    "is_maker": True,
+                    "exec_time_ms": 1700000000123,
+                    "created_at_utc": "2026-04-11T12:00:00Z",
+                }
+            ],
+            "truncated": {
+                "positions": False,
+                "active_orders": False,
+                "recent_fills": False,
+            },
+        }
+    )
+    assert futures_snapshot.summary.positions_count == 1
 
     spot_snapshot = SpotReadSnapshot.model_validate(
         {

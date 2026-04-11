@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/futures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Futures Snapshot */
+        get: operations["get_futures_snapshot_futures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -317,6 +334,196 @@ export interface components {
         };
         /** EmptyJobPayload */
         EmptyJobPayload: Record<string, never>;
+        /** FuturesFill */
+        FuturesFill: {
+            /** Account Type */
+            account_type: string;
+            /** Symbol */
+            symbol: string;
+            /** Side */
+            side: string;
+            /** Exec Id */
+            exec_id: string;
+            /** Order Id */
+            order_id?: string | null;
+            /** Order Link Id */
+            order_link_id?: string | null;
+            /**
+             * Price
+             * @default 0
+             */
+            price: number;
+            /**
+             * Qty
+             * @default 0
+             */
+            qty: number;
+            /** Exec Fee */
+            exec_fee?: number | null;
+            /** Fee Currency */
+            fee_currency?: string | null;
+            /** Is Maker */
+            is_maker?: boolean | null;
+            /** Exec Time Ms */
+            exec_time_ms?: number | null;
+            /** Created At Utc */
+            created_at_utc?: string | null;
+        };
+        /** FuturesOpenOrder */
+        FuturesOpenOrder: {
+            /** Account Type */
+            account_type: string;
+            /** Symbol */
+            symbol: string;
+            /** Side */
+            side?: string | null;
+            /** Order Id */
+            order_id?: string | null;
+            /** Order Link Id */
+            order_link_id?: string | null;
+            /** Order Type */
+            order_type?: string | null;
+            /** Time In Force */
+            time_in_force?: string | null;
+            /** Price */
+            price?: number | null;
+            /** Qty */
+            qty?: number | null;
+            /** Status */
+            status: string;
+            /** Reduce Only */
+            reduce_only?: boolean | null;
+            /** Close On Trigger */
+            close_on_trigger?: boolean | null;
+            /** Strategy Owner */
+            strategy_owner?: string | null;
+            /** Updated At Utc */
+            updated_at_utc?: string | null;
+        };
+        /** FuturesPosition */
+        FuturesPosition: {
+            /** Account Type */
+            account_type: string;
+            /** Symbol */
+            symbol: string;
+            /** Side */
+            side: string;
+            /** Position Idx */
+            position_idx: number;
+            /** Margin Mode */
+            margin_mode?: string | null;
+            /** Leverage */
+            leverage?: number | null;
+            /**
+             * Qty
+             * @default 0
+             */
+            qty: number;
+            /** Entry Price */
+            entry_price?: number | null;
+            /** Mark Price */
+            mark_price?: number | null;
+            /** Liq Price */
+            liq_price?: number | null;
+            /** Unrealized Pnl */
+            unrealized_pnl?: number | null;
+            /** Take Profit */
+            take_profit?: number | null;
+            /** Stop Loss */
+            stop_loss?: number | null;
+            /** Protection Status */
+            protection_status: string;
+            /** Source Of Truth */
+            source_of_truth: string;
+            /**
+             * Recovered From Exchange
+             * @default false
+             */
+            recovered_from_exchange: boolean;
+            /** Strategy Owner */
+            strategy_owner?: string | null;
+            /** Updated At Utc */
+            updated_at_utc?: string | null;
+        };
+        /** FuturesReadSnapshot */
+        FuturesReadSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "fixture" | "compatibility";
+            summary: components["schemas"]["FuturesReadSummary"];
+            /** Positions */
+            positions?: components["schemas"]["FuturesPosition"][];
+            /** Active Orders */
+            active_orders?: components["schemas"]["FuturesOpenOrder"][];
+            /** Recent Fills */
+            recent_fills?: components["schemas"]["FuturesFill"][];
+            truncated?: components["schemas"]["FuturesReadTruncation"];
+        };
+        /** FuturesReadSummary */
+        FuturesReadSummary: {
+            /** Account Type */
+            account_type: string;
+            /**
+             * Positions Count
+             * @default 0
+             */
+            positions_count: number;
+            /**
+             * Protected Positions Count
+             * @default 0
+             */
+            protected_positions_count: number;
+            /**
+             * Attention Positions Count
+             * @default 0
+             */
+            attention_positions_count: number;
+            /**
+             * Recovered Positions Count
+             * @default 0
+             */
+            recovered_positions_count: number;
+            /**
+             * Open Orders Count
+             * @default 0
+             */
+            open_orders_count: number;
+            /**
+             * Recent Fills Count
+             * @default 0
+             */
+            recent_fills_count: number;
+            /**
+             * Unrealized Pnl Total
+             * @default 0
+             */
+            unrealized_pnl_total: number;
+        };
+        /** FuturesReadTruncation */
+        FuturesReadTruncation: {
+            /**
+             * Positions
+             * @default false
+             */
+            positions: boolean;
+            /**
+             * Active Orders
+             * @default false
+             */
+            active_orders: boolean;
+            /**
+             * Recent Fills
+             * @default false
+             */
+            recent_fills: boolean;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1122,6 +1329,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpotReadSnapshot"];
+                };
+            };
+        };
+    };
+    get_futures_snapshot_futures_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FuturesReadSnapshot"];
                 };
             };
         };

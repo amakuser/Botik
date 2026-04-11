@@ -34,6 +34,8 @@ class Settings(BaseModel):
     runtime_control_stop_timeout_seconds: float = 8.0
     spot_read_fixture_db_path: Path | None = None
     spot_read_account_type: str = "UNIFIED"
+    futures_read_fixture_db_path: Path | None = None
+    futures_read_account_type: str = "UNIFIED"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -67,4 +69,8 @@ class Settings(BaseModel):
             if os.getenv("BOTIK_SPOT_READ_FIXTURE_DB_PATH")
             else None,
             spot_read_account_type=os.getenv("BOTIK_SPOT_READ_ACCOUNT_TYPE", "UNIFIED"),
+            futures_read_fixture_db_path=Path(os.getenv("BOTIK_FUTURES_READ_FIXTURE_DB_PATH"))
+            if os.getenv("BOTIK_FUTURES_READ_FIXTURE_DB_PATH")
+            else None,
+            futures_read_account_type=os.getenv("BOTIK_FUTURES_READ_ACCOUNT_TYPE", "UNIFIED"),
         )

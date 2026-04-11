@@ -8,12 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from botik_app_service.api.routes_admin import router as admin_router
 from botik_app_service.api.routes_bootstrap import router as bootstrap_router
 from botik_app_service.api.routes_events import router as events_router
+from botik_app_service.api.routes_futures import router as futures_router
 from botik_app_service.api.routes_health import router as health_router
 from botik_app_service.api.routes_jobs import router as jobs_router
 from botik_app_service.api.routes_logs import router as logs_router
 from botik_app_service.api.routes_spot import router as spot_router
 from botik_app_service.api.routes_runtime_control import router as runtime_control_router
 from botik_app_service.api.routes_runtime_status import router as runtime_status_router
+from botik_app_service.futures_read.service import FuturesReadService
 from botik_app_service.infra.config import Settings
 from botik_app_service.infra.logging import configure_logging
 from botik_app_service.jobs.event_publisher import EventPublisher
@@ -76,6 +78,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             account_type=resolved_settings.spot_read_account_type,
             fixture_db_path=resolved_settings.spot_read_fixture_db_path,
         )
+        futures_read_service = FuturesReadService(
+            repo_root=Path(__file__).resolve().parents[3],
+            account_type=resolved_settings.futures_read_account_type,
+            fixture_db_path=resolved_settings.futures_read_fixture_db_path,
+        )
         await logs_manager.start(publisher)
 
         app.state.settings = resolved_settings
@@ -85,6 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.runtime_status_service = runtime_status_service
         app.state.runtime_control_service = runtime_control_service
         app.state.spot_read_service = spot_read_service
+        app.state.futures_read_service = futures_read_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -131,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(runtime_status_router)
     app.include_router(runtime_control_router)
     app.include_router(spot_router)
+    app.include_router(futures_router)
     app.include_router(admin_router)
     return app
 

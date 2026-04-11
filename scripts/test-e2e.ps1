@@ -6,6 +6,7 @@ $structuredDir = Join-Path $artifactsRoot "structured"
 $stateDir = Join-Path $artifactsRoot "state"
 $dataBackfillDb = Join-Path $stateDir "data_backfill.sqlite3"
 $spotReadFixtureDb = Join-Path $stateDir "spot_read.fixture.sqlite3"
+$futuresReadFixtureDb = Join-Path $stateDir "futures_read.fixture.sqlite3"
 $runtimeControlStateDir = Join-Path $stateDir "runtime-control"
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
 
@@ -16,7 +17,7 @@ $frontendErr = Join-Path $logsDir "frontend.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
-Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $runtimeStatusFixture -ErrorAction SilentlyContinue
+Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $runtimeStatusFixture -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
 $runtimeStatusPayload = [pscustomobject]@{
@@ -79,6 +80,33 @@ finally:
   $script | python - $repoRootPath $dbPath
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to initialize spot read fixture DB"
+  }
+}
+
+function Initialize-FuturesReadFixtureDb([string]$repoRootPath, [string]$dbPath) {
+  $script = @"
+import sqlite3
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+db_path = Path(sys.argv[2])
+sys.path.insert(0, str(repo_root))
+from src.botik.storage.futures_store import ensure_futures_schema, insert_futures_fill, upsert_futures_open_order, upsert_futures_position
+
+connection = sqlite3.connect(db_path)
+try:
+    ensure_futures_schema(connection)
+    upsert_futures_position(connection, account_type='UNIFIED', symbol='ETHUSDT', side='Buy', position_idx=1, margin_mode='cross', leverage=5.0, qty=0.02, entry_price=3000.0, mark_price=3010.5, liq_price=2500.0, unrealized_pnl=42.125, realized_pnl=None, take_profit=3050.0, stop_loss=2950.0, trailing_stop=None, protection_status='protected', strategy_owner='futures_spike_reversal', source_of_truth='fixture', recovered_from_exchange=False, updated_at_utc='2026-04-11T12:00:00Z')
+    upsert_futures_position(connection, account_type='UNIFIED', symbol='BTCUSDT', side='Sell', position_idx=2, margin_mode='isolated', leverage=3.0, qty=0.01, entry_price=65000.0, mark_price=65100.0, liq_price=70000.0, unrealized_pnl=-10.5, realized_pnl=None, take_profit=64000.0, stop_loss=65500.0, trailing_stop=None, protection_status='repairing', strategy_owner=None, source_of_truth='fixture', recovered_from_exchange=True, updated_at_utc='2026-04-11T11:58:00Z')
+    upsert_futures_open_order(connection, account_type='UNIFIED', symbol='ETHUSDT', status='New', order_id='fut-order-1', order_link_id='fut-link-1', side='Sell', order_type='Limit', time_in_force='GTC', price=3050.0, qty=0.02, reduce_only=True, close_on_trigger=False, strategy_owner='futures_spike_reversal', updated_at_utc='2026-04-11T12:00:00Z')
+    insert_futures_fill(connection, account_type='UNIFIED', symbol='ETHUSDT', side='Buy', exec_id='fut-exec-1', order_id='fut-order-1', order_link_id='fut-link-1', price=3001.0, qty=0.02, exec_fee=0.15, fee_currency='USDT', is_maker=True, exec_time_ms=1700000000123, created_at_utc='2026-04-11T12:00:00Z')
+finally:
+    connection.close()
+"@
+  $script | python - $repoRootPath $dbPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to initialize futures read fixture DB"
   }
 }
 
@@ -149,10 +177,12 @@ $frontend = $null
 $startedAt = Get-Date
 $testsPassed = $false
 Initialize-SpotReadFixtureDb $repoRoot $spotReadFixtureDb
+Initialize-FuturesReadFixtureDb $repoRoot $futuresReadFixtureDb
 $env:BOTIK_ARTIFACTS_DIR = $artifactsRoot
 $env:BOTIK_RUNTIME_STATUS_FIXTURE_PATH = $runtimeStatusFixture
 $env:BOTIK_RUNTIME_CONTROL_MODE = "fixture"
 $env:BOTIK_SPOT_READ_FIXTURE_DB_PATH = $spotReadFixtureDb
+$env:BOTIK_FUTURES_READ_FIXTURE_DB_PATH = $futuresReadFixtureDb
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -248,6 +278,9 @@ finally {
   if ($testsPassed -and (Test-Path $spotReadFixtureDb)) {
     Remove-Item -LiteralPath $spotReadFixtureDb -Force -ErrorAction SilentlyContinue
   }
+  if ($testsPassed -and (Test-Path $futuresReadFixtureDb)) {
+    Remove-Item -LiteralPath $futuresReadFixtureDb -Force -ErrorAction SilentlyContinue
+  }
   if ($testsPassed -and (Test-Path $runtimeControlStateDir)) {
     Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
   }
@@ -270,6 +303,10 @@ finally {
     spotReadFixtureDb = @{
       path = $spotReadFixtureDb
       existsAfterCleanup = Test-Path $spotReadFixtureDb
+    }
+    futuresReadFixtureDb = @{
+      path = $futuresReadFixtureDb
+      existsAfterCleanup = Test-Path $futuresReadFixtureDb
     }
     dataBackfillDb = @{
       path = $dataBackfillDb

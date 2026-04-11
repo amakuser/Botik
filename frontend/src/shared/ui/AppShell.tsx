@@ -23,6 +23,9 @@ export function AppShell({ children }: PropsWithChildren) {
           <NavLink to="/spot" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
             Spot Read
           </NavLink>
+          <NavLink to="/futures" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
+            Futures Read
+          </NavLink>
         </nav>
       </header>
       <main className="app-shell__content">{children}</main>
