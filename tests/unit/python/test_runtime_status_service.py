@@ -1,5 +1,6 @@
 import json
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -152,6 +153,7 @@ def test_runtime_status_service_overlays_observations_over_fixture_snapshot():
         encoding="utf-8",
     )
     try:
+        recent_heartbeat = datetime.now(UTC) - timedelta(seconds=1)
         service = RuntimeStatusService(
             repo_root=REPO_ROOT,
             heartbeat_stale_seconds=120.0,
@@ -162,7 +164,7 @@ def test_runtime_status_service_overlays_observations_over_fixture_snapshot():
                         runtime_id="spot",
                         label="Spot Runtime",
                         pids=[9999],
-                        activity=RuntimeActivity(last_heartbeat_at=service_time("2026-04-11T09:59:59Z")),
+                        activity=RuntimeActivity(last_heartbeat_at=recent_heartbeat),
                     )
                 }
             ),

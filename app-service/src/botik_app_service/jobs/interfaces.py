@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from botik_app_service.contracts.jobs import JobDetails, StartJobRequest, StopJobRequest
@@ -9,6 +10,7 @@ class JobLaunchSpec:
     command: list[str]
     cwd: str | None = None
     env: dict[str, str] | None = None
+    control_file: Path | None = None
 
 
 @dataclass(slots=True)

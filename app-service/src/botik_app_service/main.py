@@ -32,6 +32,7 @@ from botik_app_service.jobs.registry import JobRegistry
 from botik_app_service.jobs.sample_data_job import create_sample_data_job_definition
 from botik_app_service.jobs.store import JobStore
 from botik_app_service.jobs.supervisor import JobSupervisor
+from botik_app_service.jobs.training_control_job import create_training_control_job_definition
 from botik_app_service.logs.manager import LogsManager
 from botik_app_service.models_read.service import ModelsReadService
 from botik_app_service.runtime_control.service import RuntimeControlService
@@ -73,6 +74,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         registry.register(create_sample_data_job_definition())
         registry.register(create_data_backfill_job_definition())
         registry.register(create_data_integrity_job_definition())
+        registry.register(
+            create_training_control_job_definition(
+                fixture_db_path=resolved_settings.models_read_fixture_db_path,
+                manifest_path=resolved_settings.models_read_manifest_path,
+            )
+        )
         runtime_status_service = RuntimeStatusService(
             repo_root=Path(__file__).resolve().parents[3],
             heartbeat_stale_seconds=resolved_settings.runtime_status_heartbeat_stale_seconds,

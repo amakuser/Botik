@@ -1,17 +1,68 @@
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "../../shared/ui/AppShell";
+import { listJobs, startJob, stopJob } from "../../shared/api/client";
+import { JobState, JobSummary } from "../../shared/contracts";
 import { ModelScopeStatusCard } from "./components/ModelScopeStatusCard";
 import { ModelsRegistryTable } from "./components/ModelsRegistryTable";
 import { ModelsSummaryCard } from "./components/ModelsSummaryCard";
+import { TrainingControlCard } from "./components/TrainingControlCard";
 import { TrainingRunsTable } from "./components/TrainingRunsTable";
 import { useModelsReadModel } from "./hooks/useModelsReadModel";
+
+const ACTIVE_STATES: JobState[] = ["queued", "starting", "running", "stopping"];
 
 function truncatedLabel(value: boolean) {
   return value ? "Showing bounded recent rows." : "Showing all rows in the current bounded snapshot.";
 }
 
 export function ModelsPage() {
+  const queryClient = useQueryClient();
   const modelsQuery = useModelsReadModel();
   const snapshot = modelsQuery.data;
+  const [actionError, setActionError] = useState<string | null>(null);
+  const jobsQuery = useQuery({
+    queryKey: ["jobs"],
+    queryFn: listJobs,
+    refetchInterval: 2_000,
+  });
+  const jobs = jobsQuery.data ?? [];
+  const activeJob = jobs.find((job) => ACTIVE_STATES.includes(job.state));
+  const activeTrainingJob = jobs.find(
+    (job) => job.job_type === "training_control" && ACTIVE_STATES.includes(job.state),
+  );
+  const latestTrainingJob = jobs.find((job) => job.job_type === "training_control") ?? null;
+
+  async function handleStartTraining() {
+    setActionError(null);
+    try {
+      await startJob({
+        job_type: "training_control",
+        payload: {
+          scope: "futures",
+          interval: "1m",
+        },
+      });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["models-read-model"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to start futures training.");
+    }
+  }
+
+  async function handleStopTraining() {
+    if (!activeTrainingJob) {
+      return;
+    }
+    setActionError(null);
+    try {
+      await stopJob(activeTrainingJob.job_id, { reason: "models-training-stop" });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["models-read-model"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to stop futures training.");
+    }
+  }
 
   return (
     <AppShell>
@@ -32,6 +83,15 @@ export function ModelsPage() {
             <h2>Models Read Error</h2>
             <p className="inline-error" data-testid="models.error">
               Failed to load the models read model.
+            </p>
+          </section>
+        ) : null}
+
+        {actionError ? (
+          <section className="panel">
+            <h2>Training Control Error</h2>
+            <p className="inline-error" data-testid="models.training-control.error">
+              {actionError}
             </p>
           </section>
         ) : null}
@@ -62,6 +122,14 @@ export function ModelsPage() {
             testId="models.summary.recent-runs"
           />
         </section>
+
+        <TrainingControlCard
+          job={(activeTrainingJob ?? latestTrainingJob) as JobSummary | null}
+          startDisabled={Boolean(activeJob)}
+          stopDisabled={!activeTrainingJob}
+          onStart={() => void handleStartTraining()}
+          onStop={() => void handleStopTraining()}
+        />
 
         <section className="models-scope-grid">
           {(snapshot?.scopes ?? []).map((scopeStatus) => (

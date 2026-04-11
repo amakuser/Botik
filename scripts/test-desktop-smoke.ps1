@@ -12,6 +12,7 @@ $modelsReadFixtureDb = Join-Path $stateDir "models_read.fixture.sqlite3"
 $modelsReadManifest = Join-Path $stateDir "active_models.fixture.yaml"
 $telegramOpsFixture = Join-Path $structuredDir "telegram-ops.fixture.json"
 $runtimeControlStateDir = Join-Path $stateDir "runtime-control"
+$trainingControlStateDir = Join-Path $stateDir "training-control"
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
 
 $frontendOut = Join-Path $logsDir "frontend.stdout.log"
@@ -23,6 +24,7 @@ $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
 Remove-Item $frontendOut, $frontendErr, $desktopOut, $desktopErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $analyticsReadFixtureDb, $modelsReadFixtureDb, $modelsReadManifest, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $trainingControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
 $runtimeStatusPayload = [pscustomobject]@{
   generated_at = "2026-04-11T10:00:00Z"
@@ -282,7 +284,7 @@ try:
     connection.executemany(
         "INSERT INTO ml_training_runs (run_id, model_scope, model_version, mode, status, is_trained, started_at_utc, finished_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            ("run-futures-1", "futures", "futures-paper-v2", "online", "running", 0, "2026-04-11T09:30:00Z", ""),
+            ("run-futures-1", "futures", "futures-paper-v2", "offline", "completed", 1, "2026-04-11T09:30:00Z", "2026-04-11T09:45:00Z"),
             ("run-spot-1", "spot", "spot-champion-v3", "offline", "completed", 1, "2026-04-10T08:00:00Z", "2026-04-10T08:20:00Z"),
         ],
     )
@@ -409,6 +411,7 @@ $env:BOTIK_TELEGRAM_OPS_FIXTURE_PATH = $telegramOpsFixture
 $env:BOTIK_ANALYTICS_READ_FIXTURE_DB_PATH = $analyticsReadFixtureDb
 $env:BOTIK_MODELS_READ_FIXTURE_DB_PATH = $modelsReadFixtureDb
 $env:BOTIK_MODELS_READ_MANIFEST_PATH = $modelsReadManifest
+$env:BOTIK_TRAINING_CONTROL_MODE = "fixture"
 
 try {
   Add-JsonLine $lifecycleLog @{

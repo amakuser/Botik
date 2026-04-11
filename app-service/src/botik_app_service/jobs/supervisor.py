@@ -3,6 +3,7 @@ import contextlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, TextIO
 
 from botik_app_service.contracts.events import JobEvent, LogEvent
@@ -18,6 +19,7 @@ class ManagedRun:
     job_id: str
     job_type: str
     process: Any
+    control_file: Path | None = None
     stdout_task: asyncio.Task[None] | None = None
     stderr_task: asyncio.Task[None] | None = None
     wait_task: asyncio.Task[None] | None = None
@@ -85,7 +87,12 @@ class JobSupervisor:
             )
             return failed
 
-        run = ManagedRun(job_id=details.job_id, job_type=details.job_type, process=process)
+        run = ManagedRun(
+            job_id=details.job_id,
+            job_type=details.job_type,
+            process=process,
+            control_file=launch_spec.control_file,
+        )
         self._runs[details.job_id] = run
         run.stdout_task = asyncio.create_task(self._consume_stream(run, process.stdout, level="INFO"))
         run.stderr_task = asyncio.create_task(self._consume_stream(run, process.stderr, level="ERROR"))
@@ -138,6 +145,16 @@ class JobSupervisor:
                 message=f"Stop requested for {stopping.job_type}: {run.termination_reason or 'user-request'}",
             )
         )
+
+        if run.control_file is not None:
+            run.control_file.parent.mkdir(parents=True, exist_ok=True)
+            run.control_file.write_text(run.termination_reason or "stop", encoding="utf-8")
+            if run.wait_task is not None:
+                try:
+                    await asyncio.wait_for(run.wait_task, timeout=self._stop_timeout_seconds)
+                    return self._store.get(details.job_id) or stopping
+                except asyncio.TimeoutError:
+                    pass
 
         self._process_adapter.stop(run.process)
         if run.wait_task is not None:
@@ -293,4 +310,7 @@ class JobSupervisor:
                 LogEvent(job_id=updated.job_id, level="ERROR", message=updated.last_error or "Unknown job failure.")
             )
         finally:
+            if run.control_file is not None:
+                with contextlib.suppress(FileNotFoundError):
+                    run.control_file.unlink()
             self._runs.pop(run.job_id, None)
