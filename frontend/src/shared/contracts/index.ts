@@ -27,6 +27,12 @@ export type FuturesOpenOrder = components["schemas"]["FuturesOpenOrder"];
 export type FuturesFill = components["schemas"]["FuturesFill"];
 export type FuturesReadSummary = components["schemas"]["FuturesReadSummary"];
 export type FuturesReadSnapshot = components["schemas"]["FuturesReadSnapshot"];
+export type TelegramCommandEntry = components["schemas"]["TelegramCommandEntry"];
+export type TelegramAlertEntry = components["schemas"]["TelegramAlertEntry"];
+export type TelegramErrorEntry = components["schemas"]["TelegramErrorEntry"];
+export type TelegramOpsSummary = components["schemas"]["TelegramOpsSummary"];
+export type TelegramOpsSnapshot = components["schemas"]["TelegramOpsSnapshot"];
+export type TelegramConnectivityCheckResult = components["schemas"]["TelegramConnectivityCheckResult"];
 export type SpotBalance = components["schemas"]["SpotBalance"];
 export type SpotHolding = components["schemas"]["SpotHolding"];
 export type SpotOrder = components["schemas"]["SpotOrder"];
@@ -61,6 +67,12 @@ export const contractSchemaNames = [
   "FuturesFill",
   "FuturesReadSummary",
   "FuturesReadSnapshot",
+  "TelegramCommandEntry",
+  "TelegramAlertEntry",
+  "TelegramErrorEntry",
+  "TelegramOpsSummary",
+  "TelegramOpsSnapshot",
+  "TelegramConnectivityCheckResult",
   "SpotBalance",
   "SpotHolding",
   "SpotOrder",

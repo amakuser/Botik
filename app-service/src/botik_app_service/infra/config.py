@@ -36,6 +36,7 @@ class Settings(BaseModel):
     spot_read_account_type: str = "UNIFIED"
     futures_read_fixture_db_path: Path | None = None
     futures_read_account_type: str = "UNIFIED"
+    telegram_ops_fixture_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -73,4 +74,7 @@ class Settings(BaseModel):
             if os.getenv("BOTIK_FUTURES_READ_FIXTURE_DB_PATH")
             else None,
             futures_read_account_type=os.getenv("BOTIK_FUTURES_READ_ACCOUNT_TYPE", "UNIFIED"),
+            telegram_ops_fixture_path=Path(os.getenv("BOTIK_TELEGRAM_OPS_FIXTURE_PATH"))
+            if os.getenv("BOTIK_TELEGRAM_OPS_FIXTURE_PATH")
+            else None,
         )

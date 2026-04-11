@@ -12,6 +12,7 @@ from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
 from botik_app_service.contracts.runtime_status import RuntimeStatusSnapshot
 from botik_app_service.contracts.futures import FuturesReadSnapshot
 from botik_app_service.contracts.spot import SpotReadSnapshot
+from botik_app_service.contracts.telegram import TelegramConnectivityCheckResult, TelegramOpsSnapshot
 
 
 def test_contract_models_roundtrip():
@@ -33,9 +34,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures"],
+                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram"],
             },
-            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures"],
+            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -264,3 +265,72 @@ def test_contract_models_roundtrip():
         }
     )
     assert spot_snapshot.summary.holdings_count == 1
+
+    telegram_snapshot = TelegramOpsSnapshot.model_validate(
+        {
+            "source_mode": "fixture",
+            "summary": {
+                "bot_profile": "ops",
+                "token_profile_name": "TELEGRAM_BOT_TOKEN",
+                "token_configured": True,
+                "internal_bot_disabled": False,
+                "connectivity_state": "unknown",
+                "connectivity_detail": "Use connectivity check to verify Telegram Bot API reachability.",
+                "allowed_chat_count": 2,
+                "allowed_chats_masked": ["12***34", "56***78"],
+                "commands_count": 2,
+                "alerts_count": 1,
+                "errors_count": 1,
+                "last_successful_send": "fixture alert delivered",
+                "last_error": "fixture warning observed",
+                "startup_status": "configured",
+            },
+            "recent_commands": [
+                {
+                    "ts": "2026-04-11T11:58:00Z",
+                    "command": "/status",
+                    "source": "telegram_bot",
+                    "status": "ok",
+                    "chat_id_masked": "12***34",
+                    "username": "fixture_user",
+                    "args": "",
+                }
+            ],
+            "recent_alerts": [
+                {
+                    "ts": "2026-04-11T11:59:00Z",
+                    "alert_type": "delivery",
+                    "message": "fixture alert delivered",
+                    "delivered": True,
+                    "source": "telegram",
+                    "status": "ok",
+                }
+            ],
+            "recent_errors": [
+                {
+                    "ts": "2026-04-11T11:57:00Z",
+                    "error": "fixture warning observed",
+                    "source": "telegram",
+                    "status": "warning",
+                }
+            ],
+            "truncated": {
+                "recent_commands": False,
+                "recent_alerts": False,
+                "recent_errors": False,
+            },
+        }
+    )
+    assert telegram_snapshot.summary.allowed_chat_count == 2
+
+    telegram_check = TelegramConnectivityCheckResult.model_validate(
+        {
+            "source_mode": "fixture",
+            "state": "healthy",
+            "detail": "fixture connectivity check passed",
+            "bot_username": "botik_fixture_bot",
+            "latency_ms": 42.0,
+            "error": None,
+        }
+    )
+    assert telegram_check.state == "healthy"

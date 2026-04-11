@@ -13,6 +13,7 @@ from botik_app_service.api.routes_health import router as health_router
 from botik_app_service.api.routes_jobs import router as jobs_router
 from botik_app_service.api.routes_logs import router as logs_router
 from botik_app_service.api.routes_spot import router as spot_router
+from botik_app_service.api.routes_telegram import router as telegram_router
 from botik_app_service.api.routes_runtime_control import router as runtime_control_router
 from botik_app_service.api.routes_runtime_status import router as runtime_status_router
 from botik_app_service.futures_read.service import FuturesReadService
@@ -32,6 +33,7 @@ from botik_app_service.logs.manager import LogsManager
 from botik_app_service.runtime_control.service import RuntimeControlService
 from botik_app_service.runtime_status.service import RuntimeStatusService
 from botik_app_service.spot_read.service import SpotReadService
+from botik_app_service.telegram_ops.service import TelegramOpsService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -83,6 +85,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             account_type=resolved_settings.futures_read_account_type,
             fixture_db_path=resolved_settings.futures_read_fixture_db_path,
         )
+        telegram_ops_service = TelegramOpsService(
+            repo_root=Path(__file__).resolve().parents[3],
+            fixture_path=resolved_settings.telegram_ops_fixture_path,
+        )
         await logs_manager.start(publisher)
 
         app.state.settings = resolved_settings
@@ -93,6 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.runtime_control_service = runtime_control_service
         app.state.spot_read_service = spot_read_service
         app.state.futures_read_service = futures_read_service
+        app.state.telegram_ops_service = telegram_ops_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -140,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(runtime_control_router)
     app.include_router(spot_router)
     app.include_router(futures_router)
+    app.include_router(telegram_router)
     app.include_router(admin_router)
     return app
 

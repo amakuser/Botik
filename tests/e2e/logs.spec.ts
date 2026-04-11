@@ -7,7 +7,7 @@ test("unified logs shows approved channels and streams job log entries", async (
   await expect(page.getByTestId("logs.channel.app")).toBeVisible();
   await expect(page.getByTestId("logs.channel.jobs")).toBeVisible();
   await expect(page.getByTestId("logs.channel.desktop")).toBeVisible();
-  await expect(page.getByText("Telegram")).toHaveCount(0);
+  await expect(page.getByTestId("logs.channel.telegram")).toHaveCount(0);
 
   await page.getByTestId("logs.channel.jobs").click();
 

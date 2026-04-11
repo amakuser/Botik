@@ -7,6 +7,7 @@ $stateDir = Join-Path $artifactsRoot "state"
 $dataBackfillDb = Join-Path $stateDir "data_backfill.sqlite3"
 $spotReadFixtureDb = Join-Path $stateDir "spot_read.fixture.sqlite3"
 $futuresReadFixtureDb = Join-Path $stateDir "futures_read.fixture.sqlite3"
+$telegramOpsFixture = Join-Path $structuredDir "telegram-ops.fixture.json"
 $runtimeControlStateDir = Join-Path $stateDir "runtime-control"
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
 
@@ -17,7 +18,7 @@ $frontendErr = Join-Path $logsDir "frontend.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
-Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $runtimeStatusFixture -ErrorAction SilentlyContinue
+Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
 $runtimeStatusPayload = [pscustomobject]@{
@@ -52,6 +53,73 @@ $runtimeStatusPayload = [pscustomobject]@{
   )
 }
 $runtimeStatusPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeStatusFixture -Encoding UTF8
+
+$telegramOpsPayload = [pscustomobject]@{
+  snapshot = [pscustomobject]@{
+    generated_at = "2026-04-11T12:00:00Z"
+    source_mode = "fixture"
+    summary = [pscustomobject]@{
+      bot_profile = "ops"
+      token_profile_name = "TELEGRAM_BOT_TOKEN"
+      token_configured = $true
+      internal_bot_disabled = $false
+      connectivity_state = "unknown"
+      connectivity_detail = "Use connectivity check to verify Telegram Bot API reachability."
+      allowed_chat_count = 2
+      allowed_chats_masked = @("12***34", "56***78")
+      commands_count = 2
+      alerts_count = 1
+      errors_count = 1
+      last_successful_send = "fixture alert delivered"
+      last_error = "fixture warning observed"
+      startup_status = "configured"
+    }
+    recent_commands = @(
+      [pscustomobject]@{
+        ts = "2026-04-11T11:58:00Z"
+        command = "/status"
+        source = "telegram_bot"
+        status = "ok"
+        chat_id_masked = "12***34"
+        username = "fixture_user"
+        args = ""
+      }
+    )
+    recent_alerts = @(
+      [pscustomobject]@{
+        ts = "2026-04-11T11:59:00Z"
+        alert_type = "delivery"
+        message = "fixture alert delivered"
+        delivered = $true
+        source = "telegram"
+        status = "ok"
+      }
+    )
+    recent_errors = @(
+      [pscustomobject]@{
+        ts = "2026-04-11T11:57:00Z"
+        error = "fixture warning observed"
+        source = "telegram"
+        status = "warning"
+      }
+    )
+    truncated = [pscustomobject]@{
+      recent_commands = $false
+      recent_alerts = $false
+      recent_errors = $false
+    }
+  }
+  connectivity_check_result = [pscustomobject]@{
+    checked_at = "2026-04-11T12:00:10Z"
+    source_mode = "fixture"
+    state = "healthy"
+    detail = "fixture connectivity check passed"
+    bot_username = "botik_fixture_bot"
+    latency_ms = 42.0
+    error = $null
+  }
+}
+$telegramOpsPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $telegramOpsFixture -Encoding UTF8
 
 function Initialize-SpotReadFixtureDb([string]$repoRootPath, [string]$dbPath) {
   $script = @"
@@ -183,6 +251,7 @@ $env:BOTIK_RUNTIME_STATUS_FIXTURE_PATH = $runtimeStatusFixture
 $env:BOTIK_RUNTIME_CONTROL_MODE = "fixture"
 $env:BOTIK_SPOT_READ_FIXTURE_DB_PATH = $spotReadFixtureDb
 $env:BOTIK_FUTURES_READ_FIXTURE_DB_PATH = $futuresReadFixtureDb
+$env:BOTIK_TELEGRAM_OPS_FIXTURE_PATH = $telegramOpsFixture
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -300,6 +369,7 @@ finally {
     }
     lifecycleLog = $lifecycleLog
     runtimeStatusFixture = $runtimeStatusFixture
+    telegramOpsFixture = $telegramOpsFixture
     spotReadFixtureDb = @{
       path = $spotReadFixtureDb
       existsAfterCleanup = Test-Path $spotReadFixtureDb

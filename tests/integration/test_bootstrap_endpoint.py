@@ -27,3 +27,4 @@ def test_bootstrap_returns_loopback_session_info():
         assert "/runtime" in payload["routes"]
         assert "/spot" in payload["routes"]
         assert "/futures" in payload["routes"]
+        assert "/telegram" in payload["routes"]

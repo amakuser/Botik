@@ -11,6 +11,8 @@ import {
   RuntimeId,
   JobSummary,
   FuturesReadSnapshot,
+  TelegramConnectivityCheckResult,
+  TelegramOpsSnapshot,
   SpotReadSnapshot,
   StartJobRequest,
   StopJobRequest,
@@ -132,6 +134,18 @@ export async function getSpotReadModel(): Promise<SpotReadSnapshot> {
 export async function getFuturesReadModel(): Promise<FuturesReadSnapshot> {
   const response = await authenticatedFetch("/futures");
   return parseJsonOrThrow<FuturesReadSnapshot>(response);
+}
+
+export async function getTelegramOpsModel(): Promise<TelegramOpsSnapshot> {
+  const response = await authenticatedFetch("/telegram");
+  return parseJsonOrThrow<TelegramOpsSnapshot>(response);
+}
+
+export async function runTelegramConnectivityCheck(): Promise<TelegramConnectivityCheckResult> {
+  const response = await authenticatedFetch("/telegram/connectivity-check", {
+    method: "POST",
+  });
+  return parseJsonOrThrow<TelegramConnectivityCheckResult>(response);
 }
 
 export interface EventPayloadMap {

@@ -5,6 +5,7 @@ import { JobsRoute } from "./routes/jobs-route";
 import { LogsRoute } from "./routes/logs-route";
 import { RuntimeRoute } from "./routes/runtime-route";
 import { SpotRoute } from "./routes/spot-route";
+import { TelegramRoute } from "./routes/telegram-route";
 
 export const router = createBrowserRouter([
   {
@@ -30,5 +31,9 @@ export const router = createBrowserRouter([
   {
     path: "/futures",
     element: <FuturesRoute />,
+  },
+  {
+    path: "/telegram",
+    element: <TelegramRoute />,
   },
 ]);

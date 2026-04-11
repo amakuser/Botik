@@ -243,6 +243,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Telegram Snapshot */
+        get: operations["get_telegram_snapshot_telegram_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/telegram/connectivity-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Telegram Connectivity Check */
+        post: operations["run_telegram_connectivity_check_telegram_connectivity_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -939,6 +973,191 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** TelegramAlertEntry */
+        TelegramAlertEntry: {
+            /** Ts */
+            ts?: string | null;
+            /** Alert Type */
+            alert_type: string;
+            /** Message */
+            message: string;
+            /**
+             * Delivered
+             * @default true
+             */
+            delivered: boolean;
+            /**
+             * Source
+             * @default telegram
+             */
+            source: string;
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+        };
+        /** TelegramCommandEntry */
+        TelegramCommandEntry: {
+            /** Ts */
+            ts?: string | null;
+            /** Command */
+            command: string;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Chat Id Masked */
+            chat_id_masked?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Args */
+            args?: string | null;
+        };
+        /** TelegramConnectivityCheckResult */
+        TelegramConnectivityCheckResult: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at?: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "fixture" | "compatibility";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "healthy" | "degraded" | "disabled" | "missing_token" | "unknown";
+            /** Detail */
+            detail?: string | null;
+            /** Bot Username */
+            bot_username?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** TelegramErrorEntry */
+        TelegramErrorEntry: {
+            /** Ts */
+            ts?: string | null;
+            /** Error */
+            error: string;
+            /**
+             * Source
+             * @default telegram
+             */
+            source: string;
+            /**
+             * Status
+             * @default error
+             */
+            status: string;
+        };
+        /** TelegramOpsSnapshot */
+        TelegramOpsSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "fixture" | "compatibility";
+            summary: components["schemas"]["TelegramOpsSummary"];
+            /** Recent Commands */
+            recent_commands?: components["schemas"]["TelegramCommandEntry"][];
+            /** Recent Alerts */
+            recent_alerts?: components["schemas"]["TelegramAlertEntry"][];
+            /** Recent Errors */
+            recent_errors?: components["schemas"]["TelegramErrorEntry"][];
+            truncated?: components["schemas"]["TelegramOpsTruncation"];
+        };
+        /** TelegramOpsSummary */
+        TelegramOpsSummary: {
+            /**
+             * Bot Profile
+             * @default default
+             */
+            bot_profile: string;
+            /**
+             * Token Profile Name
+             * @default TELEGRAM_BOT_TOKEN
+             */
+            token_profile_name: string;
+            /**
+             * Token Configured
+             * @default false
+             */
+            token_configured: boolean;
+            /**
+             * Internal Bot Disabled
+             * @default false
+             */
+            internal_bot_disabled: boolean;
+            /**
+             * Connectivity State
+             * @default unknown
+             * @enum {string}
+             */
+            connectivity_state: "healthy" | "degraded" | "disabled" | "missing_token" | "unknown";
+            /** Connectivity Detail */
+            connectivity_detail?: string | null;
+            /**
+             * Allowed Chat Count
+             * @default 0
+             */
+            allowed_chat_count: number;
+            /** Allowed Chats Masked */
+            allowed_chats_masked?: string[];
+            /**
+             * Commands Count
+             * @default 0
+             */
+            commands_count: number;
+            /**
+             * Alerts Count
+             * @default 0
+             */
+            alerts_count: number;
+            /**
+             * Errors Count
+             * @default 0
+             */
+            errors_count: number;
+            /** Last Successful Send */
+            last_successful_send?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Startup Status
+             * @default unknown
+             */
+            startup_status: string;
+        };
+        /** TelegramOpsTruncation */
+        TelegramOpsTruncation: {
+            /**
+             * Recent Commands
+             * @default false
+             */
+            recent_commands: boolean;
+            /**
+             * Recent Alerts
+             * @default false
+             */
+            recent_alerts: boolean;
+            /**
+             * Recent Errors
+             * @default false
+             */
+            recent_errors: boolean;
+        };
         /** UiCapabilities */
         UiCapabilities: {
             /** Desktop */
@@ -1349,6 +1568,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FuturesReadSnapshot"];
+                };
+            };
+        };
+    };
+    get_telegram_snapshot_telegram_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramOpsSnapshot"];
+                };
+            };
+        };
+    };
+    run_telegram_connectivity_check_telegram_connectivity_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectivityCheckResult"];
                 };
             };
         };

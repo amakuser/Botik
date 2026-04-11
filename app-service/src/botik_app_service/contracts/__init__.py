@@ -14,6 +14,15 @@ from .jobs import JobDetails, JobState, JobSummary, StartJobRequest, StopJobRequ
 from .logs import LogChannel, LogChannelSnapshot, LogEntry, LogStreamEvent
 from .runtime_status import RuntimeStatus, RuntimeStatusSnapshot
 from .spot import SpotBalance, SpotFill, SpotHolding, SpotOrder, SpotReadSnapshot, SpotReadSummary, SpotReadTruncation
+from .telegram import (
+    TelegramAlertEntry,
+    TelegramCommandEntry,
+    TelegramConnectivityCheckResult,
+    TelegramErrorEntry,
+    TelegramOpsSnapshot,
+    TelegramOpsSummary,
+    TelegramOpsTruncation,
+)
 
 __all__ = [
     "AppSessionInfo",
@@ -47,5 +56,12 @@ __all__ = [
     "StartJobRequest",
     "StopJobRequest",
     "SystemEvent",
+    "TelegramAlertEntry",
+    "TelegramCommandEntry",
+    "TelegramConnectivityCheckResult",
+    "TelegramErrorEntry",
+    "TelegramOpsSnapshot",
+    "TelegramOpsSummary",
+    "TelegramOpsTruncation",
     "UiCapabilities",
 ]

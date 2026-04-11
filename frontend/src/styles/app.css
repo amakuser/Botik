@@ -101,6 +101,11 @@ body {
   gap: 16px;
 }
 
+.telegram-layout {
+  display: grid;
+  gap: 16px;
+}
+
 .jobs-sidebar,
 .jobs-main,
 .logs-main {
@@ -121,6 +126,12 @@ body {
 }
 
 .futures-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.telegram-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
@@ -375,6 +386,11 @@ body {
 
 .surface-table-wrap {
   overflow-x: auto;
+}
+
+.telegram-check-result {
+  display: grid;
+  gap: 8px;
 }
 
 .surface-table {
