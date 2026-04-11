@@ -5,6 +5,7 @@ $logsDir = Join-Path $artifactsRoot "logs"
 $structuredDir = Join-Path $artifactsRoot "structured"
 $stateDir = Join-Path $artifactsRoot "state"
 $dataBackfillDb = Join-Path $stateDir "data_backfill.sqlite3"
+$spotReadFixtureDb = Join-Path $stateDir "spot_read.fixture.sqlite3"
 $runtimeControlStateDir = Join-Path $stateDir "runtime-control"
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
 
@@ -15,7 +16,7 @@ $frontendErr = Join-Path $logsDir "frontend.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
-Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $runtimeStatusFixture -ErrorAction SilentlyContinue
+Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $runtimeStatusFixture -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
 $runtimeStatusPayload = [pscustomobject]@{
@@ -50,6 +51,36 @@ $runtimeStatusPayload = [pscustomobject]@{
   )
 }
 $runtimeStatusPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeStatusFixture -Encoding UTF8
+
+function Initialize-SpotReadFixtureDb([string]$repoRootPath, [string]$dbPath) {
+  $script = @"
+import sqlite3
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+db_path = Path(sys.argv[2])
+sys.path.insert(0, str(repo_root))
+from src.botik.storage.spot_store import ensure_spot_schema, insert_spot_fill, insert_spot_position_intent, upsert_spot_balance, upsert_spot_holding, upsert_spot_order
+
+connection = sqlite3.connect(db_path)
+try:
+    ensure_spot_schema(connection)
+    upsert_spot_balance(connection, account_type='UNIFIED', asset='USDT', free_qty=1200.0, locked_qty=100.0, source_of_truth='fixture', updated_at_utc='2026-04-11T12:00:00Z')
+    upsert_spot_balance(connection, account_type='UNIFIED', asset='BTC', free_qty=0.01, locked_qty=0.0, source_of_truth='fixture', updated_at_utc='2026-04-11T12:00:00Z')
+    upsert_spot_holding(connection, account_type='UNIFIED', symbol='BTCUSDT', base_asset='BTC', free_qty=0.01, locked_qty=0.0, avg_entry_price=60000.0, hold_reason='strategy_entry', source_of_truth='fixture', recovered_from_exchange=False, strategy_owner='spot_spread', updated_at_utc='2026-04-11T12:00:00Z')
+    upsert_spot_holding(connection, account_type='UNIFIED', symbol='ETHUSDT', base_asset='ETH', free_qty=0.2, locked_qty=0.0, avg_entry_price=3000.0, hold_reason='unknown_recovered_from_exchange', source_of_truth='fixture', recovered_from_exchange=True, strategy_owner=None, updated_at_utc='2026-04-11T11:55:00Z')
+    upsert_spot_order(connection, account_type='UNIFIED', symbol='BTCUSDT', side='Buy', status='New', price=60000.0, qty=0.01, order_id='order-1', order_link_id='link-1', order_type='Limit', time_in_force='PostOnly', strategy_owner='spot_spread', updated_at_utc='2026-04-11T12:00:00Z')
+    insert_spot_fill(connection, account_type='UNIFIED', symbol='BTCUSDT', side='Buy', exec_id='exec-1', order_id='order-1', order_link_id='link-1', price=60000.0, qty=0.01, fee=0.02, fee_currency='USDT', is_maker=True, exec_time_ms=1700000000123, created_at_utc='2026-04-11T12:00:00Z')
+    insert_spot_position_intent(connection, account_type='UNIFIED', symbol='BTCUSDT', side='Buy', intended_qty=0.01, intended_price=60000.0, strategy_owner='spot_spread', created_at_utc='2026-04-11T12:00:00Z')
+finally:
+    connection.close()
+"@
+  $script | python - $repoRootPath $dbPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to initialize spot read fixture DB"
+  }
+}
 
 function Add-JsonLine([string]$path, [object]$payload) {
   ($payload | ConvertTo-Json -Compress -Depth 8) | Add-Content -LiteralPath $path -Encoding UTF8
@@ -117,9 +148,11 @@ $appService = $null
 $frontend = $null
 $startedAt = Get-Date
 $testsPassed = $false
+Initialize-SpotReadFixtureDb $repoRoot $spotReadFixtureDb
 $env:BOTIK_ARTIFACTS_DIR = $artifactsRoot
 $env:BOTIK_RUNTIME_STATUS_FIXTURE_PATH = $runtimeStatusFixture
 $env:BOTIK_RUNTIME_CONTROL_MODE = "fixture"
+$env:BOTIK_SPOT_READ_FIXTURE_DB_PATH = $spotReadFixtureDb
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -212,6 +245,9 @@ finally {
   if ($testsPassed -and (Test-Path $dataBackfillDb)) {
     Remove-Item -LiteralPath $dataBackfillDb -Force -ErrorAction SilentlyContinue
   }
+  if ($testsPassed -and (Test-Path $spotReadFixtureDb)) {
+    Remove-Item -LiteralPath $spotReadFixtureDb -Force -ErrorAction SilentlyContinue
+  }
   if ($testsPassed -and (Test-Path $runtimeControlStateDir)) {
     Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
   }
@@ -231,6 +267,10 @@ finally {
     }
     lifecycleLog = $lifecycleLog
     runtimeStatusFixture = $runtimeStatusFixture
+    spotReadFixtureDb = @{
+      path = $spotReadFixtureDb
+      existsAfterCleanup = Test-Path $spotReadFixtureDb
+    }
     dataBackfillDb = @{
       path = $dataBackfillDb
       existsAfterCleanup = Test-Path $dataBackfillDb

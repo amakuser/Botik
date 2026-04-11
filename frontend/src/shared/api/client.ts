@@ -10,6 +10,7 @@ import {
   RuntimeStatusSnapshot,
   RuntimeId,
   JobSummary,
+  SpotReadSnapshot,
   StartJobRequest,
   StopJobRequest,
 } from "../contracts";
@@ -120,6 +121,11 @@ export async function stopRuntime(runtimeId: RuntimeId): Promise<RuntimeStatus> 
     method: "POST",
   });
   return parseJsonOrThrow<RuntimeStatus>(response);
+}
+
+export async function getSpotReadModel(): Promise<SpotReadSnapshot> {
+  const response = await authenticatedFetch("/spot");
+  return parseJsonOrThrow<SpotReadSnapshot>(response);
 }
 
 export interface EventPayloadMap {

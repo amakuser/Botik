@@ -10,6 +10,7 @@ from botik_app_service.contracts.errors import ErrorEnvelope
 from botik_app_service.contracts.health import HealthResponse
 from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
 from botik_app_service.contracts.runtime_status import RuntimeStatusSnapshot
+from botik_app_service.contracts.spot import SpotReadSnapshot
 
 
 def test_contract_models_roundtrip():
@@ -31,9 +32,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs", "/logs", "/runtime"],
+                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot"],
             },
-            "routes": ["/", "/jobs", "/logs", "/runtime"],
+            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -99,3 +100,87 @@ def test_contract_models_roundtrip():
         }
     )
     assert runtime_snapshot.runtimes[0].runtime_id == "spot"
+
+    spot_snapshot = SpotReadSnapshot.model_validate(
+        {
+            "source_mode": "fixture",
+            "summary": {
+                "account_type": "UNIFIED",
+                "balance_assets_count": 1,
+                "holdings_count": 1,
+                "recovered_holdings_count": 0,
+                "strategy_owned_holdings_count": 1,
+                "open_orders_count": 1,
+                "recent_fills_count": 1,
+                "pending_intents_count": 1,
+            },
+            "balances": [
+                {
+                    "asset": "BTC",
+                    "free_qty": 0.01,
+                    "locked_qty": 0.0,
+                    "total_qty": 0.01,
+                    "source_of_truth": "fixture",
+                    "updated_at_utc": "2026-04-11T12:00:00Z",
+                }
+            ],
+            "holdings": [
+                {
+                    "account_type": "UNIFIED",
+                    "symbol": "BTCUSDT",
+                    "base_asset": "BTC",
+                    "free_qty": 0.01,
+                    "locked_qty": 0.0,
+                    "total_qty": 0.01,
+                    "avg_entry_price": 60000.0,
+                    "hold_reason": "strategy_entry",
+                    "source_of_truth": "fixture",
+                    "recovered_from_exchange": False,
+                    "strategy_owner": "spot_spread",
+                    "auto_sell_allowed": False,
+                    "updated_at_utc": "2026-04-11T12:00:00Z",
+                }
+            ],
+            "active_orders": [
+                {
+                    "account_type": "UNIFIED",
+                    "symbol": "BTCUSDT",
+                    "side": "Buy",
+                    "order_id": "order-1",
+                    "order_link_id": "link-1",
+                    "order_type": "Limit",
+                    "time_in_force": "PostOnly",
+                    "price": 60000.0,
+                    "qty": 0.01,
+                    "filled_qty": 0.0,
+                    "status": "New",
+                    "strategy_owner": "spot_spread",
+                    "updated_at_utc": "2026-04-11T12:00:00Z",
+                }
+            ],
+            "recent_fills": [
+                {
+                    "account_type": "UNIFIED",
+                    "symbol": "BTCUSDT",
+                    "side": "Buy",
+                    "exec_id": "exec-1",
+                    "order_id": "order-1",
+                    "order_link_id": "link-1",
+                    "price": 60000.0,
+                    "qty": 0.01,
+                    "fee": 0.02,
+                    "fee_currency": "USDT",
+                    "is_maker": True,
+                    "exec_time_ms": 1700000000123,
+                    "created_at_utc": "2026-04-11T12:00:00Z",
+                }
+            ],
+            "truncated": {
+                "balances": False,
+                "holdings": False,
+                "active_orders": False,
+                "recent_fills": False,
+            },
+        }
+    )
+    assert spot_snapshot.summary.holdings_count == 1

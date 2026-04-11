@@ -3,6 +3,7 @@ import { HealthRoute } from "./routes/health-route";
 import { JobsRoute } from "./routes/jobs-route";
 import { LogsRoute } from "./routes/logs-route";
 import { RuntimeRoute } from "./routes/runtime-route";
+import { SpotRoute } from "./routes/spot-route";
 
 export const router = createBrowserRouter([
   {
@@ -20,5 +21,9 @@ export const router = createBrowserRouter([
   {
     path: "/runtime",
     element: <RuntimeRoute />,
+  },
+  {
+    path: "/spot",
+    element: <SpotRoute />,
   },
 ]);

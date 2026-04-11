@@ -22,6 +22,12 @@ export type LogStreamEvent = components["schemas"]["LogStreamEvent"];
 export type RuntimeStatus = components["schemas"]["RuntimeStatus"];
 export type RuntimeStatusSnapshot = components["schemas"]["RuntimeStatusSnapshot"];
 export type RuntimeId = RuntimeStatus["runtime_id"];
+export type SpotBalance = components["schemas"]["SpotBalance"];
+export type SpotHolding = components["schemas"]["SpotHolding"];
+export type SpotOrder = components["schemas"]["SpotOrder"];
+export type SpotFill = components["schemas"]["SpotFill"];
+export type SpotReadSummary = components["schemas"]["SpotReadSummary"];
+export type SpotReadSnapshot = components["schemas"]["SpotReadSnapshot"];
 
 export const contractSchemaNames = [
   "HealthResponse",
@@ -45,4 +51,10 @@ export const contractSchemaNames = [
   "LogStreamEvent",
   "RuntimeStatus",
   "RuntimeStatusSnapshot",
+  "SpotBalance",
+  "SpotHolding",
+  "SpotOrder",
+  "SpotFill",
+  "SpotReadSummary",
+  "SpotReadSnapshot",
 ] as const;

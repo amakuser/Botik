@@ -91,6 +91,11 @@ body {
   gap: 16px;
 }
 
+.spot-layout {
+  display: grid;
+  gap: 16px;
+}
+
 .jobs-sidebar,
 .jobs-main,
 .logs-main {
@@ -101,6 +106,12 @@ body {
 .runtime-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.spot-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
 }
 
@@ -341,6 +352,54 @@ body {
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 16px;
+}
+
+.surface-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.surface-table-wrap {
+  overflow-x: auto;
+}
+
+.surface-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.surface-table th,
+.surface-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  vertical-align: top;
+}
+
+.surface-table th {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.spot-summary-card__label,
+.spot-summary-card__value {
+  margin: 0;
+}
+
+.spot-summary-card__label {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.spot-summary-card__value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 10px;
 }
 
 .runtime-state {

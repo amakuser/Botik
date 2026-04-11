@@ -209,6 +209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Spot Snapshot */
+        get: operations["get_spot_snapshot_spot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -475,6 +492,233 @@ export interface components {
              * @default 80
              */
             sleep_ms: number;
+        };
+        /** SpotBalance */
+        SpotBalance: {
+            /** Asset */
+            asset: string;
+            /**
+             * Free Qty
+             * @default 0
+             */
+            free_qty: number;
+            /**
+             * Locked Qty
+             * @default 0
+             */
+            locked_qty: number;
+            /**
+             * Total Qty
+             * @default 0
+             */
+            total_qty: number;
+            /** Source Of Truth */
+            source_of_truth?: string | null;
+            /** Updated At Utc */
+            updated_at_utc?: string | null;
+        };
+        /** SpotFill */
+        SpotFill: {
+            /** Account Type */
+            account_type: string;
+            /** Symbol */
+            symbol: string;
+            /** Side */
+            side: string;
+            /** Exec Id */
+            exec_id: string;
+            /** Order Id */
+            order_id?: string | null;
+            /** Order Link Id */
+            order_link_id?: string | null;
+            /**
+             * Price
+             * @default 0
+             */
+            price: number;
+            /**
+             * Qty
+             * @default 0
+             */
+            qty: number;
+            /** Fee */
+            fee?: number | null;
+            /** Fee Currency */
+            fee_currency?: string | null;
+            /** Is Maker */
+            is_maker?: boolean | null;
+            /** Exec Time Ms */
+            exec_time_ms?: number | null;
+            /** Created At Utc */
+            created_at_utc?: string | null;
+        };
+        /** SpotHolding */
+        SpotHolding: {
+            /** Account Type */
+            account_type: string;
+            /** Symbol */
+            symbol: string;
+            /** Base Asset */
+            base_asset: string;
+            /**
+             * Free Qty
+             * @default 0
+             */
+            free_qty: number;
+            /**
+             * Locked Qty
+             * @default 0
+             */
+            locked_qty: number;
+            /**
+             * Total Qty
+             * @default 0
+             */
+            total_qty: number;
+            /** Avg Entry Price */
+            avg_entry_price?: number | null;
+            /** Hold Reason */
+            hold_reason: string;
+            /** Source Of Truth */
+            source_of_truth: string;
+            /**
+             * Recovered From Exchange
+             * @default false
+             */
+            recovered_from_exchange: boolean;
+            /** Strategy Owner */
+            strategy_owner?: string | null;
+            /**
+             * Auto Sell Allowed
+             * @default false
+             */
+            auto_sell_allowed: boolean;
+            /** Updated At Utc */
+            updated_at_utc?: string | null;
+        };
+        /** SpotOrder */
+        SpotOrder: {
+            /** Account Type */
+            account_type: string;
+            /** Symbol */
+            symbol: string;
+            /** Side */
+            side: string;
+            /** Order Id */
+            order_id?: string | null;
+            /** Order Link Id */
+            order_link_id?: string | null;
+            /** Order Type */
+            order_type?: string | null;
+            /** Time In Force */
+            time_in_force?: string | null;
+            /**
+             * Price
+             * @default 0
+             */
+            price: number;
+            /**
+             * Qty
+             * @default 0
+             */
+            qty: number;
+            /**
+             * Filled Qty
+             * @default 0
+             */
+            filled_qty: number;
+            /** Status */
+            status: string;
+            /** Strategy Owner */
+            strategy_owner?: string | null;
+            /** Updated At Utc */
+            updated_at_utc?: string | null;
+        };
+        /** SpotReadSnapshot */
+        SpotReadSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "fixture" | "compatibility";
+            summary: components["schemas"]["SpotReadSummary"];
+            /** Balances */
+            balances?: components["schemas"]["SpotBalance"][];
+            /** Holdings */
+            holdings?: components["schemas"]["SpotHolding"][];
+            /** Active Orders */
+            active_orders?: components["schemas"]["SpotOrder"][];
+            /** Recent Fills */
+            recent_fills?: components["schemas"]["SpotFill"][];
+            truncated?: components["schemas"]["SpotReadTruncation"];
+        };
+        /** SpotReadSummary */
+        SpotReadSummary: {
+            /** Account Type */
+            account_type: string;
+            /**
+             * Balance Assets Count
+             * @default 0
+             */
+            balance_assets_count: number;
+            /**
+             * Holdings Count
+             * @default 0
+             */
+            holdings_count: number;
+            /**
+             * Recovered Holdings Count
+             * @default 0
+             */
+            recovered_holdings_count: number;
+            /**
+             * Strategy Owned Holdings Count
+             * @default 0
+             */
+            strategy_owned_holdings_count: number;
+            /**
+             * Open Orders Count
+             * @default 0
+             */
+            open_orders_count: number;
+            /**
+             * Recent Fills Count
+             * @default 0
+             */
+            recent_fills_count: number;
+            /**
+             * Pending Intents Count
+             * @default 0
+             */
+            pending_intents_count: number;
+        };
+        /** SpotReadTruncation */
+        SpotReadTruncation: {
+            /**
+             * Balances
+             * @default false
+             */
+            balances: boolean;
+            /**
+             * Holdings
+             * @default false
+             */
+            holdings: boolean;
+            /**
+             * Active Orders
+             * @default false
+             */
+            active_orders: boolean;
+            /**
+             * Recent Fills
+             * @default false
+             */
+            recent_fills: boolean;
         };
         /** StartJobRequest */
         StartJobRequest: {
@@ -858,6 +1102,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_spot_snapshot_spot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotReadSnapshot"];
                 };
             };
         };
