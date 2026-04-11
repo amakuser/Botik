@@ -65,12 +65,15 @@ PRs for user-facing features should answer:
 
 ## Local Commands
 
-Stage 1 does not yet define final runtime commands for the new foundation, but it does require that future phases provide stable commands for:
+The migrated stack now has stable local commands:
 
-- starting the frontend;
-- starting the app-service;
-- starting the desktop shell;
-- running unit tests;
-- running integration tests;
-- running headless E2E;
-- running desktop smoke.
+- primary local desktop entry: `pwsh ./scripts/run-primary-desktop.ps1`
+- frontend only: `pwsh ./scripts/dev-frontend.ps1`
+- app-service only: `pwsh ./scripts/dev-app-service.ps1`
+- shell only: `pwsh ./scripts/dev-desktop.ps1`
+- unit: `pwsh ./scripts/test-unit.ps1`
+- integration: `pwsh ./scripts/test-integration.ps1`
+- headless E2E: `pwsh ./scripts/test-e2e.ps1`
+- desktop smoke: `pwsh ./scripts/test-desktop-smoke.ps1`
+
+During the cutover period, the legacy pywebview launcher remains available only as an explicit fallback path.

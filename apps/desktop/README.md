@@ -1,12 +1,24 @@
-# Desktop Shell Foundation Placeholder
+# Desktop Shell
 
-This directory is reserved for the future Tauri desktop shell.
+This directory contains the Tauri desktop shell that is now the primary GUI/product path for the migrated Botik stack.
 
-The shell will own:
+Current shell ownership:
 
 - window lifecycle;
-- tray and menu integration;
-- application paths and host dialogs;
-- packaging integration.
+- managed app-service startup and shutdown;
+- runtime-config injection into the frontend;
+- packaging integration for the new-stack desktop app.
 
-The shell will not own business job orchestration.
+The shell does not own:
+
+- business job orchestration;
+- runtime control policy;
+- trading or training subprocess launch logic from the UI.
+
+Useful commands:
+
+- primary local desktop entry: `pwsh ./scripts/run-primary-desktop.ps1`
+- low-level shell-only launch: `pwsh ./scripts/dev-desktop.ps1`
+- packaged shell build: `corepack pnpm --dir ./apps/desktop build`
+
+Legacy pywebview remains available only as an explicit fallback during the cutover period.

@@ -5,7 +5,7 @@
   "identifier": "com.botik.foundation",
   "build": {
     "beforeDevCommand": "",
-    "beforeBuildCommand": "",
+    "beforeBuildCommand": "corepack pnpm --dir ../../frontend build",
     "devUrl": "http://127.0.0.1:4173",
     "frontendDist": "../../frontend/dist"
   },
@@ -20,6 +20,6 @@
     ]
   },
   "bundle": {
-    "active": false
+    "active": true
   }
 }
