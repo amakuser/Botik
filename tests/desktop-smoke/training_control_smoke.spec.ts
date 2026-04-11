@@ -9,7 +9,7 @@ test("desktop-backed models training control can start and stop bounded futures 
   await expect(page.getByTestId("models.training-control.state")).toContainText(/starting|running|queued/i);
 
   await page.getByRole("link", { name: "Job Monitor" }).click();
-  await expect(page.getByText("training_control")).toBeVisible();
+  await expect(page.getByTestId("jobs.selected.job-type")).toContainText("training_control");
 
   await page.getByRole("link", { name: "Models / Status" }).click();
   await expect(page.getByRole("button", { name: "Stop Futures Training" })).toBeEnabled();
