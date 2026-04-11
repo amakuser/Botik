@@ -9,6 +9,7 @@
 - Legacy packaged fallback: `botik.exe` (entry: `src/botik/windows_entry.py`)
 
 Важно: пользовательский desktop-flow — одно главное окно GUI, без запуска множества runtime окон.
+Legacy fallback path сохранён только для rollback и fallback troubleshooting. Он не является основным операторским путем.
 
 ## 2. Подготовка сервера
 

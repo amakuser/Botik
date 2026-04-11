@@ -3,7 +3,7 @@
 ## What is built
 
 - Primary GUI/product path: Tauri desktop shell from `apps/desktop`.
-- Temporary legacy fallback path: PyInstaller-based `botik.exe` and installer flow remain available until later retirement.
+- Quarantined legacy fallback path: PyInstaller-based `botik.exe` and installer flow remain available only for rollback and fallback troubleshooting until later retirement.
 
 ## Entrypoints
 
@@ -20,6 +20,7 @@ Temporary legacy packaged launcher: `src/botik/windows_entry.py`.
 - primary GUI cutover does not remove the legacy launcher yet;
 - rollback remains possible because the legacy launcher/build path still exists;
 - `python -m src.botik.gui.app` and `botik.exe` are fallback-only during this phase.
+- legacy packaging artifacts are quarantined and are no longer part of the primary operator flow.
 
 ## Build locally
 
@@ -41,7 +42,13 @@ Legacy fallback build:
 build_windows_installer.bat
 ```
 
-Portable build without installer (run from project folder):
+This produces the quarantined fallback installer:
+
+```text
+dist\installer\BotikLegacyFallbackInstaller.exe
+```
+
+Portable build without installer (legacy fallback only, run from project folder):
 
 ```bat
 build_portable_exe.bat
@@ -49,7 +56,7 @@ run_windows_gui.bat
 ```
 
 `build_portable_exe.bat` copies `dist\botik.exe` to project root as `botik.exe`.
-`run_windows_gui.bat` в этом контексте — helper-скрипт для legacy fallback path, а не основной пользовательский запуск.
+`run_windows_gui.bat` в этом контексте — helper-скрипт для quarantined legacy fallback path, а не основной пользовательский запуск.
 
 Script logs are written to `logs\script_logs\`:
 
@@ -61,7 +68,7 @@ Script logs are written to `logs\script_logs\`:
 ## Installer behavior
 
 - Tauri shell is now the primary GUI packaging target.
-- Legacy installer behavior remains documented only as a fallback until the later retirement phase.
+- Legacy installer behavior remains documented only as a quarantined fallback until the later retirement phase.
 
 ## Runtime/logs
 
@@ -94,3 +101,4 @@ Script logs are written to `logs\script_logs\`:
 - Keep rollback possible until the later legacy retirement phase.
 - Do not delete `windows_entry.py`, `run_windows_gui.bat`, or legacy packaging assets in the cutover phase.
 - If code-signing certificate is available, sign the primary desktop artifact for the Tauri shell and any temporary legacy fallback artifact separately.
+- See [docs/migration/legacy-quarantine.md](migration/legacy-quarantine.md) for the exact fallback-only posture.

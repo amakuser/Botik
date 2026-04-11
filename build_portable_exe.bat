@@ -8,6 +8,7 @@ for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss
 if not defined TS set "TS=%RANDOM%"
 set "LOG_FILE=%LOG_DIR%\build_%TS%.log"
 echo [botik] Build log: "%LOG_FILE%"
+echo [botik] Building LEGACY FALLBACK portable EXE. Primary desktop path is pwsh ./scripts/run-primary-desktop.ps1
 (
   echo ===== build_portable_exe.bat =====
   echo Started: %DATE% %TIME%
@@ -18,7 +19,7 @@ set "PY=.venv\Scripts\python.exe"
 if not exist "%PY%" set "PY=python"
 
 :: ── [1/4] Bump version ───────────────────────────────────────────────────
-echo [1/4] Bumping version...
+echo [1/4] Bumping version for legacy fallback build...
 "%PY%" tools\bump_version.py
 if errorlevel 1 (
   echo [WARN] Could not bump version, continuing.
@@ -31,7 +32,7 @@ for /f "delims=" %%i in ('git rev-parse HEAD 2^>^&1') do set "SHA=%%i"
 if not "%SHA%"=="" (>version.txt echo %SHA% & echo [INFO] SHA: %SHA%)
 
 :: ── [3/4] Kill old process, build EXE directly into project root ─────────
-echo [3/4] Building EXE (low priority, no lag)...
+echo [3/4] Building legacy fallback EXE (low priority, no lag)...
 powershell -NoProfile -Command "Stop-Process -Name botik -Force -ErrorAction SilentlyContinue" >nul 2>&1
 start "" /low /wait "%PY%" -m PyInstaller --noconfirm --clean --distpath . botik.spec
 if not exist "botik.exe" (
@@ -43,8 +44,9 @@ if not exist "botik.exe" (
 echo.
 for /f "delims=" %%v in ('type VERSION') do set "VER=%%v"
 echo ======================================
-echo  Ready: %CD%\botik.exe
+echo  Ready legacy fallback EXE: %CD%\botik.exe
 echo  %VER%
-echo  Run: run_windows_gui.bat
+echo  Primary GUI: pwsh ./scripts/run-primary-desktop.ps1
+echo  Legacy fallback launch: run_windows_gui.bat
 echo ======================================
 echo Finished OK>>"%LOG_FILE%"

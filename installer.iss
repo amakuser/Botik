@@ -1,4 +1,5 @@
 #define MyAppName "Botik"
+#define MyAppDisplayName "Botik Legacy Fallback"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
 #endif
@@ -7,14 +8,14 @@
 
 [Setup]
 AppId={{9EC78B85-420F-4E74-8A57-3D87DE8BDE35}
-AppName={#MyAppName}
+AppName={#MyAppDisplayName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
-DefaultGroupName={#MyAppName}
+DefaultGroupName={#MyAppDisplayName}
 DisableProgramGroupPage=yes
 OutputDir=dist\installer
-OutputBaseFilename=BotikInstaller
+OutputBaseFilename=BotikLegacyFallbackInstaller
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -29,7 +30,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "autostart"; Description: "Запускать Botik при входе в Windows"; GroupDescription: "Параметры запуска:"
+Name: "autostart"; Description: "Запускать Botik Legacy Fallback при входе в Windows"; GroupDescription: "Параметры запуска:"
 
 [Dirs]
 Name: "{app}\logs"
@@ -43,9 +44,9 @@ Source: "version.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Запустить Botik (GUI)"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Запустить Botik Bot (без GUI)"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--nogui"
-Name: "{commondesktop}\Запустить Botik (GUI)"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\Запустить Botik Legacy Fallback (GUI)"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Запустить Botik Legacy Fallback (без GUI)"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--nogui"
+Name: "{commondesktop}\Запустить Botik Legacy Fallback (GUI)"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Botik"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
@@ -54,5 +55,5 @@ Root: HKCU; Subkey: "Software\Botik"; ValueType: string; ValueName: "InstallVers
 Root: HKCU; Subkey: "Software\Botik"; ValueType: string; ValueName: "VersionFile"; ValueData: "{app}\version.txt"; Flags: uninsdeletekey
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Botik"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Botik Legacy Fallback"; Flags: nowait postinstall skipifsilent
 

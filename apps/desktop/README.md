@@ -21,4 +21,5 @@ Useful commands:
 - low-level shell-only launch: `pwsh ./scripts/dev-desktop.ps1`
 - packaged shell build: `corepack pnpm --dir ./apps/desktop build`
 
-Legacy pywebview remains available only as an explicit fallback during the cutover period.
+Legacy pywebview remains available only as a quarantined fallback during the final retirement window.
+It is not the primary operator path anymore.
