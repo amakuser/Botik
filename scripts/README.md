@@ -23,4 +23,5 @@ Verification entrypoints:
 - `pwsh ./scripts/test-e2e.ps1`
 - `pwsh ./scripts/test-desktop-smoke.ps1`
 
-Legacy launcher helpers remain in the repo only as fallback until the later retirement phase.
+Legacy launcher helpers remain in the repo only as quarantined fallback until the later retirement phase.
+They are not part of the primary desktop operator flow.

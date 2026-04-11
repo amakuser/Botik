@@ -64,6 +64,18 @@ Reason:
 
 - cutover should be reversible without deleting either implementation path.
 
+### Legacy Quarantine
+
+Rollback:
+
+- keep the quarantined legacy path available exactly as fallback-only;
+- do not restore it as the documented default unless the primary path is explicitly rolled back;
+- preserve legacy packaging assets until retirement is verified.
+
+Reason:
+
+- quarantine reduces operator confusion without removing the rollback path itself.
+
 ### Legacy Removal
 
 Rollback:
