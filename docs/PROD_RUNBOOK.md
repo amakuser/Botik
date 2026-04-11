@@ -3,8 +3,10 @@
 ## 1. Режимы запуска
 
 - Linux/server (headless): `python -m src.botik.main --config config.yaml`
-- Windows desktop GUI: `python -m src.botik.gui.app`
-- Windows packaged executable: `botik.exe` (entry: `src/botik/windows_entry.py`)
+- Windows desktop GUI, primary source/dev path: `pwsh ./scripts/run-primary-desktop.ps1`
+- Windows packaged GUI, primary path: Tauri desktop shell bundle from `apps/desktop`
+- Legacy Windows GUI fallback: `python -m src.botik.gui.app`
+- Legacy packaged fallback: `botik.exe` (entry: `src/botik/windows_entry.py`)
 
 Важно: пользовательский desktop-flow — одно главное окно GUI, без запуска множества runtime окон.
 

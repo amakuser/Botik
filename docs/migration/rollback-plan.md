@@ -52,6 +52,18 @@ Reason:
 
 - migrations should be isolated and reversible by feature area.
 
+### Primary Path Cutover
+
+Rollback:
+
+- switch the documented and operator-default GUI path back to the legacy launcher;
+- keep the migrated new-stack routes and services in the repository;
+- keep the Tauri shell available for continued validation, but not as the default path.
+
+Reason:
+
+- cutover should be reversible without deleting either implementation path.
+
 ### Legacy Removal
 
 Rollback:

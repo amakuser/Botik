@@ -1,11 +1,26 @@
-# Scripts Placeholder
+# Scripts
 
-This directory is reserved for future stable developer and CI entrypoints for the new foundation.
+Stable scripts for the migrated new-stack path now live here.
 
-Expected categories:
+Primary local desktop entry:
 
-- frontend launch scripts;
-- app-service launch scripts;
-- desktop shell launch scripts;
-- test runners;
-- artifact utilities.
+- `pwsh ./scripts/run-primary-desktop.ps1`
+  Starts the frontend if needed, then launches the Tauri desktop shell.
+
+Low-level development entrypoints:
+
+- `pwsh ./scripts/dev-frontend.ps1`
+- `pwsh ./scripts/dev-app-service.ps1`
+- `pwsh ./scripts/dev-desktop.ps1`
+
+Verification entrypoints:
+
+- `pwsh ./scripts/generate-contracts.ps1`
+- `pwsh ./scripts/check-forbidden-imports.ps1`
+- `pwsh ./scripts/check-pr-template-rules.ps1`
+- `pwsh ./scripts/test-unit.ps1`
+- `pwsh ./scripts/test-integration.ps1`
+- `pwsh ./scripts/test-e2e.ps1`
+- `pwsh ./scripts/test-desktop-smoke.ps1`
+
+Legacy launcher helpers remain in the repo only as fallback until the later retirement phase.
