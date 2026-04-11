@@ -38,6 +38,8 @@ class Settings(BaseModel):
     futures_read_account_type: str = "UNIFIED"
     telegram_ops_fixture_path: Path | None = None
     analytics_read_fixture_db_path: Path | None = None
+    models_read_fixture_db_path: Path | None = None
+    models_read_manifest_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -80,5 +82,11 @@ class Settings(BaseModel):
             else None,
             analytics_read_fixture_db_path=Path(os.getenv("BOTIK_ANALYTICS_READ_FIXTURE_DB_PATH"))
             if os.getenv("BOTIK_ANALYTICS_READ_FIXTURE_DB_PATH")
+            else None,
+            models_read_fixture_db_path=Path(os.getenv("BOTIK_MODELS_READ_FIXTURE_DB_PATH"))
+            if os.getenv("BOTIK_MODELS_READ_FIXTURE_DB_PATH")
+            else None,
+            models_read_manifest_path=Path(os.getenv("BOTIK_MODELS_READ_MANIFEST_PATH"))
+            if os.getenv("BOTIK_MODELS_READ_MANIFEST_PATH")
             else None,
         )

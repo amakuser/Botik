@@ -29,3 +29,4 @@ def test_bootstrap_returns_loopback_session_info():
         assert "/futures" in payload["routes"]
         assert "/telegram" in payload["routes"]
         assert "/analytics" in payload["routes"]
+        assert "/models" in payload["routes"]

@@ -13,6 +13,7 @@ import {
   JobSummary,
   FuturesReadSnapshot,
   AnalyticsReadSnapshot,
+  ModelsReadSnapshot,
   TelegramConnectivityCheckResult,
   TelegramOpsSnapshot,
   SpotReadSnapshot,
@@ -146,6 +147,11 @@ export async function getTelegramOpsModel(): Promise<TelegramOpsSnapshot> {
 export async function getAnalyticsReadModel(): Promise<AnalyticsReadSnapshot> {
   const response = await authenticatedFetch("/analytics");
   return parseJsonOrThrow<AnalyticsReadSnapshot>(response);
+}
+
+export async function getModelsReadModel(): Promise<ModelsReadSnapshot> {
+  const response = await authenticatedFetch("/models");
+  return parseJsonOrThrow<ModelsReadSnapshot>(response);
 }
 
 export async function runTelegramConnectivityCheck(): Promise<TelegramConnectivityCheckResult> {

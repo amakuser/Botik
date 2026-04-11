@@ -294,6 +294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Models Snapshot */
+        get: operations["get_models_snapshot_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -800,6 +817,194 @@ export interface components {
             /** Source */
             source: string;
         };
+        /** ModelRegistryEntry */
+        ModelRegistryEntry: {
+            /** Model Id */
+            model_id: string;
+            /**
+             * Scope
+             * @default unknown
+             * @enum {string}
+             */
+            scope: "spot" | "futures" | "unknown";
+            /**
+             * Status
+             * @default candidate
+             */
+            status: string;
+            /** Quality Score */
+            quality_score?: number | null;
+            /**
+             * Policy
+             * @default unknown
+             */
+            policy: string;
+            /**
+             * Source Mode
+             * @default unknown
+             */
+            source_mode: string;
+            /**
+             * Artifact Name
+             * @default
+             */
+            artifact_name: string;
+            /**
+             * Created At Utc
+             * @default not available
+             */
+            created_at_utc: string;
+            /**
+             * Is Declared Active
+             * @default false
+             */
+            is_declared_active: boolean;
+        };
+        /** ModelsReadSnapshot */
+        ModelsReadSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "fixture" | "compatibility";
+            summary?: components["schemas"]["ModelsSummary"];
+            /** Scopes */
+            scopes?: components["schemas"]["ModelsScopeStatus"][];
+            /** Registry Entries */
+            registry_entries?: components["schemas"]["ModelRegistryEntry"][];
+            /** Recent Training Runs */
+            recent_training_runs?: components["schemas"]["TrainingRunSummary"][];
+            truncated?: components["schemas"]["ModelsReadTruncation"];
+        };
+        /** ModelsReadTruncation */
+        ModelsReadTruncation: {
+            /**
+             * Registry Entries
+             * @default false
+             */
+            registry_entries: boolean;
+            /**
+             * Recent Training Runs
+             * @default false
+             */
+            recent_training_runs: boolean;
+        };
+        /** ModelsScopeStatus */
+        ModelsScopeStatus: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "spot" | "futures";
+            /**
+             * Active Model
+             * @default unknown
+             */
+            active_model: string;
+            /**
+             * Checkpoint Name
+             * @default
+             */
+            checkpoint_name: string;
+            /**
+             * Latest Registry Model
+             * @default not available
+             */
+            latest_registry_model: string;
+            /**
+             * Latest Registry Status
+             * @default not available
+             */
+            latest_registry_status: string;
+            /**
+             * Latest Registry Created At
+             * @default not available
+             */
+            latest_registry_created_at: string;
+            /**
+             * Latest Training Model Version
+             * @default not available
+             */
+            latest_training_model_version: string;
+            /**
+             * Latest Training Status
+             * @default not available
+             */
+            latest_training_status: string;
+            /**
+             * Latest Training Mode
+             * @default not available
+             */
+            latest_training_mode: string;
+            /**
+             * Latest Training Started At
+             * @default not available
+             */
+            latest_training_started_at: string;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /**
+             * Status Reason
+             * @default No active model declaration or recent training run.
+             */
+            status_reason: string;
+        };
+        /** ModelsSummary */
+        ModelsSummary: {
+            /**
+             * Total Models
+             * @default 0
+             */
+            total_models: number;
+            /**
+             * Active Declared Count
+             * @default 0
+             */
+            active_declared_count: number;
+            /**
+             * Ready Scopes
+             * @default 0
+             */
+            ready_scopes: number;
+            /**
+             * Recent Training Runs Count
+             * @default 0
+             */
+            recent_training_runs_count: number;
+            /**
+             * Latest Run Scope
+             * @default not available
+             */
+            latest_run_scope: string;
+            /**
+             * Latest Run Status
+             * @default not available
+             */
+            latest_run_status: string;
+            /**
+             * Latest Run Mode
+             * @default not available
+             */
+            latest_run_mode: string;
+            /**
+             * Manifest Status
+             * @default missing
+             */
+            manifest_status: string;
+            /**
+             * Db Available
+             * @default false
+             */
+            db_available: boolean;
+        };
         /** RuntimeStatus */
         RuntimeStatus: {
             /**
@@ -1279,6 +1484,47 @@ export interface components {
              */
             recent_errors: boolean;
         };
+        /** TrainingRunSummary */
+        TrainingRunSummary: {
+            /** Run Id */
+            run_id: string;
+            /**
+             * Scope
+             * @default unknown
+             * @enum {string}
+             */
+            scope: "spot" | "futures" | "unknown";
+            /**
+             * Model Version
+             * @default
+             */
+            model_version: string;
+            /**
+             * Mode
+             * @default
+             */
+            mode: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Is Trained
+             * @default false
+             */
+            is_trained: boolean;
+            /**
+             * Started At Utc
+             * @default not available
+             */
+            started_at_utc: string;
+            /**
+             * Finished At Utc
+             * @default
+             */
+            finished_at_utc: string;
+        };
         /** UiCapabilities */
         UiCapabilities: {
             /** Desktop */
@@ -1749,6 +1995,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsReadSnapshot"];
+                };
+            };
+        };
+    };
+    get_models_snapshot_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelsReadSnapshot"];
                 };
             };
         };

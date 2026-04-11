@@ -13,6 +13,7 @@ from .futures import (
 from .health import HealthResponse
 from .jobs import JobDetails, JobState, JobSummary, StartJobRequest, StopJobRequest
 from .logs import LogChannel, LogChannelSnapshot, LogEntry, LogStreamEvent
+from .models import ModelRegistryEntry, ModelsReadSnapshot, ModelsReadTruncation, ModelsScopeStatus, ModelsSummary, TrainingRunSummary
 from .runtime_status import RuntimeStatus, RuntimeStatusSnapshot
 from .spot import SpotBalance, SpotFill, SpotHolding, SpotOrder, SpotReadSnapshot, SpotReadSummary, SpotReadTruncation
 from .telegram import (
@@ -50,6 +51,11 @@ __all__ = [
     "LogChannelSnapshot",
     "LogEntry",
     "LogStreamEvent",
+    "ModelRegistryEntry",
+    "ModelsReadSnapshot",
+    "ModelsReadTruncation",
+    "ModelsScopeStatus",
+    "ModelsSummary",
     "RuntimeStatus",
     "RuntimeStatusSnapshot",
     "SpotBalance",
@@ -62,6 +68,7 @@ __all__ = [
     "StartJobRequest",
     "StopJobRequest",
     "SystemEvent",
+    "TrainingRunSummary",
     "TelegramAlertEntry",
     "TelegramCommandEntry",
     "TelegramConnectivityCheckResult",

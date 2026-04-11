@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AnalyticsRoute } from "./routes/analytics-route";
+import { ModelsRoute } from "./routes/models-route";
 import { HealthRoute } from "./routes/health-route";
 import { FuturesRoute } from "./routes/futures-route";
 import { JobsRoute } from "./routes/jobs-route";
@@ -40,5 +41,9 @@ export const router = createBrowserRouter([
   {
     path: "/analytics",
     element: <AnalyticsRoute />,
+  },
+  {
+    path: "/models",
+    element: <ModelsRoute />,
   },
 ]);

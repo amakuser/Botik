@@ -14,6 +14,7 @@ from botik_app_service.api.routes_futures import router as futures_router
 from botik_app_service.api.routes_health import router as health_router
 from botik_app_service.api.routes_jobs import router as jobs_router
 from botik_app_service.api.routes_logs import router as logs_router
+from botik_app_service.api.routes_models import router as models_router
 from botik_app_service.api.routes_spot import router as spot_router
 from botik_app_service.api.routes_telegram import router as telegram_router
 from botik_app_service.api.routes_runtime_control import router as runtime_control_router
@@ -32,6 +33,7 @@ from botik_app_service.jobs.sample_data_job import create_sample_data_job_defini
 from botik_app_service.jobs.store import JobStore
 from botik_app_service.jobs.supervisor import JobSupervisor
 from botik_app_service.logs.manager import LogsManager
+from botik_app_service.models_read.service import ModelsReadService
 from botik_app_service.runtime_control.service import RuntimeControlService
 from botik_app_service.runtime_status.service import RuntimeStatusService
 from botik_app_service.spot_read.service import SpotReadService
@@ -95,6 +97,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             repo_root=Path(__file__).resolve().parents[3],
             fixture_db_path=resolved_settings.analytics_read_fixture_db_path,
         )
+        models_read_service = ModelsReadService(
+            repo_root=Path(__file__).resolve().parents[3],
+            fixture_db_path=resolved_settings.models_read_fixture_db_path,
+            manifest_path=resolved_settings.models_read_manifest_path,
+        )
         await logs_manager.start(publisher)
 
         app.state.settings = resolved_settings
@@ -107,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.futures_read_service = futures_read_service
         app.state.telegram_ops_service = telegram_ops_service
         app.state.analytics_read_service = analytics_read_service
+        app.state.models_read_service = models_read_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -156,6 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(futures_router)
     app.include_router(telegram_router)
     app.include_router(analytics_router)
+    app.include_router(models_router)
     app.include_router(admin_router)
     return app
 

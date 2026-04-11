@@ -8,6 +8,8 @@ $dataBackfillDb = Join-Path $stateDir "data_backfill.sqlite3"
 $spotReadFixtureDb = Join-Path $stateDir "spot_read.fixture.sqlite3"
 $futuresReadFixtureDb = Join-Path $stateDir "futures_read.fixture.sqlite3"
 $analyticsReadFixtureDb = Join-Path $stateDir "analytics_read.fixture.sqlite3"
+$modelsReadFixtureDb = Join-Path $stateDir "models_read.fixture.sqlite3"
+$modelsReadManifest = Join-Path $stateDir "active_models.fixture.yaml"
 $telegramOpsFixture = Join-Path $structuredDir "telegram-ops.fixture.json"
 $runtimeControlStateDir = Join-Path $stateDir "runtime-control"
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredDir, $stateDir | Out-Null
@@ -19,7 +21,7 @@ $frontendErr = Join-Path $logsDir "frontend.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
-Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $analyticsReadFixtureDb, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
+Remove-Item $serviceOut, $serviceErr, $frontendOut, $frontendErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $analyticsReadFixtureDb, $modelsReadFixtureDb, $modelsReadManifest, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
 $runtimeStatusPayload = [pscustomobject]@{
@@ -231,6 +233,83 @@ finally:
   }
 }
 
+function Initialize-ModelsReadFixture([string]$dbPath, [string]$manifestPath) {
+  $script = @"
+import sqlite3
+import sys
+from pathlib import Path
+
+db_path = Path(sys.argv[1])
+manifest_path = Path(sys.argv[2])
+connection = sqlite3.connect(db_path)
+try:
+    connection.executescript('''
+        CREATE TABLE model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_id TEXT UNIQUE NOT NULL,
+            path_or_payload TEXT,
+            metrics_json TEXT,
+            created_at_utc TEXT NOT NULL,
+            is_active INTEGER DEFAULT 0
+        );
+        CREATE TABLE ml_training_runs (
+            run_id TEXT PRIMARY KEY,
+            model_scope TEXT NOT NULL,
+            model_version TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            epoch INTEGER,
+            max_epochs INTEGER,
+            loss REAL,
+            accuracy REAL,
+            sharpe_ratio REAL,
+            trade_count INTEGER,
+            is_trained INTEGER NOT NULL DEFAULT 0,
+            trained_at_utc TEXT,
+            started_at_utc TEXT NOT NULL,
+            finished_at_utc TEXT,
+            notes TEXT
+        );
+    ''')
+    connection.executemany(
+        "INSERT INTO model_registry (model_id, path_or_payload, metrics_json, created_at_utc, is_active) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("spot-champion-v3", "data/models/spot-champion-v3.pkl", '{"instrument":"spot","policy":"hybrid","source_mode":"executed","status":"ready","quality_score":0.81}', "2026-04-10T08:00:00Z", 1),
+            ("spot-challenger-v4", "data/models/spot-challenger-v4.pkl", '{"instrument":"spot","policy":"model","source_mode":"paper","status":"candidate","quality_score":0.87}', "2026-04-11T10:00:00Z", 0),
+            ("futures-paper-v2", "data/models/futures-paper-v2.pkl", '{"instrument":"futures","policy":"hard","source_mode":"paper","status":"ready","quality_score":0.74}', "2026-04-11T11:00:00Z", 1),
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO ml_training_runs (run_id, model_scope, model_version, mode, status, is_trained, started_at_utc, finished_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("run-futures-1", "futures", "futures-paper-v2", "online", "running", 0, "2026-04-11T09:30:00Z", ""),
+            ("run-spot-1", "spot", "spot-champion-v3", "offline", "completed", 1, "2026-04-10T08:00:00Z", "2026-04-10T08:20:00Z"),
+        ],
+    )
+    connection.commit()
+finally:
+    connection.close()
+
+manifest_path.write_text(
+    "\n".join(
+        [
+            "manifest_version: 1",
+            "product: botik_dashboard",
+            "active_spot_model: spot-champion-v3",
+            "active_futures_model: futures-paper-v2",
+            "spot_checkpoint_path: data/models/spot-champion-v3.pkl",
+            "futures_checkpoint_path: data/models/futures-paper-v2.pkl",
+        ]
+    ) + "\n",
+    encoding="utf-8",
+)
+"@
+  $script | python - $dbPath $manifestPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to initialize models read fixtures"
+  }
+}
+
 function Add-JsonLine([string]$path, [object]$payload) {
   ($payload | ConvertTo-Json -Compress -Depth 8) | Add-Content -LiteralPath $path -Encoding UTF8
 }
@@ -300,6 +379,7 @@ $testsPassed = $false
 Initialize-SpotReadFixtureDb $repoRoot $spotReadFixtureDb
 Initialize-FuturesReadFixtureDb $repoRoot $futuresReadFixtureDb
 Initialize-AnalyticsReadFixtureDb $analyticsReadFixtureDb
+Initialize-ModelsReadFixture $modelsReadFixtureDb $modelsReadManifest
 $env:BOTIK_ARTIFACTS_DIR = $artifactsRoot
 $env:BOTIK_RUNTIME_STATUS_FIXTURE_PATH = $runtimeStatusFixture
 $env:BOTIK_RUNTIME_CONTROL_MODE = "fixture"
@@ -307,6 +387,8 @@ $env:BOTIK_SPOT_READ_FIXTURE_DB_PATH = $spotReadFixtureDb
 $env:BOTIK_FUTURES_READ_FIXTURE_DB_PATH = $futuresReadFixtureDb
 $env:BOTIK_TELEGRAM_OPS_FIXTURE_PATH = $telegramOpsFixture
 $env:BOTIK_ANALYTICS_READ_FIXTURE_DB_PATH = $analyticsReadFixtureDb
+$env:BOTIK_MODELS_READ_FIXTURE_DB_PATH = $modelsReadFixtureDb
+$env:BOTIK_MODELS_READ_MANIFEST_PATH = $modelsReadManifest
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -408,6 +490,12 @@ finally {
   if ($testsPassed -and (Test-Path $analyticsReadFixtureDb)) {
     Remove-Item -LiteralPath $analyticsReadFixtureDb -Force -ErrorAction SilentlyContinue
   }
+  if ($testsPassed -and (Test-Path $modelsReadFixtureDb)) {
+    Remove-Item -LiteralPath $modelsReadFixtureDb -Force -ErrorAction SilentlyContinue
+  }
+  if ($testsPassed -and (Test-Path $modelsReadManifest)) {
+    Remove-Item -LiteralPath $modelsReadManifest -Force -ErrorAction SilentlyContinue
+  }
   if ($testsPassed -and (Test-Path $runtimeControlStateDir)) {
     Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
   }
@@ -439,6 +527,14 @@ finally {
     analyticsReadFixtureDb = @{
       path = $analyticsReadFixtureDb
       existsAfterCleanup = Test-Path $analyticsReadFixtureDb
+    }
+    modelsReadFixtureDb = @{
+      path = $modelsReadFixtureDb
+      existsAfterCleanup = Test-Path $modelsReadFixtureDb
+    }
+    modelsReadManifest = @{
+      path = $modelsReadManifest
+      existsAfterCleanup = Test-Path $modelsReadManifest
     }
     dataBackfillDb = @{
       path = $dataBackfillDb

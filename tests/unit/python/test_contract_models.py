@@ -9,6 +9,7 @@ from botik_app_service.contracts.bootstrap import BootstrapPayload
 from botik_app_service.contracts.errors import ErrorEnvelope
 from botik_app_service.contracts.health import HealthResponse
 from botik_app_service.contracts.logs import LogChannelSnapshot, LogEntry
+from botik_app_service.contracts.models import ModelsReadSnapshot
 from botik_app_service.contracts.runtime_status import RuntimeStatusSnapshot
 from botik_app_service.contracts.futures import FuturesReadSnapshot
 from botik_app_service.contracts.spot import SpotReadSnapshot
@@ -35,9 +36,9 @@ def test_contract_models_roundtrip():
             "capabilities": {
                 "desktop": True,
                 "jobs": True,
-                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics"],
+                "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics", "/models"],
             },
-            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics"],
+            "routes": ["/", "/jobs", "/logs", "/runtime", "/spot", "/futures", "/telegram", "/analytics", "/models"],
         }
     )
     assert payload.session.session_id == "abc"
@@ -371,3 +372,66 @@ def test_contract_models_roundtrip():
         }
     )
     assert analytics_snapshot.summary.total_closed_trades == 4
+
+    models_snapshot = ModelsReadSnapshot.model_validate(
+        {
+            "source_mode": "fixture",
+            "summary": {
+                "total_models": 3,
+                "active_declared_count": 2,
+                "ready_scopes": 2,
+                "recent_training_runs_count": 2,
+                "latest_run_scope": "futures",
+                "latest_run_status": "running",
+                "latest_run_mode": "online",
+                "manifest_status": "loaded",
+                "db_available": True,
+            },
+            "scopes": [
+                {
+                    "scope": "spot",
+                    "active_model": "spot-champion-v3",
+                    "checkpoint_name": "spot-champion-v3.pkl",
+                    "latest_registry_model": "spot-challenger-v4",
+                    "latest_registry_status": "candidate",
+                    "latest_registry_created_at": "2026-04-11T10:00:00Z",
+                    "latest_training_model_version": "spot-champion-v3",
+                    "latest_training_status": "completed",
+                    "latest_training_mode": "offline",
+                    "latest_training_started_at": "2026-04-10T08:00:00Z",
+                    "ready": True,
+                    "status_reason": "Active model declared in active_models.yaml.",
+                }
+            ],
+            "registry_entries": [
+                {
+                    "model_id": "spot-champion-v3",
+                    "scope": "spot",
+                    "status": "ready",
+                    "quality_score": 0.81,
+                    "policy": "hybrid",
+                    "source_mode": "executed",
+                    "artifact_name": "spot-champion-v3.pkl",
+                    "created_at_utc": "2026-04-10T08:00:00Z",
+                    "is_declared_active": True,
+                }
+            ],
+            "recent_training_runs": [
+                {
+                    "run_id": "run-futures-1",
+                    "scope": "futures",
+                    "model_version": "futures-paper-v2",
+                    "mode": "online",
+                    "status": "running",
+                    "is_trained": False,
+                    "started_at_utc": "2026-04-11T09:30:00Z",
+                    "finished_at_utc": "",
+                }
+            ],
+            "truncated": {
+                "registry_entries": False,
+                "recent_training_runs": False,
+            },
+        }
+    )
+    assert models_snapshot.summary.total_models == 3
