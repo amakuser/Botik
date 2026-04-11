@@ -1,4 +1,5 @@
 import {
+  DiagnosticsSnapshot,
   BootstrapPayload,
   HealthResponse,
   JobDetails,
@@ -152,6 +153,11 @@ export async function getAnalyticsReadModel(): Promise<AnalyticsReadSnapshot> {
 export async function getModelsReadModel(): Promise<ModelsReadSnapshot> {
   const response = await authenticatedFetch("/models");
   return parseJsonOrThrow<ModelsReadSnapshot>(response);
+}
+
+export async function getDiagnosticsModel(): Promise<DiagnosticsSnapshot> {
+  const response = await authenticatedFetch("/diagnostics");
+  return parseJsonOrThrow<DiagnosticsSnapshot>(response);
 }
 
 export async function runTelegramConnectivityCheck(): Promise<TelegramConnectivityCheckResult> {

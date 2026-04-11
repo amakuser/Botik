@@ -294,6 +294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Diagnostics Snapshot */
+        get: operations["get_diagnostics_snapshot_diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/models": {
         parameters: {
             query?: never;
@@ -503,6 +520,92 @@ export interface components {
             intervals: [
                 "1m"
             ];
+        };
+        /** DiagnosticsConfigEntry */
+        DiagnosticsConfigEntry: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+            /**
+             * Masked
+             * @default false
+             */
+            masked: boolean;
+        };
+        /** DiagnosticsPathEntry */
+        DiagnosticsPathEntry: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Path */
+            path: string;
+            /** Source */
+            source: string;
+            /** Exists */
+            exists: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "file" | "directory" | "missing";
+        };
+        /** DiagnosticsSnapshot */
+        DiagnosticsSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source Mode
+             * @default resolved
+             * @constant
+             */
+            source_mode: "resolved";
+            summary: components["schemas"]["DiagnosticsSummary"];
+            /** Config */
+            config?: components["schemas"]["DiagnosticsConfigEntry"][];
+            /** Paths */
+            paths?: components["schemas"]["DiagnosticsPathEntry"][];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** DiagnosticsSummary */
+        DiagnosticsSummary: {
+            /** App Name */
+            app_name: string;
+            /** Version */
+            version: string;
+            /** App Service Base Url */
+            app_service_base_url: string;
+            /** Desktop Mode */
+            desktop_mode: boolean;
+            /** Runtime Control Mode */
+            runtime_control_mode: string;
+            /**
+             * Routes Count
+             * @default 0
+             */
+            routes_count: number;
+            /**
+             * Fixture Overrides Count
+             * @default 0
+             */
+            fixture_overrides_count: number;
+            /**
+             * Missing Paths Count
+             * @default 0
+             */
+            missing_paths_count: number;
+            /**
+             * Warnings Count
+             * @default 0
+             */
+            warnings_count: number;
         };
         /** EmptyJobPayload */
         EmptyJobPayload: Record<string, never>;
@@ -2010,6 +2113,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsReadSnapshot"];
+                };
+            };
+        };
+    };
+    get_diagnostics_snapshot_diagnostics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticsSnapshot"];
                 };
             };
         };

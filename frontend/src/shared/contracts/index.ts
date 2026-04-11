@@ -38,6 +38,10 @@ export type AnalyticsSummary = components["schemas"]["AnalyticsSummary"];
 export type AnalyticsEquityPoint = components["schemas"]["AnalyticsEquityPoint"];
 export type AnalyticsClosedTrade = components["schemas"]["AnalyticsClosedTrade"];
 export type AnalyticsReadSnapshot = components["schemas"]["AnalyticsReadSnapshot"];
+export type DiagnosticsSummary = components["schemas"]["DiagnosticsSummary"];
+export type DiagnosticsConfigEntry = components["schemas"]["DiagnosticsConfigEntry"];
+export type DiagnosticsPathEntry = components["schemas"]["DiagnosticsPathEntry"];
+export type DiagnosticsSnapshot = components["schemas"]["DiagnosticsSnapshot"];
 export type ModelsSummary = components["schemas"]["ModelsSummary"];
 export type ModelsScopeStatus = components["schemas"]["ModelsScopeStatus"];
 export type ModelRegistryEntry = components["schemas"]["ModelRegistryEntry"];
@@ -88,6 +92,10 @@ export const contractSchemaNames = [
   "AnalyticsEquityPoint",
   "AnalyticsClosedTrade",
   "AnalyticsReadSnapshot",
+  "DiagnosticsSummary",
+  "DiagnosticsConfigEntry",
+  "DiagnosticsPathEntry",
+  "DiagnosticsSnapshot",
   "ModelsSummary",
   "ModelsScopeStatus",
   "ModelRegistryEntry",
