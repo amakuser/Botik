@@ -56,11 +56,20 @@ class DataIntegrityJobPayload(BaseModel):
     intervals: tuple[Literal["1m"]] = ("1m",)
 
 
+class TrainingControlJobPayload(BaseModel):
+    scope: Literal["futures"] = "futures"
+    interval: Literal["1m"] = "1m"
+
+
 class StartJobRequest(BaseModel):
     job_type: str
-    payload: SampleDataImportJobPayload | DataBackfillJobPayload | DataIntegrityJobPayload | EmptyJobPayload = Field(
-        default_factory=EmptyJobPayload
-    )
+    payload: (
+        SampleDataImportJobPayload
+        | DataBackfillJobPayload
+        | DataIntegrityJobPayload
+        | TrainingControlJobPayload
+        | EmptyJobPayload
+    ) = Field(default_factory=EmptyJobPayload)
 
     def payload_dict(self) -> dict[str, Any]:
         return self.payload.model_dump()

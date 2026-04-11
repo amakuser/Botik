@@ -1292,7 +1292,7 @@ export interface components {
             /** Job Type */
             job_type: string;
             /** Payload */
-            payload?: components["schemas"]["SampleDataImportJobPayload"] | components["schemas"]["DataBackfillJobPayload"] | components["schemas"]["DataIntegrityJobPayload"] | components["schemas"]["EmptyJobPayload"];
+            payload?: components["schemas"]["SampleDataImportJobPayload"] | components["schemas"]["DataBackfillJobPayload"] | components["schemas"]["DataIntegrityJobPayload"] | components["schemas"]["TrainingControlJobPayload"] | components["schemas"]["EmptyJobPayload"];
         };
         /** StopJobRequest */
         StopJobRequest: {
@@ -1483,6 +1483,21 @@ export interface components {
              * @default false
              */
             recent_errors: boolean;
+        };
+        /** TrainingControlJobPayload */
+        TrainingControlJobPayload: {
+            /**
+             * Scope
+             * @default futures
+             * @constant
+             */
+            scope: "futures";
+            /**
+             * Interval
+             * @default 1m
+             * @constant
+             */
+            interval: "1m";
         };
         /** TrainingRunSummary */
         TrainingRunSummary: {

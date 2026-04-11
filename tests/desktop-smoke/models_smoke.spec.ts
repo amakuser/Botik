@@ -10,4 +10,6 @@ test("desktop-backed models registry and training status surface renders fixture
   await expect(page.getByTestId("models.scope.futures")).toContainText("futures-paper-v2");
   await expect(page.getByTestId("models.registry.0")).toContainText("futures-paper-v2");
   await expect(page.getByTestId("models.run.0")).toContainText("run-futures-1");
+  await expect(page.getByRole("button", { name: "Start Futures Training" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop Futures Training" })).toBeDisabled();
 });

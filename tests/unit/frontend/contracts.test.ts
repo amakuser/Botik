@@ -8,6 +8,7 @@ describe("generated contracts", () => {
     expect(contractSchemaNames).toContain("JobDetails");
     expect(contractSchemaNames).toContain("DataBackfillJobPayload");
     expect(contractSchemaNames).toContain("DataIntegrityJobPayload");
+    expect(contractSchemaNames).toContain("TrainingControlJobPayload");
     expect(contractSchemaNames).toContain("LogChannelSnapshot");
     expect(contractSchemaNames).toContain("RuntimeStatusSnapshot");
     expect(contractSchemaNames).toContain("FuturesReadSnapshot");

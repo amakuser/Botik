@@ -67,6 +67,17 @@ def test_contract_models_roundtrip():
     )
     assert integrity_request.payload_dict()["symbol"] == "BTCUSDT"
 
+    training_request = StartJobRequest.model_validate(
+        {
+            "job_type": "training_control",
+            "payload": {
+                "scope": "futures",
+                "interval": "1m",
+            },
+        }
+    )
+    assert training_request.payload_dict()["scope"] == "futures"
+
     snapshot = LogChannelSnapshot.model_validate(
         {
             "channel": "app",
