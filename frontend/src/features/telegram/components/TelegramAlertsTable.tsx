@@ -5,6 +5,15 @@ interface TelegramAlertsTableProps {
 }
 
 export function TelegramAlertsTable({ alerts }: TelegramAlertsTableProps) {
+  if (alerts.length === 0) {
+    return (
+      <div className="surface-table-empty">
+        <strong>No recent Telegram alerts.</strong>
+        <p className="panel-muted">Recent bounded delivery history will appear here once alert rows are recorded.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="surface-table-wrap">
       <table className="surface-table">
@@ -17,20 +26,23 @@ export function TelegramAlertsTable({ alerts }: TelegramAlertsTableProps) {
           </tr>
         </thead>
         <tbody>
-          {alerts.length === 0 ? (
-            <tr>
-              <td colSpan={4}>No recent Telegram alerts.</td>
+          {alerts.map((alert, index) => (
+            <tr key={`${alert.alert_type}-${alert.ts ?? index}`} data-testid={`telegram.alert.${index}`}>
+              <td>
+                <div className="surface-table__stack">
+                  <span className="surface-table__primary">{alert.alert_type}</span>
+                  <span className="panel-muted">{alert.source}</span>
+                </div>
+              </td>
+              <td>{alert.message}</td>
+              <td>
+                <span className={alert.delivered ? "surface-badge surface-badge--buy" : "surface-badge surface-badge--sell"}>
+                  {alert.delivered ? "delivered" : "undelivered"}
+                </span>
+              </td>
+              <td>{alert.ts ? new Date(alert.ts).toLocaleString() : "-"}</td>
             </tr>
-          ) : (
-            alerts.map((alert, index) => (
-              <tr key={`${alert.alert_type}-${alert.ts ?? index}`} data-testid={`telegram.alert.${index}`}>
-                <td>{alert.alert_type}</td>
-                <td>{alert.message}</td>
-                <td>{alert.delivered ? "yes" : "no"}</td>
-                <td>{alert.ts ? new Date(alert.ts).toLocaleString() : "-"}</td>
-              </tr>
-            ))
-          )}
+          ))}
         </tbody>
       </table>
     </div>
