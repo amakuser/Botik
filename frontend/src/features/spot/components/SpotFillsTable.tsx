@@ -14,7 +14,7 @@ function formatPrice(value: number) {
 
 export function SpotFillsTable({ fills }: SpotFillsTableProps) {
   if (fills.length === 0) {
-    return <p className="panel-muted">No recent spot fills are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">No recent spot fills are available in the current read model.</p>;
   }
 
   return (
@@ -32,8 +32,12 @@ export function SpotFillsTable({ fills }: SpotFillsTableProps) {
         <tbody>
           {fills.map((fill) => (
             <tr key={fill.exec_id} data-testid={`spot.fill.${fill.exec_id}`}>
-              <td>{fill.symbol}</td>
-              <td>{fill.side}</td>
+              <td className="surface-table__primary">{fill.symbol}</td>
+              <td>
+                <span className={fill.side === "Buy" ? "surface-badge surface-badge--buy" : "surface-badge surface-badge--sell"}>
+                  {fill.side}
+                </span>
+              </td>
               <td>{formatPrice(fill.price)}</td>
               <td>{formatQty(fill.qty)}</td>
               <td>{fill.fee === null || fill.fee === undefined ? "n/a" : `${fill.fee.toFixed(4)} ${fill.fee_currency ?? ""}`.trim()}</td>

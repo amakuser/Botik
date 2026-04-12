@@ -242,7 +242,7 @@ body {
 
 .spot-layout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
 .futures-layout {
@@ -334,6 +334,11 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
+}
+
+.spot-summary-panel {
+  display: grid;
+  gap: 18px;
 }
 
 .futures-summary-grid {
@@ -901,6 +906,10 @@ body {
   background: rgba(30, 41, 59, 0.35);
 }
 
+.surface-table__primary {
+  font-weight: 600;
+}
+
 .surface-table th,
 .surface-table td {
   text-align: left;
@@ -920,8 +929,17 @@ body {
   margin: 0;
 }
 
+.spot-summary-card__eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
+}
+
 .spot-summary-card__label {
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 0.85rem;
   margin-bottom: 8px;
 }
@@ -932,9 +950,48 @@ body {
   margin-bottom: 10px;
 }
 
+.spot-summary-card__note {
+  line-height: 1.5;
+}
+
 .summary-card__note {
   margin: 0;
   color: var(--text-secondary);
+}
+
+.surface-table-empty {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.surface-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.surface-badge--soft {
+  background: rgba(59, 130, 246, 0.14);
+}
+
+.surface-badge--buy {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.22);
+  color: #bbf7d0;
+}
+
+.surface-badge--sell {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.22);
+  color: #fecaca;
 }
 
 .runtime-state {

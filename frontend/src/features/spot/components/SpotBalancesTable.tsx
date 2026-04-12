@@ -10,7 +10,7 @@ function formatQty(value: number) {
 
 export function SpotBalancesTable({ balances }: SpotBalancesTableProps) {
   if (balances.length === 0) {
-    return <p className="panel-muted">No spot balances are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">No spot balances are available in the current read model.</p>;
   }
 
   return (
@@ -28,11 +28,13 @@ export function SpotBalancesTable({ balances }: SpotBalancesTableProps) {
         <tbody>
           {balances.map((balance) => (
             <tr key={balance.asset} data-testid={`spot.balance.${balance.asset}`}>
-              <td>{balance.asset}</td>
+              <td className="surface-table__primary">{balance.asset}</td>
               <td>{formatQty(balance.free_qty)}</td>
               <td>{formatQty(balance.locked_qty)}</td>
               <td>{formatQty(balance.total_qty)}</td>
-              <td>{balance.source_of_truth ?? "unknown"}</td>
+              <td>
+                <span className="surface-badge">{balance.source_of_truth ?? "unknown"}</span>
+              </td>
             </tr>
           ))}
         </tbody>

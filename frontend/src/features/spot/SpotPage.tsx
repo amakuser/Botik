@@ -26,9 +26,13 @@ export function SpotPage() {
           title="Spot Read Surface"
           description="Bounded read-only visibility for balances, holdings, active orders, and recent fills on the primary stack."
           meta={
-            <p className="status-caption" data-testid="spot.source-mode">
-              Source mode: {snapshot?.source_mode ?? "loading"}
-            </p>
+            <>
+              <p className="status-caption" data-testid="spot.source-mode">
+                Source mode: {snapshot?.source_mode ?? "loading"}
+              </p>
+              <p className="status-caption">Account: {summary?.account_type ?? "loading"}</p>
+              <p className="status-caption">Open orders: {summary?.open_orders_count ?? "..."}</p>
+            </>
           }
         />
 
@@ -41,37 +45,40 @@ export function SpotPage() {
           </section>
         ) : null}
 
-        <section className="spot-summary-grid">
-          <SpotSummaryCard
-            label="Balance Assets"
-            value={summary?.balance_assets_count ?? "..."}
-            note="Non-zero spot balances in the current account snapshot."
-            testId="spot.summary.balance-assets"
-          />
-          <SpotSummaryCard
-            label="Active Holdings"
-            value={summary?.holdings_count ?? "..."}
-            note={`Recovered: ${summary?.recovered_holdings_count ?? "..."} | Strategy-owned: ${summary?.strategy_owned_holdings_count ?? "..."}`}
-            testId="spot.summary.holdings"
-          />
-          <SpotSummaryCard
-            label="Active Orders"
-            value={summary?.open_orders_count ?? "..."}
-            note="Open spot orders only."
-            testId="spot.summary.orders"
-          />
-          <SpotSummaryCard
-            label="Recent Fills"
-            value={summary?.recent_fills_count ?? "..."}
-            note="Recent execution history only."
-            testId="spot.summary.fills"
-          />
-          <SpotSummaryCard
-            label="Pending Intents"
-            value={summary?.pending_intents_count ?? "..."}
-            note="Minimal intent summary from existing spot intent data."
-            testId="spot.summary.intents"
-          />
+        <section className="panel spot-summary-panel">
+          <SectionHeading title="Account Snapshot" description="Bounded high-signal summary metrics for the current spot account state." />
+          <div className="spot-summary-grid">
+            <SpotSummaryCard
+              label="Balance Assets"
+              value={summary?.balance_assets_count ?? "..."}
+              note="Non-zero spot balances in the current account snapshot."
+              testId="spot.summary.balance-assets"
+            />
+            <SpotSummaryCard
+              label="Active Holdings"
+              value={summary?.holdings_count ?? "..."}
+              note={`Recovered: ${summary?.recovered_holdings_count ?? "..."} | Strategy-owned: ${summary?.strategy_owned_holdings_count ?? "..."}`}
+              testId="spot.summary.holdings"
+            />
+            <SpotSummaryCard
+              label="Active Orders"
+              value={summary?.open_orders_count ?? "..."}
+              note="Open spot orders only."
+              testId="spot.summary.orders"
+            />
+            <SpotSummaryCard
+              label="Recent Fills"
+              value={summary?.recent_fills_count ?? "..."}
+              note="Recent execution history only."
+              testId="spot.summary.fills"
+            />
+            <SpotSummaryCard
+              label="Pending Intents"
+              value={summary?.pending_intents_count ?? "..."}
+              note="Minimal intent summary from existing spot intent data."
+              testId="spot.summary.intents"
+            />
+          </div>
         </section>
 
         <section className="panel">
