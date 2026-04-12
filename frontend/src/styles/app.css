@@ -370,6 +370,13 @@ body {
   gap: 16px;
 }
 
+.models-summary-panel,
+.models-scope-panel,
+.models-history-panel {
+  display: grid;
+  gap: 18px;
+}
+
 .diagnostics-warning-list {
   margin: 0;
   padding-left: 18px;
@@ -999,11 +1006,57 @@ body {
   line-height: 1.5;
 }
 
+.models-summary-card {
+  display: grid;
+  gap: 8px;
+}
+
+.models-summary-card__eyebrow,
+.models-scope-card__eyebrow,
+.models-training-card__eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
+}
+
+.models-summary-card__label,
+.models-summary-card__value,
+.models-summary-card__note {
+  margin: 0;
+}
+
+.models-summary-card__label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.models-summary-card__value {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.models-summary-card__note {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .surface-table-empty {
   padding: 16px;
   border-radius: 16px;
   background: rgba(15, 23, 42, 0.44);
   border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.surface-table-empty strong,
+.surface-table-empty p {
+  margin: 0;
+}
+
+.surface-table-empty p {
+  margin-top: 8px;
 }
 
 .surface-badge {
@@ -1032,6 +1085,62 @@ body {
   background: rgba(248, 113, 113, 0.18);
   border-color: rgba(248, 113, 113, 0.22);
   color: #fecaca;
+}
+
+.models-scope-card {
+  display: grid;
+  gap: 16px;
+}
+
+.models-scope-card__header {
+  margin-bottom: 0;
+}
+
+.models-scope-card__signal-row {
+  margin-bottom: 0;
+}
+
+.models-scope-card__signal {
+  min-height: 102px;
+}
+
+.models-scope-card__badge-row,
+.models-table__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.models-scope-card__details {
+  margin-bottom: 0;
+}
+
+.models-training-card {
+  display: grid;
+  gap: 18px;
+}
+
+.models-training-card__header {
+  margin-bottom: 0;
+}
+
+.models-training-card__title-block {
+  display: grid;
+  gap: 8px;
+}
+
+.models-training-card__signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.models-training-card__details {
+  margin: 0;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .futures-pnl {

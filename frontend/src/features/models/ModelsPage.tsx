@@ -76,9 +76,16 @@ export function ModelsPage() {
           title="Models Registry / Training Status"
           description="Bounded read-only model registry summary, latest declared model info, and recent training-run visibility on the primary stack."
           meta={
-            <p className="status-caption" data-testid="models.source-mode">
-              Source mode: {snapshot?.source_mode ?? "loading"}
-            </p>
+            <>
+              <p className="status-caption" data-testid="models.source-mode">
+                Source mode: {snapshot?.source_mode ?? "loading"}
+              </p>
+              <p className="status-caption">Manifest: {summary?.manifest_status ?? "loading"}</p>
+              <p className="status-caption">Registry DB: {summary ? (summary.db_available ? "available" : "missing") : "loading"}</p>
+              <p className="status-caption">
+                Latest run: {summary?.latest_run_scope ?? "loading"} / {summary?.latest_run_status ?? "loading"}
+              </p>
+            </>
           }
         />
 
@@ -100,31 +107,41 @@ export function ModelsPage() {
           </section>
         ) : null}
 
-        <section className="models-summary-grid">
-          <ModelsSummaryCard
-            label="Total Models"
-            value={summary?.total_models ?? "..."}
-            note="Bounded registry inventory only."
-            testId="models.summary.total-models"
+        <section className="panel models-summary-panel">
+          <SectionHeading
+            title="Overview"
+            description="Readiness, registry health, and bounded training freshness from the current models snapshot."
           />
-          <ModelsSummaryCard
-            label="Active Declared"
-            value={summary?.active_declared_count ?? "..."}
-            note={`Manifest: ${summary?.manifest_status ?? "loading"}`}
-            testId="models.summary.active-declared"
-          />
-          <ModelsSummaryCard
-            label="Ready Scopes"
-            value={summary?.ready_scopes ?? "..."}
-            note="Spot + futures read-only readiness snapshot."
-            testId="models.summary.ready-scopes"
-          />
-          <ModelsSummaryCard
-            label="Recent Runs"
-            value={summary?.recent_training_runs_count ?? "..."}
-            note={`Latest: ${summary?.latest_run_scope ?? "loading"} / ${summary?.latest_run_status ?? "loading"}`}
-            testId="models.summary.recent-runs"
-          />
+          <div className="models-summary-grid">
+            <ModelsSummaryCard
+              eyebrow="Registry"
+              label="Total Models"
+              value={summary?.total_models ?? "..."}
+              note="Bounded registry inventory only."
+              testId="models.summary.total-models"
+            />
+            <ModelsSummaryCard
+              eyebrow="Manifest"
+              label="Active Declared"
+              value={summary?.active_declared_count ?? "..."}
+              note={`Manifest: ${summary?.manifest_status ?? "loading"}`}
+              testId="models.summary.active-declared"
+            />
+            <ModelsSummaryCard
+              eyebrow="Readiness"
+              label="Ready Scopes"
+              value={summary?.ready_scopes ?? "..."}
+              note="Spot + futures read-only readiness snapshot."
+              testId="models.summary.ready-scopes"
+            />
+            <ModelsSummaryCard
+              eyebrow="Freshness"
+              label="Recent Runs"
+              value={summary?.recent_training_runs_count ?? "..."}
+              note={`Latest: ${summary?.latest_run_scope ?? "loading"} / ${summary?.latest_run_status ?? "loading"}`}
+              testId="models.summary.recent-runs"
+            />
+          </div>
         </section>
 
         <TrainingControlCard
@@ -135,18 +152,24 @@ export function ModelsPage() {
           onStop={() => void handleStopTraining()}
         />
 
-        <section className="models-scope-grid">
-          {(snapshot?.scopes ?? []).map((scopeStatus) => (
-            <ModelScopeStatusCard key={scopeStatus.scope} scopeStatus={scopeStatus} />
-          ))}
+        <section className="panel models-scope-panel">
+          <SectionHeading
+            title="Active Model State"
+            description="Current declared model readiness, latest registry signal, and latest training signal for each scope."
+          />
+          <div className="models-scope-grid">
+            {(snapshot?.scopes ?? []).map((scopeStatus) => (
+              <ModelScopeStatusCard key={scopeStatus.scope} scopeStatus={scopeStatus} />
+            ))}
+          </div>
         </section>
 
-        <section className="panel">
+        <section className="panel models-history-panel">
           <SectionHeading title="Registry Entries" description={truncatedLabel(truncated?.registry_entries ?? false)} />
           <ModelsRegistryTable entries={snapshot?.registry_entries ?? []} />
         </section>
 
-        <section className="panel">
+        <section className="panel models-history-panel">
           <SectionHeading title="Recent Training Runs" description={truncatedLabel(truncated?.recent_training_runs ?? false)} />
           <TrainingRunsTable runs={snapshot?.recent_training_runs ?? []} />
         </section>
