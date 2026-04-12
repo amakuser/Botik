@@ -20,6 +20,8 @@ export function ModelsPage() {
   const queryClient = useQueryClient();
   const modelsQuery = useModelsReadModel();
   const snapshot = modelsQuery.data;
+  const summary = snapshot?.summary;
+  const truncated = snapshot?.truncated;
   const [actionError, setActionError] = useState<string | null>(null);
   const jobsQuery = useQuery({
     queryKey: ["jobs"],
@@ -99,26 +101,26 @@ export function ModelsPage() {
         <section className="models-summary-grid">
           <ModelsSummaryCard
             label="Total Models"
-            value={snapshot?.summary.total_models ?? "..."}
+            value={summary?.total_models ?? "..."}
             note="Bounded registry inventory only."
             testId="models.summary.total-models"
           />
           <ModelsSummaryCard
             label="Active Declared"
-            value={snapshot?.summary.active_declared_count ?? "..."}
-            note={`Manifest: ${snapshot?.summary.manifest_status ?? "loading"}`}
+            value={summary?.active_declared_count ?? "..."}
+            note={`Manifest: ${summary?.manifest_status ?? "loading"}`}
             testId="models.summary.active-declared"
           />
           <ModelsSummaryCard
             label="Ready Scopes"
-            value={snapshot?.summary.ready_scopes ?? "..."}
+            value={summary?.ready_scopes ?? "..."}
             note="Spot + futures read-only readiness snapshot."
             testId="models.summary.ready-scopes"
           />
           <ModelsSummaryCard
             label="Recent Runs"
-            value={snapshot?.summary.recent_training_runs_count ?? "..."}
-            note={`Latest: ${snapshot?.summary.latest_run_scope ?? "loading"} / ${snapshot?.summary.latest_run_status ?? "loading"}`}
+            value={summary?.recent_training_runs_count ?? "..."}
+            note={`Latest: ${summary?.latest_run_scope ?? "loading"} / ${summary?.latest_run_status ?? "loading"}`}
             testId="models.summary.recent-runs"
           />
         </section>
@@ -141,7 +143,7 @@ export function ModelsPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Registry Entries</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.registry_entries ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.registry_entries ?? false)}</p>
             </div>
           </div>
           <ModelsRegistryTable entries={snapshot?.registry_entries ?? []} />
@@ -151,7 +153,7 @@ export function ModelsPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Recent Training Runs</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.recent_training_runs ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.recent_training_runs ?? false)}</p>
             </div>
           </div>
           <TrainingRunsTable runs={snapshot?.recent_training_runs ?? []} />

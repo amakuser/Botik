@@ -55,19 +55,20 @@ export function useJobEvents() {
         if (!payload.job_id) {
           return;
         }
+        const jobId = payload.job_id;
 
         setLogsByJob((current) => {
-          const next = current[payload.job_id] ?? [];
+          const next = current[jobId] ?? [];
           const entry: JobLogEntry = {
             eventId: payload.event_id,
             timestamp: payload.timestamp,
-            jobId: payload.job_id,
+            jobId,
             level: payload.level,
             message: payload.message,
           };
           return {
             ...current,
-            [payload.job_id]: [...next, entry].slice(-48),
+            [jobId]: [...next, entry].slice(-48),
           };
         });
       });

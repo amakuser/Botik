@@ -17,6 +17,8 @@ export function TelegramPage() {
   const queryClient = useQueryClient();
   const telegramQuery = useTelegramOpsModel();
   const snapshot = telegramQuery.data;
+  const summary = snapshot?.summary;
+  const truncated = snapshot?.truncated;
   const [checkResult, setCheckResult] = useState<TelegramConnectivityCheckResult | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -61,26 +63,26 @@ export function TelegramPage() {
         <section className="telegram-summary-grid">
           <TelegramSummaryCard
             label="Connectivity"
-            value={snapshot?.summary.connectivity_state ?? "..."}
-            note={snapshot?.summary.connectivity_detail ?? "Loading connectivity state."}
+            value={summary?.connectivity_state ?? "..."}
+            note={summary?.connectivity_detail ?? "Loading connectivity state."}
             testId="telegram.summary.connectivity"
           />
           <TelegramSummaryCard
             label="Allowed Chats"
-            value={snapshot?.summary.allowed_chat_count ?? "..."}
-            note={(snapshot?.summary.allowed_chats_masked ?? []).join(", ") || "Not configured"}
+            value={summary?.allowed_chat_count ?? "..."}
+            note={(summary?.allowed_chats_masked ?? []).join(", ") || "Not configured"}
             testId="telegram.summary.allowed-chats"
           />
           <TelegramSummaryCard
             label="Recent Alerts"
-            value={snapshot?.summary.alerts_count ?? "..."}
-            note={snapshot?.summary.last_successful_send ?? "No recent alert delivery recorded."}
+            value={summary?.alerts_count ?? "..."}
+            note={summary?.last_successful_send ?? "No recent alert delivery recorded."}
             testId="telegram.summary.alerts"
           />
           <TelegramSummaryCard
             label="Recent Errors"
-            value={snapshot?.summary.errors_count ?? "..."}
-            note={snapshot?.summary.last_error ?? "No recent Telegram error observed."}
+            value={summary?.errors_count ?? "..."}
+            note={summary?.last_error ?? "No recent Telegram error observed."}
             testId="telegram.summary.errors"
           />
         </section>
@@ -127,7 +129,7 @@ export function TelegramPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Recent Commands</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.recent_commands ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.recent_commands ?? false)}</p>
             </div>
           </div>
           <TelegramCommandsTable commands={snapshot?.recent_commands ?? []} />
@@ -137,7 +139,7 @@ export function TelegramPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Recent Alerts</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.recent_alerts ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.recent_alerts ?? false)}</p>
             </div>
           </div>
           <TelegramAlertsTable alerts={snapshot?.recent_alerts ?? []} />
@@ -147,7 +149,7 @@ export function TelegramPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Recent Errors</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.recent_errors ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.recent_errors ?? false)}</p>
             </div>
           </div>
           <TelegramErrorsTable errors={snapshot?.recent_errors ?? []} />

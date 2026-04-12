@@ -19,7 +19,7 @@ export function LogViewer({ entries, emptyMessage }: LogViewerProps) {
             <li key={entry.entry_id} className="log-panel__item" data-level={entry.level}>
               <div className="log-panel__meta">
                 <span>{entry.level}</span>
-                <span>{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                <span>{entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : "n/a"}</span>
               </div>
               <p className="log-panel__message">{entry.message}</p>
               <p className="panel-muted" data-testid={`logs.entry.${entry.channel}`}>
