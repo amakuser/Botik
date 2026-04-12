@@ -13,6 +13,8 @@ function truncatedLabel(value: boolean) {
 export function SpotPage() {
   const spotQuery = useSpotReadModel();
   const snapshot = spotQuery.data;
+  const summary = snapshot?.summary;
+  const truncated = snapshot?.truncated;
 
   return (
     <AppShell>
@@ -39,31 +41,31 @@ export function SpotPage() {
         <section className="spot-summary-grid">
           <SpotSummaryCard
             label="Balance Assets"
-            value={snapshot?.summary.balance_assets_count ?? "..."}
+            value={summary?.balance_assets_count ?? "..."}
             note="Non-zero spot balances in the current account snapshot."
             testId="spot.summary.balance-assets"
           />
           <SpotSummaryCard
             label="Active Holdings"
-            value={snapshot?.summary.holdings_count ?? "..."}
-            note={`Recovered: ${snapshot?.summary.recovered_holdings_count ?? "..."} | Strategy-owned: ${snapshot?.summary.strategy_owned_holdings_count ?? "..."}`}
+            value={summary?.holdings_count ?? "..."}
+            note={`Recovered: ${summary?.recovered_holdings_count ?? "..."} | Strategy-owned: ${summary?.strategy_owned_holdings_count ?? "..."}`}
             testId="spot.summary.holdings"
           />
           <SpotSummaryCard
             label="Active Orders"
-            value={snapshot?.summary.open_orders_count ?? "..."}
+            value={summary?.open_orders_count ?? "..."}
             note="Open spot orders only."
             testId="spot.summary.orders"
           />
           <SpotSummaryCard
             label="Recent Fills"
-            value={snapshot?.summary.recent_fills_count ?? "..."}
+            value={summary?.recent_fills_count ?? "..."}
             note="Recent execution history only."
             testId="spot.summary.fills"
           />
           <SpotSummaryCard
             label="Pending Intents"
-            value={snapshot?.summary.pending_intents_count ?? "..."}
+            value={summary?.pending_intents_count ?? "..."}
             note="Minimal intent summary from existing spot intent data."
             testId="spot.summary.intents"
           />
@@ -73,7 +75,7 @@ export function SpotPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Balances</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.balances ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.balances ?? false)}</p>
             </div>
           </div>
           <SpotBalancesTable balances={snapshot?.balances ?? []} />
@@ -83,7 +85,7 @@ export function SpotPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Holdings</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.holdings ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.holdings ?? false)}</p>
             </div>
           </div>
           <SpotHoldingsTable holdings={snapshot?.holdings ?? []} />
@@ -93,7 +95,7 @@ export function SpotPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Active Orders</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.active_orders ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.active_orders ?? false)}</p>
             </div>
           </div>
           <SpotOrdersTable orders={snapshot?.active_orders ?? []} />
@@ -103,7 +105,7 @@ export function SpotPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Recent Fills</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.recent_fills ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.recent_fills ?? false)}</p>
             </div>
           </div>
           <SpotFillsTable fills={snapshot?.recent_fills ?? []} />

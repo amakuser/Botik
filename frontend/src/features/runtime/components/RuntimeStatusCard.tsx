@@ -19,6 +19,8 @@ interface RuntimeStatusCardProps {
 }
 
 export function RuntimeStatusCard({ runtime, startDisabled, stopDisabled, onStart, onStop }: RuntimeStatusCardProps) {
+  const pids = runtime.pids ?? [];
+
   return (
     <article className="runtime-card panel" data-testid={`runtime.card.${runtime.runtime_id}`}>
       <div className="runtime-card__header">
@@ -34,7 +36,7 @@ export function RuntimeStatusCard({ runtime, startDisabled, stopDisabled, onStar
       <dl className="runtime-card__details">
         <div>
           <dt>PIDs</dt>
-          <dd data-testid={`runtime.pids.${runtime.runtime_id}`}>{runtime.pid_count > 0 ? runtime.pids.join(", ") : "none"}</dd>
+          <dd data-testid={`runtime.pids.${runtime.runtime_id}`}>{runtime.pid_count > 0 ? pids.join(", ") : "none"}</dd>
         </div>
         <div>
           <dt>Heartbeat</dt>

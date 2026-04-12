@@ -12,6 +12,8 @@ function truncatedLabel(value: boolean) {
 export function FuturesPage() {
   const futuresQuery = useFuturesReadModel();
   const snapshot = futuresQuery.data;
+  const summary = snapshot?.summary;
+  const truncated = snapshot?.truncated;
 
   return (
     <AppShell>
@@ -38,31 +40,31 @@ export function FuturesPage() {
         <section className="futures-summary-grid">
           <FuturesSummaryCard
             label="Open Positions"
-            value={snapshot?.summary.positions_count ?? "..."}
-            note={`Protected: ${snapshot?.summary.protected_positions_count ?? "..."} | Attention: ${snapshot?.summary.attention_positions_count ?? "..."}`}
+            value={summary?.positions_count ?? "..."}
+            note={`Protected: ${summary?.protected_positions_count ?? "..."} | Attention: ${summary?.attention_positions_count ?? "..."}`}
             testId="futures.summary.positions"
           />
           <FuturesSummaryCard
             label="Recovered Positions"
-            value={snapshot?.summary.recovered_positions_count ?? "..."}
+            value={summary?.recovered_positions_count ?? "..."}
             note="Recovered futures positions from exchange state."
             testId="futures.summary.recovered"
           />
           <FuturesSummaryCard
             label="Active Orders"
-            value={snapshot?.summary.open_orders_count ?? "..."}
+            value={summary?.open_orders_count ?? "..."}
             note="Open futures orders only."
             testId="futures.summary.orders"
           />
           <FuturesSummaryCard
             label="Recent Fills"
-            value={snapshot?.summary.recent_fills_count ?? "..."}
+            value={summary?.recent_fills_count ?? "..."}
             note="Recent futures execution history only."
             testId="futures.summary.fills"
           />
           <FuturesSummaryCard
             label="Total uPnL"
-            value={snapshot?.summary.unrealized_pnl_total?.toFixed(4) ?? "..."}
+            value={summary?.unrealized_pnl_total?.toFixed(4) ?? "..."}
             note="Aggregated unrealized PnL for currently open positions."
             testId="futures.summary.upnl"
           />
@@ -72,7 +74,7 @@ export function FuturesPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Open Positions</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.positions ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.positions ?? false)}</p>
             </div>
           </div>
           <FuturesPositionsTable positions={snapshot?.positions ?? []} />
@@ -82,7 +84,7 @@ export function FuturesPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Active Orders</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.active_orders ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.active_orders ?? false)}</p>
             </div>
           </div>
           <FuturesOrdersTable orders={snapshot?.active_orders ?? []} />
@@ -92,7 +94,7 @@ export function FuturesPage() {
           <div className="surface-panel__header">
             <div>
               <h2>Recent Fills</h2>
-              <p className="panel-muted">{truncatedLabel(snapshot?.truncated.recent_fills ?? false)}</p>
+              <p className="panel-muted">{truncatedLabel(truncated?.recent_fills ?? false)}</p>
             </div>
           </div>
           <FuturesFillsTable fills={snapshot?.recent_fills ?? []} />
