@@ -1,26 +1,24 @@
-# Windows Packaging (EXE + Installer)
+# Windows Packaging
 
 ## What is built
 
-- Primary GUI/product path: Tauri desktop shell from `apps/desktop`.
-- Quarantined legacy fallback path: PyInstaller-based `botik.exe` and installer flow remain available only for rollback and fallback troubleshooting until later retirement.
+- Primary GUI/product path: the Tauri desktop shell from `apps/desktop`.
+- Supported packaged outputs on current `master`:
+  - MSI bundle
+  - NSIS setup bundle
+- The old PyInstaller/Inno fallback packaging path has been retired.
 
 ## Entrypoints
 
 - Source/dev primary GUI: `pwsh ./scripts/run-primary-desktop.ps1`
 - Source/dev shell-only: `pwsh ./scripts/dev-desktop.ps1`
 - Packaged primary GUI: `corepack pnpm --dir ./apps/desktop build`
-- Legacy fallback GUI: `botik.exe` or `run_windows_gui.bat`
-- Legacy fallback headless trading: `botik.exe --nogui --role trading --config config.yaml`
-- Legacy fallback headless ML: `botik.exe --nogui --role ml --config config.yaml --ml-mode online`
 
-Temporary legacy packaged launcher: `src/botik/windows_entry.py`.
+Important:
 
-Важно:
-- primary GUI cutover does not remove the legacy launcher yet;
-- rollback remains possible because the legacy launcher/build path still exists;
-- `python -m src.botik.gui.app` and `botik.exe` are fallback-only during this phase.
-- legacy packaging artifacts are quarantined and are no longer part of the primary operator flow.
+- the supported packaged GUI path is the Tauri shell only;
+- rollback after legacy retirement happens through git history or PR revert, not through a supported fallback EXE/installer path;
+- some internal legacy modules may still remain in the repository for compatibility/test cleanup, but they are not a supported packaging target.
 
 ## Build locally
 
@@ -36,45 +34,18 @@ Primary source/dev launch:
 pwsh ./scripts/run-primary-desktop.ps1
 ```
 
-Legacy fallback build:
-
-```bat
-build_windows_installer.bat
-```
-
-This produces the quarantined fallback installer:
+Bundle outputs:
 
 ```text
-dist\installer\BotikLegacyFallbackInstaller.exe
+apps\desktop\src-tauri\target\release\bundle\msi\
+apps\desktop\src-tauri\target\release\bundle\nsis\
 ```
-
-Portable build without installer (legacy fallback only, run from project folder):
-
-```bat
-build_portable_exe.bat
-run_windows_gui.bat
-```
-
-`build_portable_exe.bat` copies `dist\botik.exe` to project root as `botik.exe`.
-`run_windows_gui.bat` в этом контексте — helper-скрипт для quarantined legacy fallback path, а не основной пользовательский запуск.
-
-Script logs are written to `logs\script_logs\`:
-
-- `run_windows_gui_*.log`
-- `build_portable_exe_*.log`
-- `build_windows_installer_*.log`
-- `windows_entry.log` (startup/runtime errors before GUI is fully initialized)
-
-## Installer behavior
-
-- Tauri shell is now the primary GUI packaging target.
-- Legacy installer behavior remains documented only as a quarantined fallback until the later retirement phase.
 
 ## Runtime/logs
 
 - The Tauri desktop shell owns GUI startup and managed app-service lifecycle for the migrated product path.
 - Desktop shell artifacts and logs are written under `.artifacts/local/...` in source/dev and test runs.
-- Legacy GUI logs remain available only for rollback and fallback troubleshooting.
+- Frontend/app-service local verification remains covered by the permanent test platform.
 
 ## Source mode vs packaged mode
 
@@ -84,21 +55,14 @@ Script logs are written to `logs\script_logs\`:
   - `pwsh ./scripts/dev-frontend.ps1`
 - Primary packaged mode:
   - `corepack pnpm --dir ./apps/desktop build`
-- Legacy fallback mode:
-  - `python -m src.botik.gui.app`
-  - `botik.exe`
-  - `botik.exe --nogui --role trading ...`
-  - `botik.exe --nogui --role ml ...`
 
 ## Update behavior
 
 - In source/git mode, Telegram `/update` uses git and updates `version.txt`.
-- In installer mode (no `.git`), `/update` returns `repo_unavailable` and reports current `version.txt`.
-  - Upgrade path in installer mode is: install newer `BotikInstaller.exe`.
+- In packaged mode (no `.git`), `/update` returns `repo_unavailable` and reports current `version.txt`.
+  - Upgrade path in packaged mode is: install a newer Tauri desktop bundle.
 
 ## Notes
 
-- Keep rollback possible until the later legacy retirement phase.
-- Do not delete `windows_entry.py`, `run_windows_gui.bat`, or legacy packaging assets in the cutover phase.
-- If code-signing certificate is available, sign the primary desktop artifact for the Tauri shell and any temporary legacy fallback artifact separately.
-- See [docs/migration/legacy-quarantine.md](migration/legacy-quarantine.md) for the exact fallback-only posture.
+- If a code-signing certificate is available, sign the Tauri desktop artifacts produced by the primary packaging flow.
+- See [docs/migration/legacy-retirement.md](migration/legacy-retirement.md) for the exact retirement boundary.

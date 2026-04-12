@@ -1,22 +1,14 @@
-name: windows-package
+name: desktop-package
 
 on:
   workflow_dispatch:
   push:
     branches: [ master, main ]
     paths:
-      - "src/**"
-      - "dashboard_template.html"
-      - "dashboard_preview.html"
-      - "dashboard_workspace_manifest.yaml"
-      - "dashboard_release_manifest.yaml"
-      - "active_models.yaml"
-      - "botik.spec"
-      - "installer.iss"
-      - "requirements.txt"
-      - "build_portable_exe.bat"
-      - "build_windows_installer.bat"
-      - "tools/bump_version.py"
+      - "apps/desktop/**"
+      - "frontend/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
       - ".env.example"
       - "config.example.yaml"
       - "VERSION"
@@ -26,13 +18,12 @@ on:
 
 permissions:
   contents: write
-  statuses: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
-  group: windows-package-${{ github.ref }}
+  group: desktop-package-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,26 +36,20 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.ref_name }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Auto bump VERSION for branch push
-        id: bump
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
-        shell: pwsh
-        run: |
-          python tools/bump_version.py
-          $raw = Get-Content VERSION -Raw
-          $v = ($raw | Select-String "version=(.+)").Matches[0].Groups[1].Value.Trim()
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          git commit -m "ci: bump version to $v [skip ci]"
-          git push origin HEAD:${{ github.ref_name }}
-          $sha = (git rev-parse HEAD).Trim()
-          "bumped_sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Bumped VERSION to $v"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Read VERSION
         id: ver
@@ -73,129 +58,43 @@ jobs:
           $raw = Get-Content VERSION -Raw
           $v = ($raw | Select-String "version=(.+)").Matches[0].Groups[1].Value.Trim()
           "VERSION=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Building version: $v"
+          Write-Host "Packaging version label: $v"
           (git rev-parse HEAD).Trim() | Set-Content -Path version.txt -Encoding utf8
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+      - name: Build primary desktop bundles
+        run: corepack pnpm --dir ./apps/desktop build
 
-      - name: Build EXE
-        run: python -m PyInstaller --noconfirm --clean botik.spec
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
-
-      - name: Build installer
+      - name: Locate bundle artifacts
+        id: bundles
         shell: pwsh
         run: |
-          $resolved = $null
-          $command = Get-Command iscc.exe -ErrorAction SilentlyContinue
-          if ($command) {
-            $resolved = $command.Source
-          }
+          $msi = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/msi/*.msi" -ErrorAction Stop |
+            Select-Object -First 1 -ExpandProperty FullName
+          $nsis = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction Stop |
+            Select-Object -First 1 -ExpandProperty FullName
+          "msi=$msi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "nsis=$nsis" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "MSI: $msi"
+          Write-Host "NSIS: $nsis"
 
-          if (-not $resolved) {
-            $candidates = @(
-              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
-              "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe",
-              "${env:ChocolateyInstall}\lib\innosetup\tools\ISCC.exe",
-              "C:\ProgramData\chocolatey\lib\innosetup\tools\ISCC.exe"
-            ) | Where-Object { $_ -and (Test-Path $_) }
-            if ($candidates) {
-              $resolved = $candidates[0]
-            }
-          }
-
-          if (-not $resolved) {
-            $searchRoots = @(
-              "${env:ProgramFiles(x86)}",
-              "${env:ProgramFiles}",
-              "${env:LOCALAPPDATA}\Programs",
-              "${env:ChocolateyInstall}\lib",
-              "C:\ProgramData\chocolatey\lib"
-            ) | Where-Object { $_ -and (Test-Path $_) }
-
-            foreach ($root in $searchRoots) {
-              $match = Get-ChildItem -Path $root -Recurse -Filter ISCC.exe -File -ErrorAction SilentlyContinue |
-                Select-Object -First 1 -ExpandProperty FullName
-              if ($match) {
-                $resolved = $match
-                break
-              }
-            }
-          }
-
-          if (-not $resolved) {
-            throw "Inno Setup Compiler (ISCC.exe) not found after install."
-          }
-
-          $iscc = $resolved
-          Write-Host "Using ISCC: $iscc"
-          & $iscc /DMyAppVersion="${{ steps.ver.outputs.VERSION }}" installer.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "dist/installer/BotikInstaller.exe")) {
-            throw "Installer build completed without dist/installer/BotikInstaller.exe"
-          }
-
-      - name: Upload EXE artifact
+      - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: botik-${{ steps.ver.outputs.VERSION }}-exe
-          path: dist/botik.exe
+          name: botik-desktop-${{ steps.ver.outputs.VERSION }}-msi
+          path: ${{ steps.bundles.outputs.msi }}
 
-      - name: Upload installer artifact
+      - name: Upload NSIS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: botik-${{ steps.ver.outputs.VERSION }}-installer
-          path: dist/installer/BotikInstaller.exe
-
-      - name: Publish status for bumped VERSION commit
-        if: always() && steps.bump.outputs.bumped_sha != ''
-        continue-on-error: true
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUMPED_SHA: ${{ steps.bump.outputs.bumped_sha }}
-          JOB_STATUS: ${{ job.status }}
-          TARGET_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          $state = switch ($env:JOB_STATUS) {
-            "success" { "success" }
-            "cancelled" { "error" }
-            default { "failure" }
-          }
-          $description = switch ($env:JOB_STATUS) {
-            "success" { "windows-package completed successfully" }
-            "cancelled" { "windows-package was cancelled" }
-            default { "windows-package failed" }
-          }
-          $body = @{
-            state       = $state
-            context     = "windows-package/follow-up"
-            description = $description
-            target_url  = $env:TARGET_URL
-          } | ConvertTo-Json
-          Invoke-RestMethod `
-            -Method Post `
-            -Uri "https://api.github.com/repos/${{ github.repository }}/statuses/$($env:BUMPED_SHA)" `
-            -Headers @{
-              Authorization = "Bearer $env:GH_TOKEN"
-              Accept        = "application/vnd.github+json"
-              "User-Agent"  = "github-actions"
-            } `
-            -ContentType "application/json" `
-            -Body $body | Out-Null
+          name: botik-desktop-${{ steps.ver.outputs.VERSION }}-nsis
+          path: ${{ steps.bundles.outputs.nsis }}
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: "Botik v${{ steps.ver.outputs.VERSION }}"
+          name: "Botik Desktop v${{ steps.ver.outputs.VERSION }}"
           generate_release_notes: true
           files: |
-            dist/botik.exe
-            dist/installer/BotikInstaller.exe
+            ${{ steps.bundles.outputs.msi }}
+            ${{ steps.bundles.outputs.nsis }}
