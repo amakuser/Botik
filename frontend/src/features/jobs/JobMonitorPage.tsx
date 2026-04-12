@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getJob, listJobs, startJob, stopJob } from "../../shared/api/client";
 import { JobDetails, JobState, JobSummary, StartJobRequest } from "../../shared/contracts";
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { DataBackfillJobCard } from "./components/DataBackfillJobCard";
 import { DataIntegrityJobCard } from "./components/DataIntegrityJobCard";
 import { JobLogPanel } from "./components/JobLogPanel";
@@ -169,56 +171,64 @@ export function JobMonitorPage() {
 
   return (
     <AppShell>
-      <div className="jobs-layout">
-        <div className="jobs-sidebar">
-          <JobToolbar
-            sampleImportDisabled={Boolean(activeJob)}
-            stopDisabled={!selectedJob || !ACTIVE_STATES.includes(selectedJob.state)}
-            onStartSampleImport={handleStartSampleImport}
-            onStop={handleStop}
-          />
-          <DataBackfillJobCard disabled={Boolean(activeJob)} onStart={handleStartDataBackfill} />
-          <DataIntegrityJobCard disabled={Boolean(activeJob)} onStart={handleStartDataIntegrity} />
+      <div className="app-route jobs-page">
+        <PageIntro
+          eyebrow="Operations"
+          title="Job Monitor"
+          description="Bounded background workflows, current job state, and live log visibility through the primary Job Manager path."
+        />
 
-          <section className="panel" aria-labelledby="job-list-title">
-            <h2 id="job-list-title">Job History</h2>
-            {jobs.length === 0 ? (
-              <p className="panel-muted" data-testid="jobs.history.empty">
-                No jobs have run yet.
-              </p>
-            ) : (
-              <ol className="jobs-list">
-                {jobs.map((job) => (
-                  <li key={job.job_id}>
-                    <button
-                      type="button"
-                      className={job.job_id === selectedJobId ? "jobs-list__button is-selected" : "jobs-list__button"}
-                      onClick={() => setSelectedJobId(job.job_id)}
-                    >
-                      <div className="jobs-list__title">{job.job_type}</div>
-                      <div className="jobs-list__meta">
-                        <span>{job.state}</span>
-                        <span>{Math.round(job.progress * 100)}%</span>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-        </div>
+        <div className="jobs-layout">
+          <div className="jobs-sidebar">
+            <JobToolbar
+              sampleImportDisabled={Boolean(activeJob)}
+              stopDisabled={!selectedJob || !ACTIVE_STATES.includes(selectedJob.state)}
+              onStartSampleImport={handleStartSampleImport}
+              onStop={handleStop}
+            />
+            <DataBackfillJobCard disabled={Boolean(activeJob)} onStart={handleStartDataBackfill} />
+            <DataIntegrityJobCard disabled={Boolean(activeJob)} onStart={handleStartDataIntegrity} />
 
-        <div className="jobs-main">
-          <JobStatusCard job={selectedJob} />
-          <JobLogPanel logs={logs} />
-          {actionError ? (
-            <section className="panel">
-              <h2>Action Error</h2>
-              <p className="inline-error" data-testid="jobs.action-error">
-                {actionError}
-              </p>
+            <section className="panel" aria-labelledby="job-list-title">
+              <SectionHeading title="Job History" description="Recent bounded execution history for the current primary job path." />
+              {jobs.length === 0 ? (
+                <p className="panel-muted" data-testid="jobs.history.empty">
+                  No jobs have run yet.
+                </p>
+              ) : (
+                <ol className="jobs-list">
+                  {jobs.map((job) => (
+                    <li key={job.job_id}>
+                      <button
+                        type="button"
+                        className={job.job_id === selectedJobId ? "jobs-list__button is-selected" : "jobs-list__button"}
+                        onClick={() => setSelectedJobId(job.job_id)}
+                      >
+                        <div className="jobs-list__title">{job.job_type}</div>
+                        <div className="jobs-list__meta">
+                          <span>{job.state}</span>
+                          <span>{Math.round(job.progress * 100)}%</span>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </section>
-          ) : null}
+          </div>
+
+          <div className="jobs-main">
+            <JobStatusCard job={selectedJob} />
+            <JobLogPanel logs={logs} />
+            {actionError ? (
+              <section className="panel">
+                <h2>Action Error</h2>
+                <p className="inline-error" data-testid="jobs.action-error">
+                  {actionError}
+                </p>
+              </section>
+            ) : null}
+          </div>
         </div>
       </div>
     </AppShell>

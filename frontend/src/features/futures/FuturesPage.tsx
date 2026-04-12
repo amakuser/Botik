@@ -1,4 +1,6 @@
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { FuturesFillsTable } from "./components/FuturesFillsTable";
 import { FuturesOrdersTable } from "./components/FuturesOrdersTable";
 import { FuturesPositionsTable } from "./components/FuturesPositionsTable";
@@ -17,16 +19,17 @@ export function FuturesPage() {
 
   return (
     <AppShell>
-      <div className="futures-layout">
-        <section className="panel">
-          <h2>Futures Read Surface</h2>
-          <p className="panel-muted">
-            Read-only visibility for open positions, active orders, recent fills, and protection state on the new stack.
-          </p>
-          <p className="status-caption" data-testid="futures.source-mode">
-            Source mode: {snapshot?.source_mode ?? "loading"}
-          </p>
-        </section>
+      <div className="app-route futures-layout">
+        <PageIntro
+          eyebrow="Read Surface"
+          title="Futures Read Surface"
+          description="Bounded read-only visibility for open positions, active orders, recent fills, and protection state on the primary stack."
+          meta={
+            <p className="status-caption" data-testid="futures.source-mode">
+              Source mode: {snapshot?.source_mode ?? "loading"}
+            </p>
+          }
+        />
 
         {futuresQuery.isError ? (
           <section className="panel">
@@ -71,32 +74,17 @@ export function FuturesPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Open Positions</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.positions ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Open Positions" description={truncatedLabel(truncated?.positions ?? false)} />
           <FuturesPositionsTable positions={snapshot?.positions ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Active Orders</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.active_orders ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Active Orders" description={truncatedLabel(truncated?.active_orders ?? false)} />
           <FuturesOrdersTable orders={snapshot?.active_orders ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Recent Fills</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.recent_fills ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Recent Fills" description={truncatedLabel(truncated?.recent_fills ?? false)} />
           <FuturesFillsTable fills={snapshot?.recent_fills ?? []} />
         </section>
       </div>

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { runTelegramConnectivityCheck } from "../../shared/api/client";
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { TelegramConnectivityCheckResult } from "../../shared/contracts";
 import { TelegramAlertsTable } from "./components/TelegramAlertsTable";
 import { TelegramCommandsTable } from "./components/TelegramCommandsTable";
@@ -39,17 +41,17 @@ export function TelegramPage() {
 
   return (
     <AppShell>
-      <div className="telegram-layout">
-        <section className="panel">
-          <h2>Telegram Ops</h2>
-          <p className="panel-muted">
-            Read-only operational visibility for Telegram bot configuration, recent alerts, recent errors, and a safe
-            connectivity check on the new stack.
-          </p>
-          <p className="status-caption" data-testid="telegram.source-mode">
-            Source mode: {snapshot?.source_mode ?? "loading"}
-          </p>
-        </section>
+      <div className="app-route telegram-layout">
+        <PageIntro
+          eyebrow="Operations"
+          title="Telegram Ops"
+          description="Bounded operational visibility for Telegram health, recent alerts, recent errors, and a safe connectivity check on the primary stack."
+          meta={
+            <p className="status-caption" data-testid="telegram.source-mode">
+              Source mode: {snapshot?.source_mode ?? "loading"}
+            </p>
+          }
+        />
 
         {telegramQuery.isError ? (
           <section className="panel">
@@ -88,23 +90,21 @@ export function TelegramPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Connectivity Check</h2>
-              <p className="panel-muted">
-                Safe `getMe` reachability check only. No message send, no runtime control, no bot mutation.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => void runCheck()}
-              disabled={checking}
-              data-testid="telegram.connectivity-check"
-            >
-              {checking ? "Checking..." : "Run Connectivity Check"}
-            </button>
-          </div>
+          <SectionHeading
+            title="Connectivity Check"
+            description="Safe `getMe` reachability check only. No message send, no runtime control, no bot mutation."
+            actions={
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => void runCheck()}
+                disabled={checking}
+                data-testid="telegram.connectivity-check"
+              >
+                {checking ? "Checking..." : "Run Connectivity Check"}
+              </button>
+            }
+          />
           {checkResult ? (
             <div className="telegram-check-result" data-testid="telegram.check.result">
               <p className="status-caption">
@@ -126,32 +126,17 @@ export function TelegramPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Recent Commands</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.recent_commands ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Recent Commands" description={truncatedLabel(truncated?.recent_commands ?? false)} />
           <TelegramCommandsTable commands={snapshot?.recent_commands ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Recent Alerts</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.recent_alerts ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Recent Alerts" description={truncatedLabel(truncated?.recent_alerts ?? false)} />
           <TelegramAlertsTable alerts={snapshot?.recent_alerts ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Recent Errors</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.recent_errors ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Recent Errors" description={truncatedLabel(truncated?.recent_errors ?? false)} />
           <TelegramErrorsTable errors={snapshot?.recent_errors ?? []} />
         </section>
       </div>

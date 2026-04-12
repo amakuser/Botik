@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { startRuntime, stopRuntime } from "../../shared/api/client";
 import { RuntimeStatus } from "../../shared/contracts";
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
 import { RuntimeStatusCard } from "./components/RuntimeStatusCard";
 import { useRuntimeStatus } from "./hooks/useRuntimeStatus";
 
@@ -32,13 +33,12 @@ export function RuntimeStatusPage() {
 
   return (
     <AppShell>
-      <div className="runtime-layout">
-        <section className="panel">
-          <h2>Runtime Control</h2>
-          <p className="panel-muted">
-            Controlled start/stop for the current trading runtimes, with the same heartbeat and last-error status model.
-          </p>
-        </section>
+      <div className="app-route runtime-layout">
+        <PageIntro
+          eyebrow="Operations"
+          title="Runtime Control"
+          description="Bounded start and stop controls for the active trading runtimes, with the same observable heartbeat and last-error status model."
+        />
 
         {runtimeStatusQuery.isError ? (
           <section className="panel">

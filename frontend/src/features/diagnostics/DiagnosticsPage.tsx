@@ -1,4 +1,6 @@
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { useDiagnosticsModel } from "./hooks/useDiagnosticsModel";
 
 function boolLabel(value: boolean) {
@@ -11,17 +13,17 @@ export function DiagnosticsPage() {
 
   return (
     <AppShell>
-      <div className="diagnostics-layout">
-        <section className="panel">
-          <h2>Settings / Diagnostics Compatibility</h2>
-          <p className="panel-muted">
-            Read-only resolved config, path, and compatibility diagnostics for the already migrated new-stack product
-            path.
-          </p>
-          <p className="status-caption" data-testid="diagnostics.source-mode">
-            Source mode: {snapshot?.source_mode ?? "loading"}
-          </p>
-        </section>
+      <div className="app-route diagnostics-layout">
+        <PageIntro
+          eyebrow="Diagnostics"
+          title="Settings / Diagnostics Compatibility"
+          description="Read-only resolved config, path, and compatibility diagnostics for the already migrated primary product path."
+          meta={
+            <p className="status-caption" data-testid="diagnostics.source-mode">
+              Source mode: {snapshot?.source_mode ?? "loading"}
+            </p>
+          }
+        />
 
         {diagnosticsQuery.isError ? (
           <section className="panel">
@@ -56,12 +58,7 @@ export function DiagnosticsPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Resolved Config</h2>
-              <p className="panel-muted">Masked where appropriate. No settings editing is exposed in this slice.</p>
-            </div>
-          </div>
+          <SectionHeading title="Resolved Config" description="Masked where appropriate. No settings editing is exposed in this slice." />
           <div className="surface-table-wrap">
             <table className="surface-table">
               <thead>
@@ -85,12 +82,7 @@ export function DiagnosticsPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Resolved Paths</h2>
-              <p className="panel-muted">Read-only path/config diagnostics for the current migrated flows.</p>
-            </div>
-          </div>
+          <SectionHeading title="Resolved Paths" description="Read-only path/config diagnostics for the current migrated flows." />
           <div className="surface-table-wrap">
             <table className="surface-table">
               <thead>
@@ -118,12 +110,7 @@ export function DiagnosticsPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Warnings</h2>
-              <p className="panel-muted">Bounded compatibility warnings only, with no mutation controls.</p>
-            </div>
-          </div>
+          <SectionHeading title="Warnings" description="Bounded compatibility warnings only, with no mutation controls." />
           {(snapshot?.warnings ?? []).length > 0 ? (
             <ul className="diagnostics-warning-list">
               {(snapshot?.warnings ?? []).map((warning, index) => (
