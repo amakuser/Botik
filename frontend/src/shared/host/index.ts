@@ -10,7 +10,7 @@ export interface HostRuntimeConfig {
   desktop: boolean;
 }
 
-export async function getHostRuntimeConfig(): Promise<HostRuntimeConfig> {
+function readHostRuntimeConfig(): HostRuntimeConfig {
   const injected = typeof window !== "undefined" ? window.__BOTIK_HOST__ : undefined;
   const env = import.meta.env;
 
@@ -19,4 +19,16 @@ export async function getHostRuntimeConfig(): Promise<HostRuntimeConfig> {
     sessionToken: injected?.sessionToken ?? env.VITE_BOTIK_SESSION_TOKEN ?? "botik-dev-token",
     desktop: injected?.desktop ?? env.VITE_BOTIK_DESKTOP === "true",
   };
+}
+
+export function getHostRuntimeConfigSync(): HostRuntimeConfig {
+  return readHostRuntimeConfig();
+}
+
+export async function getHostRuntimeConfig(): Promise<HostRuntimeConfig> {
+  return readHostRuntimeConfig();
+}
+
+export function isDesktopRuntime(): boolean {
+  return readHostRuntimeConfig().desktop;
 }
