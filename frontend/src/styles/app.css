@@ -231,7 +231,7 @@ body {
 
 .logs-layout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
 }
 
@@ -279,6 +279,11 @@ body {
 .jobs-sidebar,
 .jobs-main,
 .logs-main {
+  display: grid;
+  gap: 16px;
+}
+
+.logs-channel-panel {
   display: grid;
   gap: 16px;
 }
@@ -671,8 +676,7 @@ body {
 
 .log-channel-tabs {
   display: grid;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 12px;
 }
 
 .log-channel-tabs__button {
@@ -690,9 +694,32 @@ body {
   cursor: pointer;
 }
 
+.log-channel-tabs__button:hover {
+  border-color: rgba(96, 165, 250, 0.34);
+  background: rgba(15, 23, 42, 0.82);
+}
+
 .log-channel-tabs__button.is-selected {
   border-color: rgba(190, 242, 100, 0.55);
   box-shadow: 0 0 0 1px rgba(190, 242, 100, 0.25);
+}
+
+.log-channel-tabs__body {
+  display: grid;
+  gap: 4px;
+}
+
+.log-channel-tabs__title {
+  font-weight: 600;
+}
+
+.log-channel-tabs__source,
+.log-status-bar__label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
 }
 
 .log-status-bar {
@@ -701,9 +728,43 @@ body {
   gap: 12px;
 }
 
+.log-status-bar__item {
+  display: grid;
+  gap: 6px;
+  min-height: 72px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.log-status-bar__item strong {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
 .log-viewer {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+}
+
+.log-viewer__empty {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.log-viewer__source {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 10px;
+  padding: 0 10px;
+  min-height: 28px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .runtime-card__header {

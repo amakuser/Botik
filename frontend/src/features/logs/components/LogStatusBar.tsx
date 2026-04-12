@@ -10,17 +10,21 @@ interface LogStatusBarProps {
 export function LogStatusBar({ channel, connected, entryCount, truncated }: LogStatusBarProps) {
   return (
     <div className="log-status-bar panel" data-testid="logs.status-bar">
-      <div>
-        <strong>Channel:</strong> <span data-testid="logs.status.channel">{channel?.label ?? "None selected"}</span>
+      <div className="log-status-bar__item">
+        <span className="log-status-bar__label">Channel</span>
+        <strong data-testid="logs.status.channel">{channel?.label ?? "None selected"}</strong>
       </div>
-      <div>
-        <strong>Connection:</strong> <span data-testid="logs.status.connection">{connected ? "connected" : "idle"}</span>
+      <div className="log-status-bar__item">
+        <span className="log-status-bar__label">Connection</span>
+        <strong data-testid="logs.status.connection">{connected ? "connected" : "idle"}</strong>
       </div>
-      <div>
-        <strong>Entries:</strong> <span data-testid="logs.status.count">{entryCount}</span>
+      <div className="log-status-bar__item">
+        <span className="log-status-bar__label">Entries</span>
+        <strong data-testid="logs.status.count">{entryCount}</strong>
       </div>
-      <div>
-        <strong>Snapshot:</strong> <span data-testid="logs.status.truncated">{truncated ? "truncated" : "complete"}</span>
+      <div className="log-status-bar__item">
+        <span className="log-status-bar__label">Snapshot</span>
+        <strong data-testid="logs.status.truncated">{truncated ? "truncated" : "complete"}</strong>
       </div>
     </div>
   );
