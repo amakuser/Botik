@@ -80,8 +80,13 @@ Reason:
 
 Rollback:
 
-- only possible before final legacy removal cutover;
-- create a stable tag or branch before removing the old primary path.
+- revert the retirement PR; or
+- check out a pre-retirement commit or tag for investigation.
+
+Reason:
+
+- once retirement lands, the old launcher/build path is no longer a supported runtime fallback inside current `master`;
+- rollback remains possible through git history without keeping dual operator paths alive indefinitely.
 
 ## Route and Feature Switching
 
@@ -97,5 +102,5 @@ This switch should come from configuration, manifest, or app-service capability 
 Rollback safety is incomplete unless:
 
 - the migrated path has automated tests;
-- the fallback path is still operational;
+- a recovery path still exists through rollback automation, git history, or a pre-retirement commit/tag;
 - artifacts can show why the migrated path was rolled back.

@@ -76,4 +76,5 @@ The migrated stack now has stable local commands:
 - headless E2E: `pwsh ./scripts/test-e2e.ps1`
 - desktop smoke: `pwsh ./scripts/test-desktop-smoke.ps1`
 
-During the quarantine period, the legacy pywebview launcher remains available only as a quarantined fallback path.
+The legacy pywebview launcher is retired as a supported operator path.
+If internal compatibility code still references it, treat that code as maintenance-only and avoid reopening it without a clear migration reason.

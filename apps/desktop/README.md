@@ -21,5 +21,5 @@ Useful commands:
 - low-level shell-only launch: `pwsh ./scripts/dev-desktop.ps1`
 - packaged shell build: `corepack pnpm --dir ./apps/desktop build`
 
-Legacy pywebview remains available only as a quarantined fallback during the final retirement window.
-It is not the primary operator path anymore.
+The old pywebview path is no longer a supported operator or packaging path.
+Internal legacy modules may still remain in the repository for compatibility/test cleanup, but the supported desktop path is the Tauri shell only.
