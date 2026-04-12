@@ -237,7 +237,7 @@ body {
 
 .runtime-layout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
 .spot-layout {
@@ -286,7 +286,12 @@ body {
 .runtime-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+  gap: 18px;
+}
+
+.runtime-surface {
+  display: grid;
+  gap: 18px;
 }
 
 .spot-summary-grid {
@@ -538,17 +543,61 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
+  margin-bottom: 16px;
+}
+
+.runtime-card__title-block {
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-card__title-block h2 {
+  margin: 0;
+}
+
+.runtime-card__signal-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.runtime-card__signal {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.runtime-card__signal strong {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.runtime-card__signal-label,
+.runtime-card__callout-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
 }
 
 .runtime-card__details {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 14px;
-  margin: 16px 0;
+  margin: 0 0 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .runtime-card__details dt {
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   margin-bottom: 4px;
 }
@@ -559,16 +608,42 @@ body {
   font-size: 0.92rem;
 }
 
+.runtime-card__callouts {
+  display: grid;
+  gap: 12px;
+}
+
+.runtime-card__callout {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.runtime-card__callout--error {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(60, 20, 29, 0.28);
+}
+
 .runtime-card__reason {
   margin: 0;
-  color: #94a3b8;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.runtime-card__error {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.5;
 }
 
 .runtime-card__actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .surface-panel__header {
@@ -679,6 +754,10 @@ body {
   }
 
   .runtime-card__details {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-card__signal-row {
     grid-template-columns: 1fr;
   }
 }

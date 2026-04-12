@@ -4,6 +4,7 @@ import { startRuntime, stopRuntime } from "../../shared/api/client";
 import { RuntimeStatus } from "../../shared/contracts";
 import { AppShell } from "../../shared/ui/AppShell";
 import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { RuntimeStatusCard } from "./components/RuntimeStatusCard";
 import { useRuntimeStatus } from "./hooks/useRuntimeStatus";
 
@@ -11,6 +12,9 @@ export function RuntimeStatusPage() {
   const queryClient = useQueryClient();
   const runtimeStatusQuery = useRuntimeStatus();
   const runtimes = runtimeStatusQuery.data?.runtimes ?? [];
+  const runningCount = runtimes.filter((runtime) => runtime.state === "running").length;
+  const degradedCount = runtimes.filter((runtime) => runtime.state === "degraded").length;
+  const offlineCount = runtimes.filter((runtime) => ["offline", "unknown"].includes(runtime.state)).length;
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<`${RuntimeStatus["runtime_id"]}:${"start" | "stop"}` | null>(null);
 
@@ -38,6 +42,13 @@ export function RuntimeStatusPage() {
           eyebrow="Operations"
           title="Runtime Control"
           description="Bounded start and stop controls for the active trading runtimes, with the same observable heartbeat and last-error status model."
+          meta={
+            <>
+              <p className="status-caption">Running: {runningCount}</p>
+              <p className="status-caption">Needs attention: {degradedCount}</p>
+              <p className="status-caption">Offline / unknown: {offlineCount}</p>
+            </>
+          }
         />
 
         {runtimeStatusQuery.isError ? (
@@ -58,7 +69,13 @@ export function RuntimeStatusPage() {
           </section>
         ) : null}
 
-        <section className="runtime-grid">
+        <section className="panel runtime-surface">
+          <SectionHeading
+            title="Managed Runtimes"
+            description="Operational health, heartbeat recency, and bounded lifecycle controls for the migrated trading runtimes."
+          />
+
+          <div className="runtime-grid">
           {runtimes.map((runtime) => (
             <RuntimeStatusCard
               key={runtime.runtime_id}
@@ -69,6 +86,7 @@ export function RuntimeStatusPage() {
               onStop={() => void runAction(runtime.runtime_id, "stop")}
             />
           ))}
+          </div>
         </section>
       </div>
     </AppShell>
