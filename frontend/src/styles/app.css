@@ -364,6 +364,13 @@ body {
   gap: 16px;
 }
 
+.analytics-summary-panel,
+.analytics-series-panel,
+.analytics-trades-panel {
+  display: grid;
+  gap: 18px;
+}
+
 .models-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1006,6 +1013,41 @@ body {
   line-height: 1.5;
 }
 
+.analytics-summary-card {
+  display: grid;
+  gap: 8px;
+}
+
+.analytics-summary-card__eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
+}
+
+.analytics-summary-card__label,
+.analytics-summary-card__value,
+.analytics-summary-card__note {
+  margin: 0;
+}
+
+.analytics-summary-card__label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.analytics-summary-card__value {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.analytics-summary-card__note {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .models-summary-card {
   display: grid;
   gap: 8px;
@@ -1141,6 +1183,12 @@ body {
   border-radius: 18px;
   background: rgba(15, 23, 42, 0.44);
   border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.analytics-signal-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
 }
 
 .futures-pnl {

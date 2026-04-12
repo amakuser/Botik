@@ -6,7 +6,12 @@ type AnalyticsEquityCurveTableProps = {
 
 export function AnalyticsEquityCurveTable({ points }: AnalyticsEquityCurveTableProps) {
   if (points.length === 0) {
-    return <p className="panel-muted">No closed-trade performance points are available yet.</p>;
+    return (
+      <div className="surface-table-empty">
+        <strong>No closed-trade performance points are available yet.</strong>
+        <p className="panel-muted">The bounded analytics snapshot does not include any cumulative series rows yet.</p>
+      </div>
+    );
   }
 
   return (
@@ -22,9 +27,22 @@ export function AnalyticsEquityCurveTable({ points }: AnalyticsEquityCurveTableP
         <tbody>
           {points.map((point, index) => (
             <tr key={`${point.date}-${index}`} data-testid={`analytics.equity.${point.date}`}>
-              <td>{point.date}</td>
-              <td>{point.daily_pnl.toFixed(4)}</td>
-              <td>{point.cumulative_pnl.toFixed(4)}</td>
+              <td>
+                <div className="surface-table__stack">
+                  <span className="surface-table__primary">{point.date}</span>
+                  <span className="panel-muted">{index === points.length - 1 ? "Latest point" : "Historical point"}</span>
+                </div>
+              </td>
+              <td>
+                <span className={point.daily_pnl < 0 ? "futures-pnl futures-pnl--negative" : "futures-pnl futures-pnl--positive"}>
+                  {point.daily_pnl.toFixed(4)}
+                </span>
+              </td>
+              <td>
+                <span className={point.cumulative_pnl < 0 ? "futures-pnl futures-pnl--negative" : "futures-pnl futures-pnl--positive"}>
+                  {point.cumulative_pnl.toFixed(4)}
+                </span>
+              </td>
             </tr>
           ))}
         </tbody>
