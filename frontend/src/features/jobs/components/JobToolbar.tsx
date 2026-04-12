@@ -1,3 +1,5 @@
+import { SectionHeading } from "../../../shared/ui/SectionHeading";
+
 interface JobToolbarProps {
   sampleImportDisabled: boolean;
   stopDisabled: boolean;
@@ -7,8 +9,11 @@ interface JobToolbarProps {
 
 export function JobToolbar({ sampleImportDisabled, stopDisabled, onStartSampleImport, onStop }: JobToolbarProps) {
   return (
-    <section className="panel" aria-labelledby="job-toolbar-title">
-      <h2 id="job-toolbar-title">Data Jobs</h2>
+    <section className="panel job-action-card">
+      <SectionHeading
+        title="Data Jobs"
+        description="Quick-start actions for the deterministic import flow and the currently selected running job."
+      />
       <p className="toolbar-hint">Existing deterministic import flow plus one fixed-preset real backfill job on the same Job Manager path.</p>
       <div className="toolbar-actions">
         <button type="button" className="button-primary" onClick={onStartSampleImport} disabled={sampleImportDisabled}>

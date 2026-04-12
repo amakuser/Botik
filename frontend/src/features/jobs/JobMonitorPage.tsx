@@ -38,6 +38,10 @@ function toSummary(job: JobDetails): JobSummary {
   };
 }
 
+function formatJobUpdatedAt(value: string | null | undefined) {
+  return value ? new Date(value).toLocaleTimeString() : "n/a";
+}
+
 export function JobMonitorPage() {
   const queryClient = useQueryClient();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -97,6 +101,8 @@ export function JobMonitorPage() {
 
   const activeJob = jobs.find((job) => ACTIVE_STATES.includes(job.state));
   const logs = selectedJobId ? logsByJob[selectedJobId] ?? [] : [];
+  const selectedJobState = selectedJob?.state ?? "none";
+  const selectedJobProgress = selectedJob ? Math.round((selectedJob.progress ?? 0) * 100) : 0;
 
   async function handleStart(request: StartJobRequest, fallbackMessage: string) {
     setActionError(null);
@@ -176,20 +182,31 @@ export function JobMonitorPage() {
           eyebrow="Operations"
           title="Job Monitor"
           description="Bounded background workflows, current job state, and live log visibility through the primary Job Manager path."
+          meta={
+            <>
+              <p className="status-caption">Active jobs: {activeJob ? 1 : 0}</p>
+              <p className="status-caption">History entries: {jobs.length}</p>
+              <p className="status-caption">
+                Selected: {selectedJobState === "none" ? "none" : `${selectedJobState} · ${selectedJobProgress}%`}
+              </p>
+            </>
+          }
         />
 
         <div className="jobs-layout">
           <div className="jobs-sidebar">
-            <JobToolbar
-              sampleImportDisabled={Boolean(activeJob)}
-              stopDisabled={!selectedJob || !ACTIVE_STATES.includes(selectedJob.state)}
-              onStartSampleImport={handleStartSampleImport}
-              onStop={handleStop}
-            />
-            <DataBackfillJobCard disabled={Boolean(activeJob)} onStart={handleStartDataBackfill} />
-            <DataIntegrityJobCard disabled={Boolean(activeJob)} onStart={handleStartDataIntegrity} />
+            <div className="jobs-control-stack">
+              <JobToolbar
+                sampleImportDisabled={Boolean(activeJob)}
+                stopDisabled={!selectedJob || !ACTIVE_STATES.includes(selectedJob.state)}
+                onStartSampleImport={handleStartSampleImport}
+                onStop={handleStop}
+              />
+              <DataBackfillJobCard disabled={Boolean(activeJob)} onStart={handleStartDataBackfill} />
+              <DataIntegrityJobCard disabled={Boolean(activeJob)} onStart={handleStartDataIntegrity} />
+            </div>
 
-            <section className="panel" aria-labelledby="job-list-title">
+            <section className="panel jobs-history-panel">
               <SectionHeading title="Job History" description="Recent bounded execution history for the current primary job path." />
               {jobs.length === 0 ? (
                 <p className="panel-muted" data-testid="jobs.history.empty">
@@ -204,10 +221,16 @@ export function JobMonitorPage() {
                         className={job.job_id === selectedJobId ? "jobs-list__button is-selected" : "jobs-list__button"}
                         onClick={() => setSelectedJobId(job.job_id)}
                       >
-                        <div className="jobs-list__title">{job.job_type}</div>
+                        <div className="jobs-list__topline">
+                          <div className="jobs-list__title">{job.job_type}</div>
+                          <span className={`status-chip is-${job.state}`}>{job.state}</span>
+                        </div>
                         <div className="jobs-list__meta">
-                          <span>{job.state}</span>
+                          <span>Updated {formatJobUpdatedAt(job.updated_at)}</span>
                           <span>{Math.round(job.progress * 100)}%</span>
+                        </div>
+                        <div className="jobs-list__progress" aria-hidden="true">
+                          <span className="jobs-list__progress-bar" style={{ width: `${Math.round(job.progress * 100)}%` }} />
                         </div>
                       </button>
                     </li>

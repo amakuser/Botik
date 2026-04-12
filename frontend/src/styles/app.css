@@ -225,7 +225,7 @@ body {
 
 .jobs-layout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
 }
 
@@ -279,6 +279,37 @@ body {
 .jobs-sidebar,
 .jobs-main,
 .logs-main {
+  display: grid;
+  gap: 16px;
+}
+
+.jobs-control-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.job-action-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.job-action-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.7), rgba(190, 242, 100, 0.7));
+}
+
+.job-preset-card .job-preset-grid {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.jobs-history-panel,
+.jobs-selected-panel {
   display: grid;
   gap: 16px;
 }
@@ -395,9 +426,21 @@ body {
   cursor: pointer;
 }
 
+.jobs-list__button:hover {
+  border-color: rgba(96, 165, 250, 0.34);
+  background: rgba(15, 23, 42, 0.84);
+}
+
 .jobs-list__button.is-selected {
   border-color: rgba(190, 242, 100, 0.55);
   box-shadow: 0 0 0 1px rgba(190, 242, 100, 0.25);
+}
+
+.jobs-list__topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .jobs-list__title,
@@ -412,6 +455,22 @@ body {
   margin-top: 10px;
   color: var(--text-secondary);
   font-size: 0.95rem;
+}
+
+.jobs-list__progress {
+  margin-top: 12px;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  overflow: hidden;
+}
+
+.jobs-list__progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8ec5ff, #b7f0d8);
 }
 
 .status-grid {
@@ -432,8 +491,92 @@ body {
   margin: 0;
 }
 
+.job-preset-grid dt {
+  color: var(--text-secondary);
+}
+
 .status-grid dd {
   margin: 0;
+}
+
+.jobs-selected__topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.jobs-selected__identity {
+  display: grid;
+  gap: 6px;
+}
+
+.jobs-selected__identity h3 {
+  margin: 0;
+  font-size: 1.28rem;
+}
+
+.jobs-selected__eyebrow,
+.jobs-selected__callout-label {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
+}
+
+.jobs-progress-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.jobs-progress-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.jobs-progress-card__label {
+  color: var(--text-secondary);
+}
+
+.jobs-progress-card__header strong {
+  font-size: 1.35rem;
+}
+
+.jobs-progress-card__track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+}
+
+.jobs-progress-card__bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8ec5ff, #b7f0d8);
+}
+
+.jobs-selected__callout {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.jobs-selected__callout--error {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(60, 20, 29, 0.28);
 }
 
 .status-chip {
@@ -459,7 +602,14 @@ body {
 
 .log-panel {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+}
+
+.log-panel__empty {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .log-panel__list {
@@ -475,12 +625,17 @@ body {
 .log-panel__item {
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.74);
-  padding: 12px;
+  padding: 14px;
   border: 1px solid rgba(96, 165, 250, 0.15);
 }
 
 .log-panel__item[data-level="ERROR"] {
   border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(60, 20, 29, 0.24);
+}
+
+.log-panel__item[data-level="INFO"] {
+  border-color: rgba(96, 165, 250, 0.2);
 }
 
 .log-panel__meta {
@@ -491,9 +646,22 @@ body {
   font-size: 0.9rem;
 }
 
+.log-panel__level {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
 .log-panel__message {
   margin: 6px 0 0;
   white-space: pre-wrap;
+  line-height: 1.5;
 }
 
 .inline-error {
@@ -743,6 +911,12 @@ body {
   .jobs-layout,
   .logs-layout {
     grid-template-columns: 1fr;
+  }
+
+  .jobs-selected__topline,
+  .jobs-list__topline {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .app-shell__sidebar {

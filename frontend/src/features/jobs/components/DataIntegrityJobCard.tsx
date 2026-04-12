@@ -1,3 +1,5 @@
+import { SectionHeading } from "../../../shared/ui/SectionHeading";
+
 interface DataIntegrityJobCardProps {
   disabled: boolean;
   onStart: () => void;
@@ -5,9 +7,12 @@ interface DataIntegrityJobCardProps {
 
 export function DataIntegrityJobCard({ disabled, onStart }: DataIntegrityJobCardProps) {
   return (
-    <section className="panel" aria-labelledby="data-integrity-title">
-      <h2 id="data-integrity-title">Data Integrity Job</h2>
-      <p className="toolbar-hint">Read-only validation for the fixed-preset data backfill DB on the existing Job Manager path.</p>
+    <section className="panel job-action-card job-preset-card">
+      <SectionHeading
+        title="Data Integrity Job"
+        description="Read-only validation for the fixed-preset data backfill DB on the existing Job Manager path."
+      />
+      <p className="toolbar-hint">Bounded validation only, with no repair/write actions and no broad data maintenance console.</p>
       <dl className="job-preset-grid">
         <dt>Symbol</dt>
         <dd data-testid="jobs.integrity.symbol">BTCUSDT</dd>
