@@ -19,7 +19,10 @@ export function LogChannelTabs({ channels, selectedChannelId, onSelect }: LogCha
           onClick={() => onSelect(channel.channel_id)}
           data-testid={`logs.channel.${channel.channel_id}`}
         >
-          <span>{channel.label}</span>
+          <span className="log-channel-tabs__body">
+            <span className="log-channel-tabs__title">{channel.label}</span>
+            <span className="log-channel-tabs__source">{channel.source_kind}</span>
+          </span>
           <span className={channel.available ? "status-chip" : "status-chip is-failed"}>{channel.available ? "live" : "offline"}</span>
         </button>
       ))}

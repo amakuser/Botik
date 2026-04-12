@@ -29,6 +29,8 @@ export function LogsPage() {
   const [truncated, setTruncated] = useState(false);
 
   const channels = channelsQuery.data ?? [];
+  const liveChannelCount = channels.filter((channel) => channel.available).length;
+  const offlineChannelCount = channels.length - liveChannelCount;
   const selectedChannel = useMemo<LogChannel | null>(
     () => channels.find((channel) => channel.channel_id === selectedChannelId) ?? null,
     [channels, selectedChannelId],
@@ -74,10 +76,17 @@ export function LogsPage() {
           eyebrow="Observability"
           title="Unified Logs"
           description="Read-only recent and live logs for the primary stack, job flows, and desktop shell artifacts."
+          meta={
+            <>
+              <p className="status-caption">Live channels: {liveChannelCount}</p>
+              <p className="status-caption">Offline channels: {offlineChannelCount}</p>
+              <p className="status-caption">Selected: {selectedChannel?.label ?? "none"}</p>
+            </>
+          }
         />
 
         <div className="logs-layout">
-          <section className="panel">
+          <section className="panel logs-channel-panel">
             <SectionHeading title="Channels" description="Approved first-slice log channels with bounded snapshot and live append behavior." />
             <LogChannelTabs channels={channels} selectedChannelId={selectedChannelId} onSelect={setSelectedChannelId} />
           </section>
