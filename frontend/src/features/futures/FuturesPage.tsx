@@ -25,9 +25,13 @@ export function FuturesPage() {
           title="Futures Read Surface"
           description="Bounded read-only visibility for open positions, active orders, recent fills, and protection state on the primary stack."
           meta={
-            <p className="status-caption" data-testid="futures.source-mode">
-              Source mode: {snapshot?.source_mode ?? "loading"}
-            </p>
+            <>
+              <p className="status-caption" data-testid="futures.source-mode">
+                Source mode: {snapshot?.source_mode ?? "loading"}
+              </p>
+              <p className="status-caption">Account: {summary?.account_type ?? "loading"}</p>
+              <p className="status-caption">uPnL: {summary?.unrealized_pnl_total?.toFixed(4) ?? "..."}</p>
+            </>
           }
         />
 
@@ -40,37 +44,40 @@ export function FuturesPage() {
           </section>
         ) : null}
 
-        <section className="futures-summary-grid">
-          <FuturesSummaryCard
-            label="Open Positions"
-            value={summary?.positions_count ?? "..."}
-            note={`Protected: ${summary?.protected_positions_count ?? "..."} | Attention: ${summary?.attention_positions_count ?? "..."}`}
-            testId="futures.summary.positions"
-          />
-          <FuturesSummaryCard
-            label="Recovered Positions"
-            value={summary?.recovered_positions_count ?? "..."}
-            note="Recovered futures positions from exchange state."
-            testId="futures.summary.recovered"
-          />
-          <FuturesSummaryCard
-            label="Active Orders"
-            value={summary?.open_orders_count ?? "..."}
-            note="Open futures orders only."
-            testId="futures.summary.orders"
-          />
-          <FuturesSummaryCard
-            label="Recent Fills"
-            value={summary?.recent_fills_count ?? "..."}
-            note="Recent futures execution history only."
-            testId="futures.summary.fills"
-          />
-          <FuturesSummaryCard
-            label="Total uPnL"
-            value={summary?.unrealized_pnl_total?.toFixed(4) ?? "..."}
-            note="Aggregated unrealized PnL for currently open positions."
-            testId="futures.summary.upnl"
-          />
+        <section className="panel futures-summary-panel">
+          <SectionHeading title="Risk Snapshot" description="Bounded futures exposure, protection, and reconciliation metrics for the current account state." />
+          <div className="futures-summary-grid">
+            <FuturesSummaryCard
+              label="Open Positions"
+              value={summary?.positions_count ?? "..."}
+              note={`Protected: ${summary?.protected_positions_count ?? "..."} | Attention: ${summary?.attention_positions_count ?? "..."}`}
+              testId="futures.summary.positions"
+            />
+            <FuturesSummaryCard
+              label="Recovered Positions"
+              value={summary?.recovered_positions_count ?? "..."}
+              note="Recovered futures positions from exchange state."
+              testId="futures.summary.recovered"
+            />
+            <FuturesSummaryCard
+              label="Active Orders"
+              value={summary?.open_orders_count ?? "..."}
+              note="Open futures orders only."
+              testId="futures.summary.orders"
+            />
+            <FuturesSummaryCard
+              label="Recent Fills"
+              value={summary?.recent_fills_count ?? "..."}
+              note="Recent futures execution history only."
+              testId="futures.summary.fills"
+            />
+            <FuturesSummaryCard
+              label="Total uPnL"
+              value={summary?.unrealized_pnl_total?.toFixed(4) ?? "..."}
+              note="Aggregated unrealized PnL for currently open positions."
+              testId="futures.summary.upnl"
+            />
+          </div>
         </section>
 
         <section className="panel">
