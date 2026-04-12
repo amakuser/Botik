@@ -14,7 +14,7 @@ function formatPrice(value: number) {
 
 export function SpotOrdersTable({ orders }: SpotOrdersTableProps) {
   if (orders.length === 0) {
-    return <p className="panel-muted">No active spot orders are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">No active spot orders are available in the current read model.</p>;
   }
 
   return (
@@ -32,11 +32,17 @@ export function SpotOrdersTable({ orders }: SpotOrdersTableProps) {
         <tbody>
           {orders.map((order) => (
             <tr key={order.order_link_id ?? order.order_id ?? `${order.symbol}:${order.updated_at_utc}`} data-testid={`spot.order.${order.symbol}`}>
-              <td>{order.symbol}</td>
-              <td>{order.side}</td>
+              <td className="surface-table__primary">{order.symbol}</td>
+              <td>
+                <span className={order.side === "Buy" ? "surface-badge surface-badge--buy" : "surface-badge surface-badge--sell"}>
+                  {order.side}
+                </span>
+              </td>
               <td>{formatPrice(order.price)}</td>
               <td>{formatQty(order.qty)}</td>
-              <td>{order.status}</td>
+              <td>
+                <span className="surface-badge surface-badge--soft">{order.status}</span>
+              </td>
             </tr>
           ))}
         </tbody>

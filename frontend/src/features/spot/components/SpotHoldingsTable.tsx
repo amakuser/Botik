@@ -17,7 +17,7 @@ function formatPrice(value: number | null | undefined) {
 
 export function SpotHoldingsTable({ holdings }: SpotHoldingsTableProps) {
   if (holdings.length === 0) {
-    return <p className="panel-muted">No active spot holdings are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">No active spot holdings are available in the current read model.</p>;
   }
 
   return (
@@ -35,11 +35,13 @@ export function SpotHoldingsTable({ holdings }: SpotHoldingsTableProps) {
         <tbody>
           {holdings.map((holding) => (
             <tr key={`${holding.account_type}:${holding.symbol}`} data-testid={`spot.holding.${holding.symbol}`}>
-              <td>{holding.symbol}</td>
+              <td className="surface-table__primary">{holding.symbol}</td>
               <td>{formatQty(holding.total_qty)}</td>
               <td>{formatPrice(holding.avg_entry_price)}</td>
-              <td>{holding.hold_reason}</td>
-              <td>{holding.strategy_owner ?? "n/a"}</td>
+              <td>
+                <span className="surface-badge">{holding.hold_reason}</span>
+              </td>
+              <td>{holding.strategy_owner ? <span className="surface-badge surface-badge--soft">{holding.strategy_owner}</span> : "n/a"}</td>
             </tr>
           ))}
         </tbody>
