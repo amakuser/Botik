@@ -1,3 +1,5 @@
+import { SectionHeading } from "../../../shared/ui/SectionHeading";
+
 interface DataBackfillJobCardProps {
   disabled: boolean;
   onStart: () => void;
@@ -5,10 +7,13 @@ interface DataBackfillJobCardProps {
 
 export function DataBackfillJobCard({ disabled, onStart }: DataBackfillJobCardProps) {
   return (
-    <section className="panel" aria-labelledby="data-backfill-title">
-      <h2 id="data-backfill-title">Data Backfill Job</h2>
+    <section className="panel job-action-card job-preset-card">
+      <SectionHeading
+        title="Data Backfill Job"
+        description="Fixed-preset real backfill flow through the existing app-service, Job Manager, worker, and SSE path."
+      />
       <p className="toolbar-hint">
-        Fixed-preset real backfill flow through the existing app-service, Job Manager, worker, and SSE path.
+        Single preset only, kept intentionally narrow so operators can launch it quickly without opening a broader data console.
       </p>
       <dl className="job-preset-grid">
         <dt>Symbol</dt>
