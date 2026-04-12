@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { listJobs, startJob, stopJob } from "../../shared/api/client";
 import { JobState, JobSummary } from "../../shared/contracts";
 import { ModelScopeStatusCard } from "./components/ModelScopeStatusCard";
@@ -68,17 +70,17 @@ export function ModelsPage() {
 
   return (
     <AppShell>
-      <div className="models-layout">
-        <section className="panel">
-          <h2>Models Registry / Training Status</h2>
-          <p className="panel-muted">
-            Read-only model registry summary, latest declared model info, and bounded recent training-run visibility on
-            the new stack.
-          </p>
-          <p className="status-caption" data-testid="models.source-mode">
-            Source mode: {snapshot?.source_mode ?? "loading"}
-          </p>
-        </section>
+      <div className="app-route models-layout">
+        <PageIntro
+          eyebrow="Read Surface"
+          title="Models Registry / Training Status"
+          description="Bounded read-only model registry summary, latest declared model info, and recent training-run visibility on the primary stack."
+          meta={
+            <p className="status-caption" data-testid="models.source-mode">
+              Source mode: {snapshot?.source_mode ?? "loading"}
+            </p>
+          }
+        />
 
         {modelsQuery.isError ? (
           <section className="panel">
@@ -140,22 +142,12 @@ export function ModelsPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Registry Entries</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.registry_entries ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Registry Entries" description={truncatedLabel(truncated?.registry_entries ?? false)} />
           <ModelsRegistryTable entries={snapshot?.registry_entries ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Recent Training Runs</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.recent_training_runs ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Recent Training Runs" description={truncatedLabel(truncated?.recent_training_runs ?? false)} />
           <TrainingRunsTable runs={snapshot?.recent_training_runs ?? []} />
         </section>
       </div>

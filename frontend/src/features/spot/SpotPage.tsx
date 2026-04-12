@@ -1,4 +1,6 @@
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { SpotBalancesTable } from "./components/SpotBalancesTable";
 import { SpotFillsTable } from "./components/SpotFillsTable";
 import { SpotHoldingsTable } from "./components/SpotHoldingsTable";
@@ -18,16 +20,17 @@ export function SpotPage() {
 
   return (
     <AppShell>
-      <div className="spot-layout">
-        <section className="panel">
-          <h2>Spot Read Surface</h2>
-          <p className="panel-muted">
-            Read-only visibility for balances, holdings, active orders, and recent fills on the new stack.
-          </p>
-          <p className="status-caption" data-testid="spot.source-mode">
-            Source mode: {snapshot?.source_mode ?? "loading"}
-          </p>
-        </section>
+      <div className="app-route spot-layout">
+        <PageIntro
+          eyebrow="Read Surface"
+          title="Spot Read Surface"
+          description="Bounded read-only visibility for balances, holdings, active orders, and recent fills on the primary stack."
+          meta={
+            <p className="status-caption" data-testid="spot.source-mode">
+              Source mode: {snapshot?.source_mode ?? "loading"}
+            </p>
+          }
+        />
 
         {spotQuery.isError ? (
           <section className="panel">
@@ -72,42 +75,22 @@ export function SpotPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Balances</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.balances ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Balances" description={truncatedLabel(truncated?.balances ?? false)} />
           <SpotBalancesTable balances={snapshot?.balances ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Holdings</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.holdings ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Holdings" description={truncatedLabel(truncated?.holdings ?? false)} />
           <SpotHoldingsTable holdings={snapshot?.holdings ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Active Orders</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.active_orders ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Active Orders" description={truncatedLabel(truncated?.active_orders ?? false)} />
           <SpotOrdersTable orders={snapshot?.active_orders ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Recent Fills</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.recent_fills ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Recent Fills" description={truncatedLabel(truncated?.recent_fills ?? false)} />
           <SpotFillsTable fills={snapshot?.recent_fills ?? []} />
         </section>
       </div>

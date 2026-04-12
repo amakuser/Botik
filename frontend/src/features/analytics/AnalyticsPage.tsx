@@ -1,4 +1,6 @@
 import { AppShell } from "../../shared/ui/AppShell";
+import { PageIntro } from "../../shared/ui/PageIntro";
+import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { AnalyticsClosedTradesTable } from "./components/AnalyticsClosedTradesTable";
 import { AnalyticsEquityCurveTable } from "./components/AnalyticsEquityCurveTable";
 import { AnalyticsSummaryCard } from "./components/AnalyticsSummaryCard";
@@ -16,16 +18,17 @@ export function AnalyticsPage() {
 
   return (
     <AppShell>
-      <div className="analytics-layout">
-        <section className="panel">
-          <h2>PnL / Analytics</h2>
-          <p className="panel-muted">
-            Read-only summary metrics, bounded cumulative PnL series, and recent closed trades on the new stack.
-          </p>
-          <p className="status-caption" data-testid="analytics.source-mode">
-            Source mode: {snapshot?.source_mode ?? "loading"}
-          </p>
-        </section>
+      <div className="app-route analytics-layout">
+        <PageIntro
+          eyebrow="Read Surface"
+          title="PnL / Analytics"
+          description="Bounded read-only summary metrics, cumulative performance series, and recent closed trades on the primary stack."
+          meta={
+            <p className="status-caption" data-testid="analytics.source-mode">
+              Source mode: {snapshot?.source_mode ?? "loading"}
+            </p>
+          }
+        />
 
         {analyticsQuery.isError ? (
           <section className="panel">
@@ -70,22 +73,12 @@ export function AnalyticsPage() {
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Cumulative PnL Series</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.equity_curve ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Cumulative PnL Series" description={truncatedLabel(truncated?.equity_curve ?? false)} />
           <AnalyticsEquityCurveTable points={snapshot?.equity_curve ?? []} />
         </section>
 
         <section className="panel">
-          <div className="surface-panel__header">
-            <div>
-              <h2>Recent Closed Trades</h2>
-              <p className="panel-muted">{truncatedLabel(truncated?.recent_closed_trades ?? false)}</p>
-            </div>
-          </div>
+          <SectionHeading title="Recent Closed Trades" description={truncatedLabel(truncated?.recent_closed_trades ?? false)} />
           <AnalyticsClosedTradesTable trades={snapshot?.recent_closed_trades ?? []} />
         </section>
       </div>

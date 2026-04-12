@@ -1,46 +1,78 @@
 import { NavLink } from "react-router-dom";
 import { PropsWithChildren } from "react";
 
+type NavItem = {
+  to: string;
+  label: string;
+  end?: boolean;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Core",
+    items: [
+      { to: "/", label: "Foundation Health", end: true },
+      { to: "/jobs", label: "Job Monitor" },
+      { to: "/logs", label: "Unified Logs" },
+      { to: "/runtime", label: "Runtime Control" },
+    ],
+  },
+  {
+    label: "Surfaces",
+    items: [
+      { to: "/spot", label: "Spot Read" },
+      { to: "/futures", label: "Futures Read" },
+      { to: "/telegram", label: "Telegram Ops" },
+      { to: "/analytics", label: "PnL / Analytics" },
+      { to: "/models", label: "Models / Status" },
+      { to: "/diagnostics", label: "Diagnostics" },
+    ],
+  },
+];
+
 export function AppShell({ children }: PropsWithChildren) {
   return (
     <div className="app-shell" data-testid="foundation.app-shell">
-      <header className="app-shell__header">
-        <h1>Botik Foundation</h1>
-        <p>Phase A foundation scaffold</p>
+      <aside className="app-shell__sidebar">
+        <header className="app-shell__header">
+          <p className="app-shell__eyebrow">Primary Product Path</p>
+          <h1>Botik Foundation</h1>
+          <p className="app-shell__subtitle">
+            Tauri desktop shell, app-service, and migrated operator surfaces on the current primary stack.
+          </p>
+        </header>
+
         <nav className="app-shell__nav" aria-label="Primary">
-          <NavLink to="/" end className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Foundation Health
-          </NavLink>
-          <NavLink to="/jobs" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Job Monitor
-          </NavLink>
-          <NavLink to="/logs" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Unified Logs
-          </NavLink>
-          <NavLink to="/runtime" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Runtime Control
-          </NavLink>
-          <NavLink to="/spot" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Spot Read
-          </NavLink>
-          <NavLink to="/futures" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Futures Read
-          </NavLink>
-          <NavLink to="/telegram" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Telegram Ops
-          </NavLink>
-          <NavLink to="/analytics" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            PnL / Analytics
-          </NavLink>
-          <NavLink to="/models" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Models / Status
-          </NavLink>
-          <NavLink to="/diagnostics" className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}>
-            Diagnostics
-          </NavLink>
+          {NAV_GROUPS.map((group) => (
+            <section key={group.label} className="app-shell__nav-group" aria-labelledby={`nav-group-${group.label}`}>
+              <p id={`nav-group-${group.label}`} className="app-shell__nav-group-title">
+                {group.label}
+              </p>
+              <div className="app-shell__nav-links">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => (isActive ? "app-shell__nav-link is-active" : "app-shell__nav-link")}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </section>
+          ))}
         </nav>
-      </header>
-      <main className="app-shell__content">{children}</main>
+      </aside>
+
+      <main className="app-shell__main">
+        <div className="app-shell__content">{children}</div>
+      </main>
     </div>
   );
 }
