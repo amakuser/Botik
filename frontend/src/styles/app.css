@@ -247,7 +247,7 @@ body {
 
 .futures-layout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
 .telegram-layout {
@@ -345,6 +345,11 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
+}
+
+.futures-summary-panel {
+  display: grid;
+  gap: 18px;
 }
 
 .telegram-summary-grid {
@@ -910,6 +915,11 @@ body {
   font-weight: 600;
 }
 
+.surface-table__stack {
+  display: grid;
+  gap: 4px;
+}
+
 .surface-table th,
 .surface-table td {
   text-align: left;
@@ -959,6 +969,36 @@ body {
   color: var(--text-secondary);
 }
 
+.futures-summary-card {
+  display: grid;
+  gap: 8px;
+}
+
+.futures-summary-card__eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
+}
+
+.futures-summary-card__label {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.futures-summary-card__value {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.futures-summary-card__note {
+  line-height: 1.5;
+}
+
 .surface-table-empty {
   padding: 16px;
   border-radius: 16px;
@@ -991,6 +1031,18 @@ body {
 .surface-badge--sell {
   background: rgba(248, 113, 113, 0.18);
   border-color: rgba(248, 113, 113, 0.22);
+  color: #fecaca;
+}
+
+.futures-pnl {
+  font-weight: 700;
+}
+
+.futures-pnl--positive {
+  color: #bbf7d0;
+}
+
+.futures-pnl--negative {
   color: #fecaca;
 }
 
