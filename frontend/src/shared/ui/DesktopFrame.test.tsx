@@ -1,5 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopFrame } from "./DesktopFrame";
 
@@ -34,15 +35,19 @@ describe("DesktopFrame", () => {
 
   it("renders custom chrome and dispatches window actions", async () => {
     render(
-      React.createElement(
-        DesktopFrame,
-        null,
-        React.createElement("div", null, "desktop-child"),
+      React.createElement(MemoryRouter, { initialEntries: ["/runtime"] },
+        React.createElement(
+          DesktopFrame,
+          null,
+          React.createElement("div", null, "desktop-child"),
+        ),
       ),
     );
 
     expect(screen.getByText("desktop-child")).toBeTruthy();
     expect(screen.getByTestId("foundation.desktop-titlebar")).toBeTruthy();
+    expect(screen.getByTestId("foundation.desktop-route-context").textContent).toContain("Runtime");
+    expect(screen.getByTestId("foundation.desktop-route-context").textContent).toContain("Runtime Control");
 
     fireEvent.click(screen.getByRole("button", { name: "Minimize window" }));
     fireEvent.click(screen.getByRole("button", { name: "Maximize window" }));
