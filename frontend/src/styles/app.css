@@ -666,6 +666,12 @@ body {
   gap: 16px;
 }
 
+.diagnostics-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+}
+
 .models-summary-panel,
 .models-scope-panel,
 .models-history-panel {
@@ -673,11 +679,43 @@ body {
   gap: 18px;
 }
 
+.diagnostics-summary-panel,
+.diagnostics-panel,
+.diagnostics-warning-panel {
+  display: grid;
+  gap: 18px;
+}
+
 .diagnostics-warning-list {
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
+  list-style: none;
   display: grid;
   gap: 10px;
+}
+
+.diagnostics-warning-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(55, 33, 12, 0.24);
+  border: 1px solid rgba(217, 119, 6, 0.24);
+  line-height: 1.5;
+}
+
+.diagnostics-warning-item__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  color: #fde68a;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .models-scope-grid {
@@ -1377,9 +1415,23 @@ body {
   gap: 8px;
 }
 
+.diagnostics-summary-card {
+  display: grid;
+  gap: 8px;
+}
+
 .models-summary-card__eyebrow,
 .models-scope-card__eyebrow,
 .models-training-card__eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8fbef8;
+}
+
+.diagnostics-summary-card__eyebrow {
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1394,7 +1446,17 @@ body {
   margin: 0;
 }
 
+.diagnostics-summary-card__label,
+.diagnostics-summary-card__value {
+  margin: 0;
+}
+
 .models-summary-card__label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.diagnostics-summary-card__label {
   color: var(--text-secondary);
   font-size: 0.85rem;
 }
@@ -1404,9 +1466,32 @@ body {
   font-weight: 700;
 }
 
+.diagnostics-summary-card__value {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
 .models-summary-card__note {
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+.diagnostics-code {
+  display: inline-flex;
+  max-width: min(460px, 100%);
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  color: #dbe8f9;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.diagnostics-code--path {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .surface-table-empty {
