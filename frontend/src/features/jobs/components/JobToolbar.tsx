@@ -11,16 +11,16 @@ export function JobToolbar({ sampleImportDisabled, stopDisabled, onStartSampleIm
   return (
     <section className="panel job-action-card">
       <SectionHeading
-        title="Data Jobs"
-        description="Quick-start actions for the deterministic import flow and the currently selected running job."
+        title="Задачи данных"
+        description="Быстрый запуск импорта и управление активной задачей."
       />
-      <p className="toolbar-hint">Existing deterministic import flow plus one fixed-preset real backfill job on the same Job Manager path.</p>
+      <p className="toolbar-hint">Детерминированный импорт и загрузка реальных данных через Job Manager.</p>
       <div className="toolbar-actions">
         <button type="button" className="button-primary" onClick={onStartSampleImport} disabled={sampleImportDisabled}>
-          Start Sample Import
+          Запустить импорт
         </button>
         <button type="button" className="button-secondary" onClick={onStop} disabled={stopDisabled}>
-          Stop Selected Job
+          Остановить задачу
         </button>
       </div>
     </section>

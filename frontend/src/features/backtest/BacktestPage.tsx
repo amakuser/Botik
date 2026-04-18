@@ -36,21 +36,21 @@ function fmt(n: number, d = 2): string {
 
 function TradesTable({ trades }: { trades: BacktestTrade[] }) {
   if (trades.length === 0) {
-    return <p className="panel-muted">No trades executed in this period.</p>;
+    return <p className="panel-muted">Сделок за этот период не было.</p>;
   }
   return (
     <div className="surface-table-wrap">
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Opened</th>
-            <th>Closed</th>
-            <th>Side</th>
-            <th>Entry</th>
-            <th>Exit</th>
-            <th>Qty</th>
+            <th>Открыта</th>
+            <th>Закрыта</th>
+            <th>Сторона</th>
+            <th>Вход</th>
+            <th>Выход</th>
+            <th>Кол-во</th>
             <th>PnL</th>
-            <th>Reason</th>
+            <th>Причина</th>
           </tr>
         </thead>
         <tbody>
@@ -85,22 +85,22 @@ function ResultsPanel({ result }: { result: BacktestRunResult }) {
   return (
     <section className="panel">
       <SectionHeading
-        title="Results"
-        description={`${result.symbol} · ${result.scope} · ${result.interval}m · ${result.days_back}d · ${result.total_candles} candles`}
+        title="Результаты"
+        description={`${result.symbol} · ${result.scope} · ${result.interval}m · ${result.days_back}д · ${result.total_candles} свечей`}
       />
       <div className="bt-metrics-grid">
-        <MetricCard label="Total PnL" value={(result.total_pnl >= 0 ? "+" : "") + fmt(result.total_pnl)} color={pnlColor(result.total_pnl)} />
-        <MetricCard label="Win Rate" value={fmt(result.win_rate ?? 0) + "%"} />
-        <MetricCard label="Trades" value={String(result.trades)} />
-        <MetricCard label="Wins / Losses" value={`${result.wins} / ${result.losses}`} />
-        <MetricCard label="Max Drawdown" value={fmt(result.max_drawdown_pct ?? 0) + "%"} color="#fca5a5" />
+        <MetricCard label="Суммарный PnL" value={(result.total_pnl >= 0 ? "+" : "") + fmt(result.total_pnl)} color={pnlColor(result.total_pnl)} />
+        <MetricCard label="Винрейт" value={fmt(result.win_rate ?? 0) + "%"} />
+        <MetricCard label="Сделок" value={String(result.trades)} />
+        <MetricCard label="Прибыль / Убыток" value={`${result.wins} / ${result.losses}`} />
+        <MetricCard label="Макс. просадка" value={fmt(result.max_drawdown_pct ?? 0) + "%"} color="#fca5a5" />
         <MetricCard label="Sharpe" value={fmt(result.sharpe_ratio ?? 0)} />
-        <MetricCard label="Avg Win" value={(result.avg_win >= 0 ? "+" : "") + fmt(result.avg_win)} color="#86efac" />
-        <MetricCard label="Avg Loss" value={fmt(result.avg_loss ?? 0)} color="#fca5a5" />
+        <MetricCard label="Средняя прибыль" value={(result.avg_win >= 0 ? "+" : "") + fmt(result.avg_win)} color="#86efac" />
+        <MetricCard label="Средний убыток" value={fmt(result.avg_loss ?? 0)} color="#fca5a5" />
         <MetricCard label="Profit Factor" value={pf} />
       </div>
       <div style={{ marginTop: 20 }}>
-        <SectionHeading title="Trade Log" description="Last 50 trades." />
+        <SectionHeading title="Лог сделок" description="Последние 50 сделок." />
         <TradesTable trades={result.trades_list ?? []} />
       </div>
     </section>
@@ -128,22 +128,22 @@ export function BacktestPage() {
     <AppShell>
       <div className="app-route backtest-layout">
         <PageIntro
-          eyebrow="Strategy"
-          title="Backtest"
-          description="Simulate the trading strategy on historical OHLCV data. Requires local database with candle data."
+          eyebrow="Стратегия"
+          title="Бэктест"
+          description="Симуляция торговой стратегии на исторических OHLCV данных. Требуется локальная база со свечами."
           meta={
             <>
-              <p className="status-caption">Mode: historical simulation</p>
-              <p className="status-caption">Engine: FuturesBacktestRunner / SpotBacktestRunner</p>
+              <p className="status-caption">Режим: историческая симуляция</p>
+              <p className="status-caption">Движок: FuturesBacktestRunner / SpotBacktestRunner</p>
             </>
           }
         />
 
         <section className="panel">
-          <SectionHeading title="Parameters" description="Configure and run a backtest simulation." />
+          <SectionHeading title="Параметры" description="Настройте и запустите симуляцию бэктеста." />
           <div className="bt-form">
             <div className="bt-form__row">
-              <label className="bt-form__label">Scope</label>
+              <label className="bt-form__label">Скоуп</label>
               <div className="bt-form__field">
                 {SCOPES.map((s) => (
                   <button
@@ -160,7 +160,7 @@ export function BacktestPage() {
             </div>
 
             <div className="bt-form__row">
-              <label className="bt-form__label" htmlFor="bt-symbol">Symbol</label>
+              <label className="bt-form__label" htmlFor="bt-symbol">Символ</label>
               <select
                 id="bt-symbol"
                 className="settings-field__input bt-form__select"
@@ -172,7 +172,7 @@ export function BacktestPage() {
             </div>
 
             <div className="bt-form__row">
-              <label className="bt-form__label">Interval</label>
+              <label className="bt-form__label">Интервал</label>
               <div className="bt-form__field">
                 {INTERVALS.map((iv) => (
                   <button
@@ -189,7 +189,7 @@ export function BacktestPage() {
             </div>
 
             <div className="bt-form__row">
-              <label className="bt-form__label" htmlFor="bt-days">Days back</label>
+              <label className="bt-form__label" htmlFor="bt-days">Дней назад</label>
               <input
                 id="bt-days"
                 type="number"
@@ -201,7 +201,7 @@ export function BacktestPage() {
             </div>
 
             <div className="bt-form__row">
-              <label className="bt-form__label" htmlFor="bt-balance">Initial balance (USDT)</label>
+              <label className="bt-form__label" htmlFor="bt-balance">Начальный баланс (USDT)</label>
               <input
                 id="bt-balance"
                 type="number"
@@ -221,7 +221,7 @@ export function BacktestPage() {
                 onClick={handleRun}
                 style={{ minWidth: 160 }}
               >
-                {mutation.isPending ? "Running…" : "▶ Run Backtest"}
+                {mutation.isPending ? "Выполняется…" : "▶ Запустить бэктест"}
               </button>
             </div>
           </div>
@@ -237,7 +237,7 @@ export function BacktestPage() {
 
         {result?.error ? (
           <section className="panel">
-            <SectionHeading title="Backtest Error" description="" />
+            <SectionHeading title="Ошибка бэктеста" description="" />
             <p className="inline-error">{result.error}</p>
           </section>
         ) : null}

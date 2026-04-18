@@ -39,11 +39,10 @@ export function TrainingControlCard({
     <section className="panel models-training-card" data-testid="models.training-control">
       <div className="surface-panel__header models-training-card__header">
         <div className="models-training-card__title-block">
-          <p className="models-training-card__eyebrow">Control Surface</p>
-          <h2>Training Control</h2>
+          <p className="models-training-card__eyebrow">Управление</p>
+          <h2>Управление обучением</h2>
           <p className="panel-muted">
-            One bounded futures training path through the existing Job Manager flow. Live logs stay visible in Job
-            Monitor and the `jobs` log channel.
+            Запуск обучения фьючерсных моделей через Job Manager. Логи доступны в Мониторинге задач.
           </p>
         </div>
         <span className={stateClass(job)}>{formatState(job)}</span>
@@ -51,35 +50,35 @@ export function TrainingControlCard({
 
       <div className="models-training-card__signals">
         <div className="runtime-card__signal">
-          <span className="runtime-card__signal-label">Scope</span>
+          <span className="runtime-card__signal-label">Скоуп</span>
           <strong data-testid="models.training-control.scope">futures</strong>
-          <span className="panel-muted">The only bounded training-control path in this phase.</span>
+          <span className="panel-muted">Единственный путь обучения в текущей фазе.</span>
         </div>
         <div className="runtime-card__signal">
-          <span className="runtime-card__signal-label">Interval</span>
+          <span className="runtime-card__signal-label">Интервал</span>
           <strong data-testid="models.training-control.interval">1m</strong>
-          <span className="panel-muted">Fixed interval for deterministic control and verification.</span>
+          <span className="panel-muted">Фиксированный интервал для детерминированного контроля.</span>
         </div>
         <div className="runtime-card__signal">
-          <span className="runtime-card__signal-label">Current job</span>
+          <span className="runtime-card__signal-label">Текущая задача</span>
           <strong data-testid="models.training-control.state">{formatState(job)}</strong>
-          <span className="panel-muted">Updated by the existing Job Manager flow.</span>
+          <span className="panel-muted">Обновляется через Job Manager.</span>
         </div>
       </div>
 
       <dl className="job-preset-grid models-training-card__details">
         <dt>Job ID</dt>
-        <dd>{job?.job_id ?? "not running"}</dd>
-        <dt>Last Updated</dt>
-        <dd>{job?.updated_at ?? "not available"}</dd>
+        <dd>{job?.job_id ?? "не запущено"}</dd>
+        <dt>Обновлено</dt>
+        <dd>{job?.updated_at ?? "нет данных"}</dd>
       </dl>
 
       <div className="toolbar-actions">
         <button type="button" className="button-primary" onClick={onStart} disabled={startDisabled}>
-          Start Futures Training
+          Запустить обучение
         </button>
         <button type="button" className="button-secondary" onClick={onStop} disabled={stopDisabled}>
-          Stop Futures Training
+          Остановить обучение
         </button>
       </div>
     </section>

@@ -14,7 +14,7 @@ function formatPrice(value: number) {
 
 export function SpotFillsTable({ fills }: SpotFillsTableProps) {
   if (fills.length === 0) {
-    return <p className="panel-muted surface-table-empty">No recent spot fills are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">Последних спот-сделок нет.</p>;
   }
 
   return (
@@ -22,11 +22,11 @@ export function SpotFillsTable({ fills }: SpotFillsTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Side</th>
-            <th>Price</th>
-            <th>Qty</th>
-            <th>Fee</th>
+            <th>Символ</th>
+            <th>Сторона</th>
+            <th>Цена</th>
+            <th>Кол-во</th>
+            <th>Комиссия</th>
           </tr>
         </thead>
         <tbody>

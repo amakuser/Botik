@@ -11,20 +11,20 @@ export function LogStatusBar({ channel, connected, entryCount, truncated }: LogS
   return (
     <div className="log-status-bar panel" data-testid="logs.status-bar">
       <div className="log-status-bar__item">
-        <span className="log-status-bar__label">Channel</span>
-        <strong data-testid="logs.status.channel">{channel?.label ?? "None selected"}</strong>
+        <span className="log-status-bar__label">Канал</span>
+        <strong data-testid="logs.status.channel">{channel?.label ?? "Не выбран"}</strong>
       </div>
       <div className="log-status-bar__item">
-        <span className="log-status-bar__label">Connection</span>
-        <strong data-testid="logs.status.connection">{connected ? "connected" : "idle"}</strong>
+        <span className="log-status-bar__label">Подключение</span>
+        <strong data-testid="logs.status.connection">{connected ? "подключено" : "ожидание"}</strong>
       </div>
       <div className="log-status-bar__item">
-        <span className="log-status-bar__label">Entries</span>
+        <span className="log-status-bar__label">Записей</span>
         <strong data-testid="logs.status.count">{entryCount}</strong>
       </div>
       <div className="log-status-bar__item">
-        <span className="log-status-bar__label">Snapshot</span>
-        <strong data-testid="logs.status.truncated">{truncated ? "truncated" : "complete"}</strong>
+        <span className="log-status-bar__label">Снепшот</span>
+        <strong data-testid="logs.status.truncated">{truncated ? "обрезан" : "полный"}</strong>
       </div>
     </div>
   );

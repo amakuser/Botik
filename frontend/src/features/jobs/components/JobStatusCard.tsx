@@ -24,9 +24,9 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
   if (!job) {
     return (
       <section className="panel jobs-selected-panel">
-        <SectionHeading title="Selected Job" description="Active execution context and latest bounded progress details." />
+        <SectionHeading title="Выбранная задача" description="Контекст выполнения и прогресс." />
         <p className="panel-muted" data-testid="jobs.selected.empty">
-          No sample job has been started yet.
+          Задача ещё не запускалась.
         </p>
       </section>
     );
@@ -36,11 +36,11 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
 
   return (
     <section className="panel jobs-selected-panel">
-      <SectionHeading title="Selected Job" description="Active execution context and latest bounded progress details." />
+      <SectionHeading title="Выбранная задача" description="Контекст выполнения и прогресс." />
 
       <div className="jobs-selected__topline">
         <div className="jobs-selected__identity">
-          <p className="jobs-selected__eyebrow">Current Focus</p>
+          <p className="jobs-selected__eyebrow">Текущая задача</p>
           <h3 data-testid="jobs.selected.job-type">{job.job_type}</h3>
         </div>
         <span className={statusClassName(job.state)} data-testid="jobs.selected.state">
@@ -50,7 +50,7 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
 
       <div className="jobs-progress-card">
         <div className="jobs-progress-card__header">
-          <span className="jobs-progress-card__label">Progress</span>
+          <span className="jobs-progress-card__label">Прогресс</span>
           <strong data-testid="jobs.selected.progress">{toPercentage(job.progress)}</strong>
         </div>
         <div className="jobs-progress-card__track" aria-hidden="true">
@@ -61,25 +61,25 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
       <dl className="status-grid">
         <dt>Job ID</dt>
         <dd data-testid="jobs.selected.id">{job.job_id}</dd>
-        <dt>Updated</dt>
+        <dt>Обновлено</dt>
         <dd>{formatDateTime(job.updated_at)}</dd>
-        <dt>Started</dt>
+        <dt>Запущено</dt>
         <dd>{formatDateTime(job.started_at)}</dd>
-        <dt>Exit Code</dt>
+        <dt>Код выхода</dt>
         <dd>{job.exit_code ?? "n/a"}</dd>
       </dl>
       {job.last_error ? (
         <div className="jobs-selected__callout jobs-selected__callout--error">
-          <span className="jobs-selected__callout-label">Last Error</span>
+          <span className="jobs-selected__callout-label">Последняя ошибка</span>
           <p className="inline-error" data-testid="jobs.selected.error">
             {job.last_error}
           </p>
         </div>
       ) : (
         <div className="jobs-selected__callout">
-          <span className="jobs-selected__callout-label">Live Status</span>
+          <span className="jobs-selected__callout-label">Статус</span>
           <p className="status-caption" data-testid="jobs.selected.caption">
-            Live progress and logs are streamed over SSE.
+            Прогресс и логи передаются через SSE.
           </p>
         </div>
       )}

@@ -10,7 +10,7 @@ function formatQty(value: number) {
 
 export function SpotBalancesTable({ balances }: SpotBalancesTableProps) {
   if (balances.length === 0) {
-    return <p className="panel-muted surface-table-empty">No spot balances are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">Балансы спот аккаунта недоступны.</p>;
   }
 
   return (
@@ -18,11 +18,11 @@ export function SpotBalancesTable({ balances }: SpotBalancesTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Asset</th>
-            <th>Free</th>
-            <th>Locked</th>
-            <th>Total</th>
-            <th>Source</th>
+            <th>Актив</th>
+            <th>Свободно</th>
+            <th>Заблокировано</th>
+            <th>Всего</th>
+            <th>Источник</th>
           </tr>
         </thead>
         <tbody>

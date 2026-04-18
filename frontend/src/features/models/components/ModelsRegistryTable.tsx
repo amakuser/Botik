@@ -22,8 +22,8 @@ export function ModelsRegistryTable({ entries }: ModelsRegistryTableProps) {
   if (entries.length === 0) {
     return (
       <div className="surface-table-empty">
-        <strong>No model registry entries available.</strong>
-        <p className="panel-muted">The bounded snapshot does not include any registry rows yet.</p>
+        <strong>Записей реестра нет.</strong>
+        <p className="panel-muted">Снепшот не содержит записей реестра.</p>
       </div>
     );
   }
@@ -33,13 +33,13 @@ export function ModelsRegistryTable({ entries }: ModelsRegistryTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Model</th>
-            <th>Scope</th>
-            <th>Status</th>
-            <th>Quality</th>
-            <th>Policy / Source</th>
-            <th>Artifact</th>
-            <th>Created</th>
+            <th>Модель</th>
+            <th>Скоуп</th>
+            <th>Статус</th>
+            <th>Качество</th>
+            <th>Политика / Источник</th>
+            <th>Артефакт</th>
+            <th>Создана</th>
           </tr>
         </thead>
         <tbody>
@@ -50,9 +50,9 @@ export function ModelsRegistryTable({ entries }: ModelsRegistryTableProps) {
                   <span className="surface-table__primary">{entry.model_id}</span>
                   <div className="models-table__badges">
                     {entry.is_declared_active ? (
-                      <span className="surface-badge surface-badge--soft">Declared active</span>
+                      <span className="surface-badge surface-badge--soft">Активна</span>
                     ) : (
-                      <span className="surface-badge">Passive</span>
+                      <span className="surface-badge">Пассивна</span>
                     )}
                   </div>
                 </div>
@@ -71,7 +71,7 @@ export function ModelsRegistryTable({ entries }: ModelsRegistryTableProps) {
               <td>
                 <div className="surface-table__stack">
                   <span>{entry.policy}</span>
-                  <span className="panel-muted">Source: {entry.source_mode}</span>
+                  <span className="panel-muted">Источник: {entry.source_mode}</span>
                 </div>
               </td>
               <td>

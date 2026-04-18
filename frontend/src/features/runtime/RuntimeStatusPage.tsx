@@ -39,30 +39,30 @@ export function RuntimeStatusPage() {
     <AppShell>
       <div className="app-route runtime-layout">
         <PageIntro
-          eyebrow="Operations"
-          title="Runtime Control"
-          description="Bounded start and stop controls for the active trading runtimes, with the same observable heartbeat and last-error status model."
+          eyebrow="Операции"
+          title="Управление рантаймом"
+          description="Запуск и остановка торговых рантаймов с мониторингом сердцебиения и последних ошибок."
           meta={
             <>
-              <p className="status-caption">Running: {runningCount}</p>
-              <p className="status-caption">Needs attention: {degradedCount}</p>
-              <p className="status-caption">Offline / unknown: {offlineCount}</p>
+              <p className="status-caption">Работает: {runningCount}</p>
+              <p className="status-caption">Требует внимания: {degradedCount}</p>
+              <p className="status-caption">Офлайн / неизвестно: {offlineCount}</p>
             </>
           }
         />
 
         {runtimeStatusQuery.isError ? (
           <section className="panel">
-            <h2>Runtime Control Error</h2>
+            <h2>Ошибка управления рантаймом</h2>
             <p className="inline-error" data-testid="runtime.error.banner">
-              Failed to load runtime status.
+              Не удалось загрузить статус рантаймов.
             </p>
           </section>
         ) : null}
 
         {actionError ? (
           <section className="panel">
-            <h2>Action Error</h2>
+            <h2>Ошибка действия</h2>
             <p className="inline-error" data-testid="runtime.action-error">
               {actionError}
             </p>
@@ -71,8 +71,8 @@ export function RuntimeStatusPage() {
 
         <section className="panel runtime-surface">
           <SectionHeading
-            title="Managed Runtimes"
-            description="Operational health, heartbeat recency, and bounded lifecycle controls for the migrated trading runtimes."
+            title="Рантаймы"
+            description="Состояние, сердцебиение и управление жизненным циклом торговых рантаймов."
           />
 
           <div className="runtime-grid">

@@ -65,14 +65,14 @@ function FieldGroup({
       <label className="settings-field__label" htmlFor={`settings-${fieldKey}`}>
         <StatusDot present={present} />
         {label}
-        {present && <span className="settings-field__badge">Configured</span>}
+        {present && <span className="settings-field__badge">Настроено</span>}
       </label>
       <input
         id={`settings-${fieldKey}`}
         type={isSecret ? "password" : "text"}
         autoComplete="off"
         className="settings-field__input"
-        placeholder={placeholder ?? (present ? "Leave blank to keep current value" : "Not set")}
+        placeholder={placeholder ?? (present ? "Оставьте пустым чтобы сохранить текущее" : "Не задано")}
         value={value}
         onChange={(e) => onChange(fieldKey, e.target.value)}
       />
@@ -153,14 +153,14 @@ export function SettingsPage() {
     const key = fields.bybit_api_key || envFields["BYBIT_API_KEY"]?.value || "";
     const secret = fields.bybit_api_secret || envFields["BYBIT_API_SECRET"]?.value || "";
     if (!key || !secret || key.includes("***") || secret.includes("***")) {
-      setDemoTestResult({ state: "error", detail: "Enter Demo API key & secret to test", tested_at: new Date().toISOString() });
+      setDemoTestResult({ state: "error", detail: "Введите API ключ и секрет Demo для проверки", tested_at: new Date().toISOString() });
       return;
     }
     try {
       const result = await testBybit.mutateAsync({ host: "demo", api_key: key, api_secret: secret });
       setDemoTestResult(result);
     } catch (err) {
-      setDemoTestResult({ state: "error", detail: err instanceof Error ? err.message : "Request failed", tested_at: new Date().toISOString() });
+      setDemoTestResult({ state: "error", detail: err instanceof Error ? err.message : "Запрос не выполнен", tested_at: new Date().toISOString() });
     }
   }
 
@@ -169,14 +169,14 @@ export function SettingsPage() {
     const key = fields.bybit_mainnet_api_key || envFields["BYBIT_MAINNET_API_KEY"]?.value || "";
     const secret = fields.bybit_mainnet_api_secret || envFields["BYBIT_MAINNET_API_SECRET"]?.value || "";
     if (!key || !secret || key.includes("***") || secret.includes("***")) {
-      setMainnetTestResult({ state: "error", detail: "Enter MainNet API key & secret to test", tested_at: new Date().toISOString() });
+      setMainnetTestResult({ state: "error", detail: "Введите API ключ и секрет MainNet для проверки", tested_at: new Date().toISOString() });
       return;
     }
     try {
       const result = await testBybit.mutateAsync({ host: "mainnet", api_key: key, api_secret: secret });
       setMainnetTestResult(result);
     } catch (err) {
-      setMainnetTestResult({ state: "error", detail: err instanceof Error ? err.message : "Request failed", tested_at: new Date().toISOString() });
+      setMainnetTestResult({ state: "error", detail: err instanceof Error ? err.message : "Запрос не выполнен", tested_at: new Date().toISOString() });
     }
   }
 
@@ -186,19 +186,19 @@ export function SettingsPage() {
     <AppShell>
       <div className="app-route settings-layout">
         <PageIntro
-          eyebrow="Configuration"
-          title="Settings"
-          description="API keys, Telegram token, and database configuration. Leave a field blank to keep the current value. Changes are written to the .env file."
+          eyebrow="Конфигурация"
+          title="Настройки"
+          description="API ключи, токен Telegram и база данных. Оставьте поле пустым чтобы сохранить текущее значение. Изменения записываются в .env файл."
           meta={
             <>
               <p className="status-caption">
-                Source: {data?.source_mode ?? "loading"}
+                Источник: {data?.source_mode ?? "загрузка"}
               </p>
               <p className="status-caption">
-                Configured: {configuredCount} / {data?.fields?.length ?? "..."}
+                Настроено: {configuredCount} / {data?.fields?.length ?? "..."}
               </p>
               <p className="status-caption">
-                .env: {data?.env_file_exists ? "present" : "not found"}
+                .env: {data?.env_file_exists ? "присутствует" : "не найден"}
               </p>
             </>
           }
@@ -206,7 +206,7 @@ export function SettingsPage() {
 
         {snapshot.isError ? (
           <section className="panel">
-            <p className="inline-error">Failed to load settings snapshot.</p>
+            <p className="inline-error">Не удалось загрузить настройки.</p>
           </section>
         ) : null}
 
@@ -227,44 +227,44 @@ export function SettingsPage() {
         {/* Bybit Demo */}
         <section className="panel settings-panel">
           <div className="settings-panel__header">
-            <SectionHeading title="Bybit Demo" description="Paper trading API keys for demo account." />
+            <SectionHeading title="Bybit Demo" description="API ключи для демо аккаунта (бумажная торговля)." />
             <div className="settings-panel__actions">
               <button type="button" className="button-secondary" onClick={() => void handleTestDemo()}>
-                Test Connection
+                Проверить подключение
               </button>
               {demoTestResult ? <TestResultBadge result={demoTestResult} /> : null}
             </div>
           </div>
           <div className="settings-fields-grid">
-            <FieldGroup label="API Key" fieldKey="bybit_api_key" isSecret present={present("BYBIT_API_KEY")} value={fields.bybit_api_key} onChange={handleChange} />
-            <FieldGroup label="API Secret" fieldKey="bybit_api_secret" isSecret present={present("BYBIT_API_SECRET")} value={fields.bybit_api_secret} onChange={handleChange} />
+            <FieldGroup label="API Ключ" fieldKey="bybit_api_key" isSecret present={present("BYBIT_API_KEY")} value={fields.bybit_api_key} onChange={handleChange} />
+            <FieldGroup label="API Секрет" fieldKey="bybit_api_secret" isSecret present={present("BYBIT_API_SECRET")} value={fields.bybit_api_secret} onChange={handleChange} />
           </div>
         </section>
 
         {/* Bybit MainNet */}
         <section className="panel settings-panel">
           <div className="settings-panel__header">
-            <SectionHeading title="Bybit MainNet" description="Live trading API keys — use with caution." />
+            <SectionHeading title="Bybit MainNet" description="API ключи для реальной торговли — использовать осторожно." />
             <div className="settings-panel__actions">
               <button type="button" className="button-secondary" onClick={() => void handleTestMainnet()}>
-                Test Connection
+                Проверить подключение
               </button>
               {mainnetTestResult ? <TestResultBadge result={mainnetTestResult} /> : null}
             </div>
           </div>
           <div className="settings-fields-grid">
-            <FieldGroup label="API Key" fieldKey="bybit_mainnet_api_key" isSecret present={present("BYBIT_MAINNET_API_KEY")} value={fields.bybit_mainnet_api_key} onChange={handleChange} />
-            <FieldGroup label="API Secret" fieldKey="bybit_mainnet_api_secret" isSecret present={present("BYBIT_MAINNET_API_SECRET")} value={fields.bybit_mainnet_api_secret} onChange={handleChange} />
+            <FieldGroup label="API Ключ" fieldKey="bybit_mainnet_api_key" isSecret present={present("BYBIT_MAINNET_API_KEY")} value={fields.bybit_mainnet_api_key} onChange={handleChange} />
+            <FieldGroup label="API Секрет" fieldKey="bybit_mainnet_api_secret" isSecret present={present("BYBIT_MAINNET_API_SECRET")} value={fields.bybit_mainnet_api_secret} onChange={handleChange} />
           </div>
         </section>
 
         {/* Telegram + DB */}
         <section className="panel settings-panel">
-          <SectionHeading title="Telegram &amp; Database" description="Control bot token, chat ID, and database connection string." />
+          <SectionHeading title="Telegram и база данных" description="Токен бота, Chat ID и строка подключения к базе данных." />
           <div className="settings-fields-grid">
-            <FieldGroup label="Bot Token" fieldKey="telegram_bot_token" isSecret present={present("TELEGRAM_BOT_TOKEN")} value={fields.telegram_bot_token} onChange={handleChange} />
-            <FieldGroup label="Chat ID" fieldKey="telegram_chat_id" isSecret={false} present={present("TELEGRAM_CHAT_ID")} value={fields.telegram_chat_id} onChange={handleChange} placeholder={present("TELEGRAM_CHAT_ID") ? "Leave blank to keep" : "e.g. -1001234567890"} />
-            <FieldGroup label="Database URL" fieldKey="db_url" isSecret={false} present={present("DB_URL")} value={fields.db_url} onChange={handleChange} placeholder={present("DB_URL") ? "Leave blank to keep" : "sqlite:///data/botik.db"} />
+            <FieldGroup label="Токен бота" fieldKey="telegram_bot_token" isSecret present={present("TELEGRAM_BOT_TOKEN")} value={fields.telegram_bot_token} onChange={handleChange} />
+            <FieldGroup label="Chat ID" fieldKey="telegram_chat_id" isSecret={false} present={present("TELEGRAM_CHAT_ID")} value={fields.telegram_chat_id} onChange={handleChange} placeholder={present("TELEGRAM_CHAT_ID") ? "Оставьте пустым чтобы сохранить" : "например -1001234567890"} />
+            <FieldGroup label="URL базы данных" fieldKey="db_url" isSecret={false} present={present("DB_URL")} value={fields.db_url} onChange={handleChange} placeholder={present("DB_URL") ? "Оставьте пустым чтобы сохранить" : "sqlite:///data/botik.db"} />
           </div>
         </section>
 
@@ -277,10 +277,10 @@ export function SettingsPage() {
               disabled={saveSettings.isPending}
               onClick={() => void handleSave()}
             >
-              {saveSettings.isPending ? "Saving…" : "Save Settings"}
+              {saveSettings.isPending ? "Сохранение…" : "Сохранить настройки"}
             </button>
             <p className="panel-muted" style={{ margin: 0 }}>
-              Only non-blank fields are written. Secrets are never echoed back.
+              Записываются только непустые поля. Секреты не возвращаются в ответе.
             </p>
           </div>
         </section>

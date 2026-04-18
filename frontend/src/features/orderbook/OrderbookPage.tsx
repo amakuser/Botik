@@ -64,7 +64,7 @@ function LevelsTable({
         ))}
         {levels.length === 0 && (
           <p className="panel-muted" style={{ textAlign: "center", padding: "20px 0" }}>
-            No data
+            Нет данных
           </p>
         )}
       </div>
@@ -87,16 +87,16 @@ export function OrderbookPage() {
     <AppShell>
       <div className="app-route orderbook-layout">
         <PageIntro
-          eyebrow="Market Data"
-          title="Order Book"
-          description="Level-2 order book from Bybit REST API. Refreshes every 20 seconds."
+          eyebrow="Рыночные данные"
+          title="Стакан ордеров"
+          description="Стакан второго уровня из Bybit REST API. Обновление каждые 20 секунд."
           meta={
             <>
-              <p className="status-caption">Symbol: {symbol}</p>
-              <p className="status-caption">Category: {category}</p>
+              <p className="status-caption">Символ: {symbol}</p>
+              <p className="status-caption">Категория: {category}</p>
               {snap?.generated_at ? (
                 <p className="status-caption">
-                  Updated: {new Date(snap.generated_at).toLocaleTimeString()}
+                  Обновлено: {new Date(snap.generated_at).toLocaleTimeString()}
                 </p>
               ) : null}
             </>
@@ -104,7 +104,7 @@ export function OrderbookPage() {
         />
 
         <section className="panel">
-          <SectionHeading title="Symbol" description="Select market to view order book." />
+          <SectionHeading title="Инструмент" description="Выберите рынок для просмотра стакана." />
           <div className="ob-controls">
             <select
               className="settings-field__input"
@@ -123,7 +123,7 @@ export function OrderbookPage() {
               className="button-secondary"
               onClick={() => void qc.invalidateQueries({ queryKey: ["orderbook", symbol, category] })}
             >
-              Refresh
+              Обновить
             </button>
           </div>
         </section>
@@ -136,7 +136,7 @@ export function OrderbookPage() {
 
         {query.isError ? (
           <section className="panel">
-            <p className="inline-error">Failed to fetch order book.</p>
+            <p className="inline-error">Не удалось загрузить стакан ордеров.</p>
           </section>
         ) : null}
 

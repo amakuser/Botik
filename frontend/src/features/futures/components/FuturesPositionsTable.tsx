@@ -20,7 +20,7 @@ function pnlClassName(value: number | null | undefined) {
 
 export function FuturesPositionsTable({ positions }: FuturesPositionsTableProps) {
   if (positions.length === 0) {
-    return <p className="panel-muted surface-table-empty">No open futures positions are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">Открытых фьючерсных позиций нет.</p>;
   }
 
   return (
@@ -28,13 +28,13 @@ export function FuturesPositionsTable({ positions }: FuturesPositionsTableProps)
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Side</th>
-            <th>Qty</th>
-            <th>Entry</th>
+            <th>Символ</th>
+            <th>Сторона</th>
+            <th>Кол-во</th>
+            <th>Цена входа</th>
             <th>Mark</th>
             <th>uPnL</th>
-            <th>Protection</th>
+            <th>Защита</th>
           </tr>
         </thead>
         <tbody>
@@ -75,7 +75,7 @@ export function FuturesPositionsTable({ positions }: FuturesPositionsTableProps)
               <td>
                 <div className="surface-table__stack">
                   <span className="surface-badge surface-badge--soft">{position.protection_status}</span>
-                  <span className="panel-muted">{position.recovered_from_exchange ? "reconciled from exchange" : "native model state"}</span>
+                  <span className="panel-muted">{position.recovered_from_exchange ? "сверка с биржей" : "состояние модели"}</span>
                 </div>
               </td>
             </tr>

@@ -7,7 +7,7 @@ import { AnalyticsSummaryCard } from "./components/AnalyticsSummaryCard";
 import { useAnalyticsReadModel } from "./hooks/useAnalyticsReadModel";
 
 function truncatedLabel(value: boolean) {
-  return value ? "Showing bounded recent rows." : "Showing all rows in the current bounded snapshot.";
+  return value ? "Показаны последние записи (обрезано)." : "Показаны все записи текущего снепшота.";
 }
 
 export function AnalyticsPage() {
@@ -21,18 +21,18 @@ export function AnalyticsPage() {
     <AppShell>
       <div className="app-route analytics-layout">
         <PageIntro
-          eyebrow="Read Surface"
-          title="PnL / Analytics"
-          description="Bounded read-only summary metrics, cumulative performance series, and recent closed trades on the primary stack."
+          eyebrow="Данные"
+          title="PnL / Аналитика"
+          description="Сводные метрики, кривая доходности и последние закрытые сделки."
           meta={
             <>
               <p className="status-caption" data-testid="analytics.source-mode">
-                Source mode: {snapshot?.source_mode ?? "loading"}
+                Режим: {snapshot?.source_mode ?? "загрузка"}
               </p>
-              <p className="status-caption">Closed trades: {summary?.total_closed_trades ?? "loading"}</p>
-              <p className="status-caption">Win rate: {summary ? `${(summary.win_rate * 100).toFixed(1)}%` : "loading"}</p>
+              <p className="status-caption">Закрытых сделок: {summary?.total_closed_trades ?? "загрузка"}</p>
+              <p className="status-caption">Винрейт: {summary ? `${(summary.win_rate * 100).toFixed(1)}%` : "загрузка"}</p>
               <p className="status-caption">
-                Latest series point: {latestPoint ? `${latestPoint.date} / ${latestPoint.cumulative_pnl.toFixed(4)}` : "loading"}
+                Последняя точка: {latestPoint ? `${latestPoint.date} / ${latestPoint.cumulative_pnl.toFixed(4)}` : "загрузка"}
               </p>
             </>
           }
@@ -40,54 +40,54 @@ export function AnalyticsPage() {
 
         {analyticsQuery.isError ? (
           <section className="panel">
-            <h2>Analytics Read Error</h2>
+            <h2>Ошибка загрузки аналитики</h2>
             <p className="inline-error" data-testid="analytics.error">
-              Failed to load the analytics read model.
+              Не удалось загрузить данные аналитики.
             </p>
           </section>
         ) : null}
 
         <section className="panel analytics-summary-panel">
           <SectionHeading
-            title="Overview"
-            description="Headline KPIs from the current bounded analytics snapshot, with emphasis on readiness, freshness, and recent performance."
+            title="Обзор"
+            description="Ключевые KPI из текущего снепшота аналитики."
           />
           <div className="analytics-summary-grid">
             <AnalyticsSummaryCard
-              eyebrow="Outcomes"
-              label="Closed Trades"
+              eyebrow="Итоги"
+              label="Закрытых сделок"
               value={summary?.total_closed_trades ?? "..."}
-              note={`Wins: ${summary?.winning_trades ?? "..."} | Losses: ${summary?.losing_trades ?? "..."}`}
+              note={`Прибыльных: ${summary?.winning_trades ?? "..."} | Убыточных: ${summary?.losing_trades ?? "..."}`}
               testId="analytics.summary.closed-trades"
             />
             <AnalyticsSummaryCard
-              eyebrow="Hit Rate"
-              label="Win Rate"
+              eyebrow="Точность"
+              label="Винрейт"
               value={summary ? `${(summary.win_rate * 100).toFixed(1)}%` : "..."}
-              note="Bounded read-only view over closed-trade outcomes."
+              note="По закрытым сделкам."
               testId="analytics.summary.win-rate"
             />
             <AnalyticsSummaryCard
-              eyebrow="Performance"
-              label="Total Net PnL"
+              eyebrow="Результат"
+              label="Суммарный PnL"
               value={summary?.total_net_pnl?.toFixed(4) ?? "..."}
-              note="Aggregate net PnL across the bounded analytics snapshot."
+              note="Суммарный чистый PnL по всем закрытым сделкам."
               tone={summary && summary.total_net_pnl >= 0 ? "positive" : "negative"}
               testId="analytics.summary.total-pnl"
             />
             <AnalyticsSummaryCard
-              eyebrow="Per Trade"
-              label="Average Net PnL"
+              eyebrow="На сделку"
+              label="Средний PnL"
               value={summary?.average_net_pnl?.toFixed(4) ?? "..."}
-              note="Average closed-trade PnL."
+              note="Средний чистый PnL по закрытым сделкам."
               tone={summary && summary.average_net_pnl >= 0 ? "positive" : "negative"}
               testId="analytics.summary.avg-pnl"
             />
             <AnalyticsSummaryCard
-              eyebrow="Today"
-              label="Today Net PnL"
+              eyebrow="Сегодня"
+              label="PnL сегодня"
               value={summary?.today_net_pnl?.toFixed(4) ?? "..."}
-              note="Today-only contribution from closed trades."
+              note="Вклад за сегодня от закрытых сделок."
               tone={summary && summary.today_net_pnl >= 0 ? "positive" : "negative"}
               testId="analytics.summary.today-pnl"
             />
@@ -95,28 +95,28 @@ export function AnalyticsPage() {
         </section>
 
         <section className="panel analytics-series-panel">
-          <SectionHeading title="Cumulative PnL Series" description={truncatedLabel(truncated?.equity_curve ?? false)} />
+          <SectionHeading title="Кривая PnL" description={truncatedLabel(truncated?.equity_curve ?? false)} />
           <div className="analytics-signal-row">
             <div className="runtime-card__signal">
-              <span className="runtime-card__signal-label">Latest cumulative</span>
+              <span className="runtime-card__signal-label">Последний накопленный</span>
               <strong className={latestPoint && latestPoint.cumulative_pnl < 0 ? "futures-pnl futures-pnl--negative" : "futures-pnl futures-pnl--positive"}>
-                {latestPoint ? latestPoint.cumulative_pnl.toFixed(4) : "not available"}
+                {latestPoint ? latestPoint.cumulative_pnl.toFixed(4) : "нет данных"}
               </strong>
-              <span className="panel-muted">{latestPoint ? `Series date: ${latestPoint.date}` : "No series points available yet."}</span>
+              <span className="panel-muted">{latestPoint ? `Дата: ${latestPoint.date}` : "Точек серии нет."}</span>
             </div>
             <div className="runtime-card__signal">
-              <span className="runtime-card__signal-label">Latest daily change</span>
+              <span className="runtime-card__signal-label">Последнее дневное изменение</span>
               <strong className={latestPoint && latestPoint.daily_pnl < 0 ? "futures-pnl futures-pnl--negative" : "futures-pnl futures-pnl--positive"}>
-                {latestPoint ? latestPoint.daily_pnl.toFixed(4) : "not available"}
+                {latestPoint ? latestPoint.daily_pnl.toFixed(4) : "нет данных"}
               </strong>
-              <span className="panel-muted">Bounded daily contribution in the current snapshot.</span>
+              <span className="panel-muted">Дневной вклад в текущем снепшоте.</span>
             </div>
           </div>
           <AnalyticsEquityCurveTable points={snapshot?.equity_curve ?? []} />
         </section>
 
         <section className="panel analytics-trades-panel">
-          <SectionHeading title="Recent Closed Trades" description={truncatedLabel(truncated?.recent_closed_trades ?? false)} />
+          <SectionHeading title="Последние закрытые сделки" description={truncatedLabel(truncated?.recent_closed_trades ?? false)} />
           <AnalyticsClosedTradesTable trades={snapshot?.recent_closed_trades ?? []} />
         </section>
       </div>

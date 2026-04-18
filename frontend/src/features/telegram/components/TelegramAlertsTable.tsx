@@ -8,8 +8,8 @@ export function TelegramAlertsTable({ alerts }: TelegramAlertsTableProps) {
   if (alerts.length === 0) {
     return (
       <div className="surface-table-empty">
-        <strong>No recent Telegram alerts.</strong>
-        <p className="panel-muted">Recent bounded delivery history will appear here once alert rows are recorded.</p>
+        <strong>Последних алертов Telegram нет.</strong>
+        <p className="panel-muted">История доставки появится после записи алертов.</p>
       </div>
     );
   }
@@ -19,10 +19,10 @@ export function TelegramAlertsTable({ alerts }: TelegramAlertsTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Type</th>
-            <th>Message</th>
-            <th>Delivered</th>
-            <th>When</th>
+            <th>Тип</th>
+            <th>Сообщение</th>
+            <th>Доставлено</th>
+            <th>Когда</th>
           </tr>
         </thead>
         <tbody>
@@ -37,7 +37,7 @@ export function TelegramAlertsTable({ alerts }: TelegramAlertsTableProps) {
               <td>{alert.message}</td>
               <td>
                 <span className={alert.delivered ? "surface-badge surface-badge--buy" : "surface-badge surface-badge--sell"}>
-                  {alert.delivered ? "delivered" : "undelivered"}
+                  {alert.delivered ? "доставлено" : "не доставлено"}
                 </span>
               </td>
               <td>{alert.ts ? new Date(alert.ts).toLocaleString() : "-"}</td>

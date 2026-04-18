@@ -9,7 +9,7 @@ interface LogViewerProps {
 export function LogViewer({ entries, emptyMessage }: LogViewerProps) {
   return (
     <section className="panel log-viewer">
-      <SectionHeading title="Log Stream" description="Recent bounded entries for the selected channel, with live append when the stream is connected." />
+      <SectionHeading title="Поток логов" description="Последние записи выбранного канала с живым обновлением." />
       {entries.length === 0 ? (
         <p className="panel-muted log-viewer__empty" data-testid="logs.viewer.empty">
           {emptyMessage}

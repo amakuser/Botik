@@ -64,20 +64,20 @@ export function MarketPage() {
     <AppShell>
       <div className="app-route market-layout">
         <PageIntro
-          eyebrow="Live Data"
-          title="Market"
-          description="Real-time prices for top Bybit Linear Perpetuals. Refreshes every 5 seconds."
+          eyebrow="Данные"
+          title="Рынок"
+          description="Цены в реальном времени для топ Linear Perpetuals Bybit. Обновление каждые 5 секунд."
           meta={
             <>
               <p className="status-caption">
-                Source: {tickerQuery.data?.source ?? "loading"}
+                Источник: {tickerQuery.data?.source ?? "загрузка"}
               </p>
               <p className="status-caption">
-                Symbols: {tickers.length}
+                Символов: {tickers.length}
               </p>
               {tickerQuery.data?.generated_at ? (
                 <p className="status-caption">
-                  Updated: {new Date(tickerQuery.data.generated_at).toLocaleTimeString()}
+                  Обновлено: {new Date(tickerQuery.data.generated_at).toLocaleTimeString()}
                 </p>
               ) : null}
             </>
@@ -86,14 +86,14 @@ export function MarketPage() {
 
         {error ? (
           <section className="panel">
-            <SectionHeading title="Connection Error" description="Could not reach Bybit public API." />
+            <SectionHeading title="Ошибка подключения" description="Нет доступа к публичному API Bybit." />
             <p className="inline-error">{error}</p>
           </section>
         ) : null}
 
         {tickerQuery.isError ? (
           <section className="panel">
-            <p className="inline-error">Failed to fetch market data.</p>
+            <p className="inline-error">Не удалось загрузить рыночные данные.</p>
           </section>
         ) : null}
 
@@ -101,7 +101,7 @@ export function MarketPage() {
           <section className="panel market-panel">
             <SectionHeading
               title="Linear Perpetuals"
-              description="Bybit public market data — no authentication required."
+              description="Публичные рыночные данные Bybit — без авторизации."
             />
             <div className="market-grid">
               {tickers.map((ticker) => (
@@ -111,7 +111,7 @@ export function MarketPage() {
           </section>
         ) : !tickerQuery.isError && !error ? (
           <section className="panel">
-            <p className="panel-muted">Loading market data…</p>
+            <p className="panel-muted">Загрузка рыночных данных…</p>
           </section>
         ) : null}
       </div>

@@ -8,7 +8,7 @@ import { FuturesSummaryCard } from "./components/FuturesSummaryCard";
 import { useFuturesReadModel } from "./hooks/useFuturesReadModel";
 
 function truncatedLabel(value: boolean) {
-  return value ? "Showing bounded recent rows." : "Showing all rows in the current bounded snapshot.";
+  return value ? "Показаны последние записи (обрезано)." : "Показаны все записи текущего снепшота.";
 }
 
 export function FuturesPage() {
@@ -21,15 +21,15 @@ export function FuturesPage() {
     <AppShell>
       <div className="app-route futures-layout">
         <PageIntro
-          eyebrow="Read Surface"
-          title="Futures Read Surface"
-          description="Bounded read-only visibility for open positions, active orders, recent fills, and protection state on the primary stack."
+          eyebrow="Данные"
+          title="Фьючерсы"
+          description="Открытые позиции, активные ордера, последние сделки и состояние защиты — только чтение."
           meta={
             <>
               <p className="status-caption" data-testid="futures.source-mode">
-                Source mode: {snapshot?.source_mode ?? "loading"}
+                Режим: {snapshot?.source_mode ?? "загрузка"}
               </p>
-              <p className="status-caption">Account: {summary?.account_type ?? "loading"}</p>
+              <p className="status-caption">Аккаунт: {summary?.account_type ?? "загрузка"}</p>
               <p className="status-caption">uPnL: {summary?.unrealized_pnl_total?.toFixed(4) ?? "..."}</p>
             </>
           }
@@ -37,61 +37,61 @@ export function FuturesPage() {
 
         {futuresQuery.isError ? (
           <section className="panel">
-            <h2>Futures Read Error</h2>
+            <h2>Ошибка загрузки фьючерсов</h2>
             <p className="inline-error" data-testid="futures.error">
-              Failed to load the futures read model.
+              Не удалось загрузить данные фьючерсного аккаунта.
             </p>
           </section>
         ) : null}
 
         <section className="panel futures-summary-panel">
-          <SectionHeading title="Risk Snapshot" description="Bounded futures exposure, protection, and reconciliation metrics for the current account state." />
+          <SectionHeading title="Снепшот рисков" description="Экспозиция, защита и метрики сверки фьючерсного аккаунта." />
           <div className="futures-summary-grid">
             <FuturesSummaryCard
-              label="Open Positions"
+              label="Открытых позиций"
               value={summary?.positions_count ?? "..."}
-              note={`Protected: ${summary?.protected_positions_count ?? "..."} | Attention: ${summary?.attention_positions_count ?? "..."}`}
+              note={`Защищено: ${summary?.protected_positions_count ?? "..."} | Внимание: ${summary?.attention_positions_count ?? "..."}`}
               testId="futures.summary.positions"
             />
             <FuturesSummaryCard
-              label="Recovered Positions"
+              label="Восстановленных позиций"
               value={summary?.recovered_positions_count ?? "..."}
-              note="Recovered futures positions from exchange state."
+              note="Позиции, восстановленные из состояния биржи."
               testId="futures.summary.recovered"
             />
             <FuturesSummaryCard
-              label="Active Orders"
+              label="Активных ордеров"
               value={summary?.open_orders_count ?? "..."}
-              note="Open futures orders only."
+              note="Только открытые фьючерсные ордера."
               testId="futures.summary.orders"
             />
             <FuturesSummaryCard
-              label="Recent Fills"
+              label="Последних сделок"
               value={summary?.recent_fills_count ?? "..."}
-              note="Recent futures execution history only."
+              note="Только последняя история исполнений."
               testId="futures.summary.fills"
             />
             <FuturesSummaryCard
-              label="Total uPnL"
+              label="Суммарный uPnL"
               value={summary?.unrealized_pnl_total?.toFixed(4) ?? "..."}
-              note="Aggregated unrealized PnL for currently open positions."
+              note="Нереализованный PnL по всем открытым позициям."
               testId="futures.summary.upnl"
             />
           </div>
         </section>
 
         <section className="panel">
-          <SectionHeading title="Open Positions" description={truncatedLabel(truncated?.positions ?? false)} />
+          <SectionHeading title="Открытые позиции" description={truncatedLabel(truncated?.positions ?? false)} />
           <FuturesPositionsTable positions={snapshot?.positions ?? []} />
         </section>
 
         <section className="panel">
-          <SectionHeading title="Active Orders" description={truncatedLabel(truncated?.active_orders ?? false)} />
+          <SectionHeading title="Активные ордера" description={truncatedLabel(truncated?.active_orders ?? false)} />
           <FuturesOrdersTable orders={snapshot?.active_orders ?? []} />
         </section>
 
         <section className="panel">
-          <SectionHeading title="Recent Fills" description={truncatedLabel(truncated?.recent_fills ?? false)} />
+          <SectionHeading title="Последние сделки" description={truncatedLabel(truncated?.recent_fills ?? false)} />
           <FuturesFillsTable fills={snapshot?.recent_fills ?? []} />
         </section>
       </div>

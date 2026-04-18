@@ -23,7 +23,7 @@ export function LogChannelTabs({ channels, selectedChannelId, onSelect }: LogCha
             <span className="log-channel-tabs__title">{channel.label}</span>
             <span className="log-channel-tabs__source">{channel.source_kind}</span>
           </span>
-          <span className={channel.available ? "status-chip" : "status-chip is-failed"}>{channel.available ? "live" : "offline"}</span>
+          <span className={channel.available ? "status-chip" : "status-chip is-failed"}>{channel.available ? "онлайн" : "офлайн"}</span>
         </button>
       ))}
     </div>

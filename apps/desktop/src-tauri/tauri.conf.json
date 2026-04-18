@@ -10,16 +10,7 @@
     "frontendDist": "../../../frontend/dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Botik Foundation",
-        "width": 1280,
-        "height": 800,
-        "decorations": false,
-        "resizable": true,
-        "shadow": true
-      }
-    ]
+    "windows": []
   },
   "bundle": {
     "active": true,

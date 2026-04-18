@@ -9,23 +9,23 @@ export function DataBackfillJobCard({ disabled, onStart }: DataBackfillJobCardPr
   return (
     <section className="panel job-action-card job-preset-card">
       <SectionHeading
-        title="Data Backfill Job"
-        description="Fixed-preset real backfill flow through the existing app-service, Job Manager, worker, and SSE path."
+        title="Загрузка данных"
+        description="Запуск задачи загрузки исторических данных."
       />
       <p className="toolbar-hint">
-        Single preset only, kept intentionally narrow so operators can launch it quickly without opening a broader data console.
+        Один фиксированный пресет — быстрый запуск без дополнительных настроек.
       </p>
       <dl className="job-preset-grid">
-        <dt>Symbol</dt>
+        <dt>Символ</dt>
         <dd data-testid="jobs.backfill.symbol">BTCUSDT</dd>
-        <dt>Category</dt>
+        <dt>Категория</dt>
         <dd data-testid="jobs.backfill.category">spot</dd>
-        <dt>Interval</dt>
+        <dt>Интервал</dt>
         <dd data-testid="jobs.backfill.interval">1m</dd>
       </dl>
       <div className="toolbar-actions">
         <button type="button" className="button-primary" onClick={onStart} disabled={disabled}>
-          Start Data Backfill
+          Запустить загрузку
         </button>
       </div>
     </section>

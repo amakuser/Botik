@@ -128,7 +128,7 @@ export function JobMonitorPage() {
           sleep_ms: 140,
         },
       },
-      "Failed to start the sample data import.",
+      "Не удалось запустить импорт тестовых данных.",
     );
   }
 
@@ -142,7 +142,7 @@ export function JobMonitorPage() {
           intervals: ["1m"],
         },
       },
-      "Failed to start the fixed data backfill job.",
+      "Не удалось запустить задачу загрузки данных.",
     );
   }
 
@@ -156,7 +156,7 @@ export function JobMonitorPage() {
           intervals: ["1m"],
         },
       },
-      "Failed to start the fixed data integrity job.",
+      "Не удалось запустить задачу проверки данных.",
     );
   }
 
@@ -171,7 +171,7 @@ export function JobMonitorPage() {
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["job", selectedJobId] });
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Failed to stop the selected job.");
+      setActionError(error instanceof Error ? error.message : "Не удалось остановить выбранную задачу.");
     }
   }
 
@@ -179,15 +179,15 @@ export function JobMonitorPage() {
     <AppShell>
       <div className="app-route jobs-page">
         <PageIntro
-          eyebrow="Operations"
-          title="Job Monitor"
-          description="Bounded background workflows, current job state, and live log visibility through the primary Job Manager path."
+          eyebrow="Операции"
+          title="Мониторинг задач"
+          description="Фоновые задачи, текущее состояние выполнения и прямой доступ к логам."
           meta={
             <>
-              <p className="status-caption">Active jobs: {activeJob ? 1 : 0}</p>
-              <p className="status-caption">History entries: {jobs.length}</p>
+              <p className="status-caption">Активных задач: {activeJob ? 1 : 0}</p>
+              <p className="status-caption">Записей в истории: {jobs.length}</p>
               <p className="status-caption">
-                Selected: {selectedJobState === "none" ? "none" : `${selectedJobState} · ${selectedJobProgress}%`}
+                Выбрана: {selectedJobState === "none" ? "нет" : `${selectedJobState} · ${selectedJobProgress}%`}
               </p>
             </>
           }
@@ -207,10 +207,10 @@ export function JobMonitorPage() {
             </div>
 
             <section className="panel jobs-history-panel">
-              <SectionHeading title="Job History" description="Recent bounded execution history for the current primary job path." />
+              <SectionHeading title="История задач" description="Последние выполненные задачи." />
               {jobs.length === 0 ? (
                 <p className="panel-muted" data-testid="jobs.history.empty">
-                  No jobs have run yet.
+                  Задач ещё не было.
                 </p>
               ) : (
                 <ol className="jobs-list">
@@ -226,7 +226,7 @@ export function JobMonitorPage() {
                           <span className={`status-chip is-${job.state}`}>{job.state}</span>
                         </div>
                         <div className="jobs-list__meta">
-                          <span>Updated {formatJobUpdatedAt(job.updated_at)}</span>
+                          <span>Обновлено {formatJobUpdatedAt(job.updated_at)}</span>
                           <span>{Math.round(job.progress * 100)}%</span>
                         </div>
                         <div className="jobs-list__progress" aria-hidden="true">
@@ -245,7 +245,7 @@ export function JobMonitorPage() {
             <JobLogPanel logs={logs} />
             {actionError ? (
               <section className="panel">
-                <h2>Action Error</h2>
+                <h2>Ошибка действия</h2>
                 <p className="inline-error" data-testid="jobs.action-error">
                   {actionError}
                 </p>

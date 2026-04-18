@@ -8,8 +8,8 @@ export function TelegramCommandsTable({ commands }: TelegramCommandsTableProps) 
   if (commands.length === 0) {
     return (
       <div className="surface-table-empty">
-        <strong>No recent Telegram commands.</strong>
-        <p className="panel-muted">Recent operator or bot command activity will appear here once the bounded snapshot includes command rows.</p>
+        <strong>Последних команд Telegram нет.</strong>
+        <p className="panel-muted">История команд появится после записи активности.</p>
       </div>
     );
   }
@@ -19,11 +19,11 @@ export function TelegramCommandsTable({ commands }: TelegramCommandsTableProps) 
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Command</th>
-            <th>Status</th>
-            <th>Chat</th>
-            <th>User</th>
-            <th>When</th>
+            <th>Команда</th>
+            <th>Статус</th>
+            <th>Чат</th>
+            <th>Пользователь</th>
+            <th>Когда</th>
           </tr>
         </thead>
         <tbody>
@@ -32,7 +32,7 @@ export function TelegramCommandsTable({ commands }: TelegramCommandsTableProps) 
               <td>
                 <div className="surface-table__stack">
                   <span className="surface-table__primary">{command.command}</span>
-                  <span className="panel-muted">{command.args || "No args"}</span>
+                  <span className="panel-muted">{command.args || "Без аргументов"}</span>
                 </div>
               </td>
               <td>

@@ -8,10 +8,10 @@ interface JobLogPanelProps {
 export function JobLogPanel({ logs }: JobLogPanelProps) {
   return (
     <section className="panel log-panel">
-      <SectionHeading title="Live Logs" description="Recent bounded worker output for the currently selected job." />
+      <SectionHeading title="Логи задачи" description="Вывод воркера для выбранной задачи." />
       {logs.length === 0 ? (
         <p className="panel-muted log-panel__empty" data-testid="jobs.logs.empty">
-          Logs will appear here after the sample import starts.
+          Логи появятся после запуска задачи.
         </p>
       ) : (
         <ol className="log-panel__list" data-testid="jobs.logs.list">

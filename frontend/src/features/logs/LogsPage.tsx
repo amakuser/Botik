@@ -73,21 +73,21 @@ export function LogsPage() {
     <AppShell>
       <div className="app-route logs-page">
         <PageIntro
-          eyebrow="Observability"
-          title="Unified Logs"
-          description="Read-only recent and live logs for the primary stack, job flows, and desktop shell artifacts."
+          eyebrow="Наблюдение"
+          title="Логи"
+          description="Живые и архивные логи стека, задач и компонентов системы."
           meta={
             <>
-              <p className="status-caption">Live channels: {liveChannelCount}</p>
-              <p className="status-caption">Offline channels: {offlineChannelCount}</p>
-              <p className="status-caption">Selected: {selectedChannel?.label ?? "none"}</p>
+              <p className="status-caption">Активных каналов: {liveChannelCount}</p>
+              <p className="status-caption">Недоступных каналов: {offlineChannelCount}</p>
+              <p className="status-caption">Выбран: {selectedChannel?.label ?? "нет"}</p>
             </>
           }
         />
 
         <div className="logs-layout">
           <section className="panel logs-channel-panel">
-            <SectionHeading title="Channels" description="Approved first-slice log channels with bounded snapshot and live append behavior." />
+            <SectionHeading title="Каналы" description="Доступные каналы логов со снепшотом и живым обновлением." />
             <LogChannelTabs channels={channels} selectedChannelId={selectedChannelId} onSelect={setSelectedChannelId} />
           </section>
 
@@ -97,15 +97,15 @@ export function LogsPage() {
               entries={entries}
               emptyMessage={
                 selectedChannel?.available
-                  ? "No log entries have been captured for this channel yet."
-                  : "This channel is not currently available in this runtime."
+                  ? "Логи для этого канала ещё не получены."
+                  : "Этот канал недоступен в текущем рантайме."
               }
             />
             {channelsQuery.isError || snapshotQuery.isError ? (
               <section className="panel">
-                <h2>Logs Error</h2>
+                <h2>Ошибка логов</h2>
                 <p className="inline-error" data-testid="logs.error">
-                  Failed to load the selected log channel.
+                  Не удалось загрузить выбранный канал логов.
                 </p>
               </section>
             ) : null}

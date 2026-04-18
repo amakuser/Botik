@@ -9,7 +9,7 @@ import { SpotSummaryCard } from "./components/SpotSummaryCard";
 import { useSpotReadModel } from "./hooks/useSpotReadModel";
 
 function truncatedLabel(value: boolean) {
-  return value ? "Showing bounded recent rows." : "Showing all rows in the current bounded snapshot.";
+  return value ? "Показаны последние записи (обрезано)." : "Показаны все записи текущего снепшота.";
 }
 
 export function SpotPage() {
@@ -22,82 +22,82 @@ export function SpotPage() {
     <AppShell>
       <div className="app-route spot-layout">
         <PageIntro
-          eyebrow="Read Surface"
-          title="Spot Read Surface"
-          description="Bounded read-only visibility for balances, holdings, active orders, and recent fills on the primary stack."
+          eyebrow="Данные"
+          title="Спот"
+          description="Балансы, холдинги, активные ордера и последние сделки — только чтение."
           meta={
             <>
               <p className="status-caption" data-testid="spot.source-mode">
-                Source mode: {snapshot?.source_mode ?? "loading"}
+                Режим: {snapshot?.source_mode ?? "загрузка"}
               </p>
-              <p className="status-caption">Account: {summary?.account_type ?? "loading"}</p>
-              <p className="status-caption">Open orders: {summary?.open_orders_count ?? "..."}</p>
+              <p className="status-caption">Аккаунт: {summary?.account_type ?? "загрузка"}</p>
+              <p className="status-caption">Открытых ордеров: {summary?.open_orders_count ?? "..."}</p>
             </>
           }
         />
 
         {spotQuery.isError ? (
           <section className="panel">
-            <h2>Spot Read Error</h2>
+            <h2>Ошибка загрузки спота</h2>
             <p className="inline-error" data-testid="spot.error">
-              Failed to load the spot read model.
+              Не удалось загрузить данные спот аккаунта.
             </p>
           </section>
         ) : null}
 
         <section className="panel spot-summary-panel">
-          <SectionHeading title="Account Snapshot" description="Bounded high-signal summary metrics for the current spot account state." />
+          <SectionHeading title="Снепшот аккаунта" description="Ключевые метрики текущего состояния спот аккаунта." />
           <div className="spot-summary-grid">
             <SpotSummaryCard
-              label="Balance Assets"
+              label="Активов на балансе"
               value={summary?.balance_assets_count ?? "..."}
-              note="Non-zero spot balances in the current account snapshot."
+              note="Ненулевые балансы в текущем снепшоте."
               testId="spot.summary.balance-assets"
             />
             <SpotSummaryCard
-              label="Active Holdings"
+              label="Активных холдингов"
               value={summary?.holdings_count ?? "..."}
-              note={`Recovered: ${summary?.recovered_holdings_count ?? "..."} | Strategy-owned: ${summary?.strategy_owned_holdings_count ?? "..."}`}
+              note={`Восстановлено: ${summary?.recovered_holdings_count ?? "..."} | Стратегия: ${summary?.strategy_owned_holdings_count ?? "..."}`}
               testId="spot.summary.holdings"
             />
             <SpotSummaryCard
-              label="Active Orders"
+              label="Активных ордеров"
               value={summary?.open_orders_count ?? "..."}
-              note="Open spot orders only."
+              note="Только открытые спот-ордера."
               testId="spot.summary.orders"
             />
             <SpotSummaryCard
-              label="Recent Fills"
+              label="Последних сделок"
               value={summary?.recent_fills_count ?? "..."}
-              note="Recent execution history only."
+              note="Только последняя история исполнений."
               testId="spot.summary.fills"
             />
             <SpotSummaryCard
-              label="Pending Intents"
+              label="Отложенных интентов"
               value={summary?.pending_intents_count ?? "..."}
-              note="Minimal intent summary from existing spot intent data."
+              note="Краткая сводка по спот-интентам."
               testId="spot.summary.intents"
             />
           </div>
         </section>
 
         <section className="panel">
-          <SectionHeading title="Balances" description={truncatedLabel(truncated?.balances ?? false)} />
+          <SectionHeading title="Балансы" description={truncatedLabel(truncated?.balances ?? false)} />
           <SpotBalancesTable balances={snapshot?.balances ?? []} />
         </section>
 
         <section className="panel">
-          <SectionHeading title="Holdings" description={truncatedLabel(truncated?.holdings ?? false)} />
+          <SectionHeading title="Холдинги" description={truncatedLabel(truncated?.holdings ?? false)} />
           <SpotHoldingsTable holdings={snapshot?.holdings ?? []} />
         </section>
 
         <section className="panel">
-          <SectionHeading title="Active Orders" description={truncatedLabel(truncated?.active_orders ?? false)} />
+          <SectionHeading title="Активные ордера" description={truncatedLabel(truncated?.active_orders ?? false)} />
           <SpotOrdersTable orders={snapshot?.active_orders ?? []} />
         </section>
 
         <section className="panel">
-          <SectionHeading title="Recent Fills" description={truncatedLabel(truncated?.recent_fills ?? false)} />
+          <SectionHeading title="Последние сделки" description={truncatedLabel(truncated?.recent_fills ?? false)} />
           <SpotFillsTable fills={snapshot?.recent_fills ?? []} />
         </section>
       </div>

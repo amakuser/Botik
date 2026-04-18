@@ -14,7 +14,7 @@ function formatPrice(value: number) {
 
 export function SpotOrdersTable({ orders }: SpotOrdersTableProps) {
   if (orders.length === 0) {
-    return <p className="panel-muted surface-table-empty">No active spot orders are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">Активных спот-ордеров нет.</p>;
   }
 
   return (
@@ -22,11 +22,11 @@ export function SpotOrdersTable({ orders }: SpotOrdersTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Side</th>
-            <th>Price</th>
-            <th>Qty</th>
-            <th>Status</th>
+            <th>Символ</th>
+            <th>Сторона</th>
+            <th>Цена</th>
+            <th>Кол-во</th>
+            <th>Статус</th>
           </tr>
         </thead>
         <tbody>

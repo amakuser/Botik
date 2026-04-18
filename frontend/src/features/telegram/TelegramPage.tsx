@@ -12,7 +12,7 @@ import { TelegramSummaryCard } from "./components/TelegramSummaryCard";
 import { useTelegramOpsModel } from "./hooks/useTelegramOpsModel";
 
 function truncatedLabel(value: boolean) {
-  return value ? "Showing bounded recent rows." : "Showing all rows in the current bounded snapshot.";
+  return value ? "Показаны последние записи (обрезано)." : "Показаны все записи текущего снепшота.";
 }
 
 export function TelegramPage() {
@@ -43,41 +43,41 @@ export function TelegramPage() {
     <AppShell>
       <div className="app-route telegram-layout">
         <PageIntro
-          eyebrow="Operations"
-          title="Telegram Ops"
-          description="Bounded operational visibility for Telegram health, recent alerts, recent errors, and a safe connectivity check on the primary stack."
+          eyebrow="Операции"
+          title="Телеграм"
+          description="Состояние Telegram бота, алерты, ошибки и проверка подключения."
           meta={
             <>
               <p className="status-caption" data-testid="telegram.source-mode">
-                Source mode: {snapshot?.source_mode ?? "loading"}
+                Режим: {snapshot?.source_mode ?? "загрузка"}
               </p>
-              <p className="status-caption">Bot profile: {summary?.bot_profile ?? "loading"}</p>
-              <p className="status-caption">Startup: {summary?.startup_status ?? "loading"}</p>
-              <p className="status-caption">Connectivity: {summary?.connectivity_state ?? "loading"}</p>
+              <p className="status-caption">Профиль бота: {summary?.bot_profile ?? "загрузка"}</p>
+              <p className="status-caption">Запуск: {summary?.startup_status ?? "загрузка"}</p>
+              <p className="status-caption">Связь: {summary?.connectivity_state ?? "загрузка"}</p>
             </>
           }
         />
 
         {telegramQuery.isError ? (
           <section className="panel">
-            <h2>Telegram Ops Error</h2>
+            <h2>Ошибка Telegram</h2>
             <p className="inline-error" data-testid="telegram.error.banner">
-              Failed to load the Telegram operational view.
+              Не удалось загрузить данные Telegram.
             </p>
           </section>
         ) : null}
 
         <section className="panel telegram-summary-panel">
           <SectionHeading
-            title="Overview"
-            description="Current bot availability, chat binding, and recent delivery health across the bounded Telegram operations snapshot."
+            title="Обзор"
+            description="Доступность бота, привязка чатов и статус доставки сообщений."
           />
           <div className="telegram-summary-grid">
             <TelegramSummaryCard
-              eyebrow="Connection"
-              label="Connectivity"
+              eyebrow="Подключение"
+              label="Состояние связи"
               value={summary?.connectivity_state ?? "..."}
-              note={summary?.connectivity_detail ?? "Loading connectivity state."}
+              note={summary?.connectivity_detail ?? "Загрузка состояния связи."}
               tone={
                 summary?.connectivity_state === "healthy"
                   ? "positive"
@@ -90,24 +90,24 @@ export function TelegramPage() {
               testId="telegram.summary.connectivity"
             />
             <TelegramSummaryCard
-              eyebrow="Bindings"
-              label="Allowed Chats"
+              eyebrow="Привязки"
+              label="Разрешённые чаты"
               value={summary?.allowed_chat_count ?? "..."}
-              note={(summary?.allowed_chats_masked ?? []).join(", ") || "Not configured"}
+              note={(summary?.allowed_chats_masked ?? []).join(", ") || "Не настроено"}
               testId="telegram.summary.allowed-chats"
             />
             <TelegramSummaryCard
-              eyebrow="Delivery"
-              label="Recent Alerts"
+              eyebrow="Доставка"
+              label="Последних алертов"
               value={summary?.alerts_count ?? "..."}
-              note={summary?.last_successful_send ?? "No recent alert delivery recorded."}
+              note={summary?.last_successful_send ?? "Доставленных алертов нет."}
               testId="telegram.summary.alerts"
             />
             <TelegramSummaryCard
-              eyebrow="Warnings"
-              label="Recent Errors"
+              eyebrow="Предупреждения"
+              label="Последних ошибок"
               value={summary?.errors_count ?? "..."}
-              note={summary?.last_error ?? "No recent Telegram error observed."}
+              note={summary?.last_error ?? "Ошибок Telegram не обнаружено."}
               tone={summary && summary.errors_count > 0 ? "negative" : "positive"}
               testId="telegram.summary.errors"
             />
@@ -116,8 +116,8 @@ export function TelegramPage() {
 
         <section className="panel telegram-connectivity-panel">
           <SectionHeading
-            title="Connectivity Check"
-            description="Safe `getMe` reachability check only. No message send, no runtime control, no bot mutation."
+            title="Проверка связи"
+            description="Безопасная проверка доступности (`getMe`). Без отправки сообщений и изменений."
             actions={
               <button
                 type="button"
@@ -126,49 +126,49 @@ export function TelegramPage() {
                 disabled={checking}
                 data-testid="telegram.connectivity-check"
               >
-                {checking ? "Checking..." : "Run Connectivity Check"}
+                {checking ? "Проверяю..." : "Проверить связь"}
               </button>
             }
           />
           <div className="telegram-ops-signals">
             <div className="runtime-card__signal">
-              <span className="runtime-card__signal-label">Bot state</span>
-              <strong>{summary?.connectivity_state ?? "loading"}</strong>
-              <span className="panel-muted">{summary?.connectivity_detail ?? "No connectivity detail yet."}</span>
+              <span className="runtime-card__signal-label">Состояние бота</span>
+              <strong>{summary?.connectivity_state ?? "загрузка"}</strong>
+              <span className="panel-muted">{summary?.connectivity_detail ?? "Нет данных о связи."}</span>
             </div>
             <div className="runtime-card__signal">
-              <span className="runtime-card__signal-label">Token / startup</span>
-              <strong>{summary ? (summary.token_configured ? "configured" : "missing") : "loading"}</strong>
+              <span className="runtime-card__signal-label">Токен / запуск</span>
+              <strong>{summary ? (summary.token_configured ? "настроен" : "отсутствует") : "загрузка"}</strong>
               <span className="panel-muted">
-                {summary?.token_profile_name ?? "loading"} · {summary?.startup_status ?? "loading"}
+                {summary?.token_profile_name ?? "загрузка"} · {summary?.startup_status ?? "загрузка"}
               </span>
             </div>
             <div className="runtime-card__signal">
-              <span className="runtime-card__signal-label">Chat binding</span>
-              <strong>{summary?.allowed_chat_count ?? "loading"}</strong>
-              <span className="panel-muted">{(summary?.allowed_chats_masked ?? []).join(", ") || "No chats configured"}</span>
+              <span className="runtime-card__signal-label">Привязка чатов</span>
+              <strong>{summary?.allowed_chat_count ?? "загрузка"}</strong>
+              <span className="panel-muted">{(summary?.allowed_chats_masked ?? []).join(", ") || "Чаты не настроены"}</span>
             </div>
           </div>
           {checkResult ? (
             <div className="telegram-check-result runtime-card__callout" data-testid="telegram.check.result">
-              <p className="runtime-card__callout-label">Latest check result</p>
+              <p className="runtime-card__callout-label">Результат последней проверки</p>
               <p className="runtime-card__reason">
-                State: <strong>{checkResult.state}</strong>
+                Статус: <strong>{checkResult.state}</strong>
               </p>
-              <p className="panel-muted">{checkResult.detail ?? "No additional detail."}</p>
+              <p className="panel-muted">{checkResult.detail ?? "Нет дополнительных данных."}</p>
               <div className="telegram-check-result__meta">
-                <span className="surface-badge">Bot: {checkResult.bot_username ?? "n/a"}</span>
+                <span className="surface-badge">Бот: {checkResult.bot_username ?? "n/a"}</span>
                 <span className="surface-badge surface-badge--soft">
-                  Latency: {checkResult.latency_ms !== null && checkResult.latency_ms !== undefined ? `${checkResult.latency_ms} ms` : "n/a"}
+                  Задержка: {checkResult.latency_ms !== null && checkResult.latency_ms !== undefined ? `${checkResult.latency_ms} ms` : "n/a"}
                 </span>
-                <span className="surface-badge">Source: {checkResult.source_mode}</span>
+                <span className="surface-badge">Источник: {checkResult.source_mode}</span>
               </div>
               {checkResult.error ? <p className="inline-error">{checkResult.error}</p> : null}
             </div>
           ) : null}
           {checkError ? (
             <div className="runtime-card__callout runtime-card__callout--error">
-              <p className="runtime-card__callout-label">Connectivity check error</p>
+              <p className="runtime-card__callout-label">Ошибка проверки связи</p>
               <p className="inline-error" data-testid="telegram.check.error">
                 {checkError}
               </p>
@@ -177,17 +177,17 @@ export function TelegramPage() {
         </section>
 
         <section className="panel telegram-history-panel">
-          <SectionHeading title="Recent Commands" description={truncatedLabel(truncated?.recent_commands ?? false)} />
+          <SectionHeading title="Последние команды" description={truncatedLabel(truncated?.recent_commands ?? false)} />
           <TelegramCommandsTable commands={snapshot?.recent_commands ?? []} />
         </section>
 
         <section className="panel telegram-history-panel">
-          <SectionHeading title="Recent Alerts" description={truncatedLabel(truncated?.recent_alerts ?? false)} />
+          <SectionHeading title="Последние алерты" description={truncatedLabel(truncated?.recent_alerts ?? false)} />
           <TelegramAlertsTable alerts={snapshot?.recent_alerts ?? []} />
         </section>
 
         <section className="panel telegram-history-panel">
-          <SectionHeading title="Recent Errors" description={truncatedLabel(truncated?.recent_errors ?? false)} />
+          <SectionHeading title="Последние ошибки" description={truncatedLabel(truncated?.recent_errors ?? false)} />
           <TelegramErrorsTable errors={snapshot?.recent_errors ?? []} />
         </section>
       </div>

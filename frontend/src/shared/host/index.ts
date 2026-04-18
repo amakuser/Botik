@@ -1,6 +1,7 @@
 declare global {
   interface Window {
     __BOTIK_HOST__?: Partial<HostRuntimeConfig>;
+    __TAURI_INTERNALS__?: unknown;
   }
 }
 
@@ -30,5 +31,7 @@ export async function getHostRuntimeConfig(): Promise<HostRuntimeConfig> {
 }
 
 export function isDesktopRuntime(): boolean {
+  // __TAURI_INTERNALS__ is injected by Tauri v2 before any JS runs
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) return true;
   return readHostRuntimeConfig().desktop;
 }

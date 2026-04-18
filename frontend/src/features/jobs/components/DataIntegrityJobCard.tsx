@@ -9,21 +9,21 @@ export function DataIntegrityJobCard({ disabled, onStart }: DataIntegrityJobCard
   return (
     <section className="panel job-action-card job-preset-card">
       <SectionHeading
-        title="Data Integrity Job"
-        description="Read-only validation for the fixed-preset data backfill DB on the existing Job Manager path."
+        title="Проверка данных"
+        description="Только чтение — валидация загруженных данных без изменений."
       />
-      <p className="toolbar-hint">Bounded validation only, with no repair/write actions and no broad data maintenance console.</p>
+      <p className="toolbar-hint">Только проверка целостности, без исправлений и записи.</p>
       <dl className="job-preset-grid">
-        <dt>Symbol</dt>
+        <dt>Символ</dt>
         <dd data-testid="jobs.integrity.symbol">BTCUSDT</dd>
-        <dt>Category</dt>
+        <dt>Категория</dt>
         <dd data-testid="jobs.integrity.category">spot</dd>
-        <dt>Interval</dt>
+        <dt>Интервал</dt>
         <dd data-testid="jobs.integrity.interval">1m</dd>
       </dl>
       <div className="toolbar-actions">
         <button type="button" className="button-primary" onClick={onStart} disabled={disabled}>
-          Start Data Integrity
+          Запустить проверку
         </button>
       </div>
     </section>

@@ -8,8 +8,8 @@ export function TelegramErrorsTable({ errors }: TelegramErrorsTableProps) {
   if (errors.length === 0) {
     return (
       <div className="surface-table-empty">
-        <strong>No recent Telegram errors.</strong>
-        <p className="panel-muted">Warnings and delivery failures will appear here once the bounded snapshot includes error rows.</p>
+        <strong>Последних ошибок Telegram нет.</strong>
+        <p className="panel-muted">Предупреждения и сбои доставки появятся здесь после записи ошибок.</p>
       </div>
     );
   }
@@ -19,10 +19,10 @@ export function TelegramErrorsTable({ errors }: TelegramErrorsTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Source</th>
-            <th>Status</th>
-            <th>Error</th>
-            <th>When</th>
+            <th>Источник</th>
+            <th>Статус</th>
+            <th>Ошибка</th>
+            <th>Когда</th>
           </tr>
         </thead>
         <tbody>

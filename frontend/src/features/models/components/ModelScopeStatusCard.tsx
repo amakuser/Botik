@@ -27,21 +27,21 @@ export function ModelScopeStatusCard({ scopeStatus }: ModelScopeStatusCardProps)
     <section className="panel models-scope-card" data-testid={`models.scope.${scopeStatus.scope}`}>
       <div className="runtime-card__header models-scope-card__header">
         <div className="runtime-card__title-block">
-          <p className="models-scope-card__eyebrow">Scope Health</p>
-          <h2>{scopeStatus.scope === "spot" ? "Spot Models" : "Futures Models"}</h2>
-          <p className="panel-muted">Active manifest declaration plus the latest registry and training status.</p>
+          <p className="models-scope-card__eyebrow">Состояние скоупа</p>
+          <h2>{scopeStatus.scope === "spot" ? "Spot Модели" : "Futures Модели"}</h2>
+          <p className="panel-muted">Активное объявление манифеста, последний статус реестра и обучения.</p>
         </div>
-        <span className={statusClass(scopeStatus.ready)}>{scopeStatus.ready ? "READY" : "PENDING"}</span>
+        <span className={statusClass(scopeStatus.ready)}>{scopeStatus.ready ? "ГОТОВО" : "В ОЖИДАНИИ"}</span>
       </div>
 
       <div className="runtime-card__signal-row models-scope-card__signal-row">
         <div className="runtime-card__signal models-scope-card__signal">
-          <span className="runtime-card__signal-label">Active model</span>
+          <span className="runtime-card__signal-label">Активная модель</span>
           <strong>{scopeStatus.active_model}</strong>
-          <span className="panel-muted">{scopeStatus.checkpoint_name || "No checkpoint declared"}</span>
+          <span className="panel-muted">{scopeStatus.checkpoint_name || "Чекпоинт не объявлен"}</span>
         </div>
         <div className="runtime-card__signal models-scope-card__signal">
-          <span className="runtime-card__signal-label">Latest training</span>
+          <span className="runtime-card__signal-label">Последнее обучение</span>
           <strong>{scopeStatus.latest_training_status}</strong>
           <span className="panel-muted">
             {scopeStatus.latest_training_mode} · {scopeStatus.latest_training_started_at}
@@ -51,43 +51,43 @@ export function ModelScopeStatusCard({ scopeStatus }: ModelScopeStatusCardProps)
 
       <div className="models-scope-card__badge-row" aria-label={`${scopeStatus.scope} model status badges`}>
         <span className={surfaceBadgeClass(scopeStatus.latest_registry_status)}>
-          Registry: {scopeStatus.latest_registry_status}
+          Реестр: {scopeStatus.latest_registry_status}
         </span>
         <span className={surfaceBadgeClass(scopeStatus.latest_training_status)}>
-          Training: {scopeStatus.latest_training_status}
+          Обучение: {scopeStatus.latest_training_status}
         </span>
       </div>
 
       <dl className="runtime-card__details models-scope-card__details">
         <div>
-          <dt>Registry Model</dt>
+          <dt>Модель реестра</dt>
           <dd>{scopeStatus.latest_registry_model}</dd>
         </div>
         <div>
-          <dt>Registry Created</dt>
+          <dt>Создана в реестре</dt>
           <dd>{scopeStatus.latest_registry_created_at}</dd>
         </div>
         <div>
-          <dt>Training Model</dt>
+          <dt>Модель обучения</dt>
           <dd>{scopeStatus.latest_training_model_version}</dd>
         </div>
         <div>
-          <dt>Training Mode</dt>
+          <dt>Режим обучения</dt>
           <dd>{scopeStatus.latest_training_mode}</dd>
         </div>
         <div>
-          <dt>Training Started</dt>
+          <dt>Обучение начато</dt>
           <dd>{scopeStatus.latest_training_started_at}</dd>
         </div>
         <div>
-          <dt>Checkpoint</dt>
+          <dt>Чекпоинт</dt>
           <dd>{scopeStatus.checkpoint_name || "n/a"}</dd>
         </div>
       </dl>
 
       <div className="runtime-card__callouts">
         <div className="runtime-card__callout">
-          <p className="runtime-card__callout-label">Readiness reason</p>
+          <p className="runtime-card__callout-label">Причина готовности</p>
           <p className="runtime-card__reason">{scopeStatus.status_reason}</p>
         </div>
       </div>

@@ -22,8 +22,8 @@ export function TrainingRunsTable({ runs }: TrainingRunsTableProps) {
   if (runs.length === 0) {
     return (
       <div className="surface-table-empty">
-        <strong>No recent training runs available.</strong>
-        <p className="panel-muted">Recent bounded training history will appear here once runs are recorded.</p>
+        <strong>Последних запусков обучения нет.</strong>
+        <p className="panel-muted">История обучения появится после первых запусков.</p>
       </div>
     );
   }
@@ -33,13 +33,13 @@ export function TrainingRunsTable({ runs }: TrainingRunsTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Run ID</th>
-            <th>Scope</th>
-            <th>Model Version</th>
-            <th>Status</th>
-            <th>Mode</th>
-            <th>Started</th>
-            <th>Finished</th>
+            <th>ID запуска</th>
+            <th>Скоуп</th>
+            <th>Версия модели</th>
+            <th>Статус</th>
+            <th>Режим</th>
+            <th>Начало</th>
+            <th>Конец</th>
           </tr>
         </thead>
         <tbody>
@@ -50,7 +50,7 @@ export function TrainingRunsTable({ runs }: TrainingRunsTableProps) {
                   <span className="surface-table__primary">{run.run_id}</span>
                   <div className="models-table__badges">
                     <span className={run.is_trained ? "surface-badge surface-badge--buy" : "surface-badge"}>
-                      {run.is_trained ? "trained" : "in progress"}
+                      {run.is_trained ? "обучена" : "в процессе"}
                     </span>
                   </div>
                 </div>

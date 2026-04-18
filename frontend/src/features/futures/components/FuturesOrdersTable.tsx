@@ -13,7 +13,7 @@ function formatNumber(value: number | null | undefined, decimals = 2) {
 
 export function FuturesOrdersTable({ orders }: FuturesOrdersTableProps) {
   if (orders.length === 0) {
-    return <p className="panel-muted surface-table-empty">No active futures orders are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">Активных фьючерсных ордеров нет.</p>;
   }
 
   return (
@@ -21,12 +21,12 @@ export function FuturesOrdersTable({ orders }: FuturesOrdersTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Side</th>
-            <th>Type</th>
-            <th>Price</th>
-            <th>Qty</th>
-            <th>Status</th>
+            <th>Символ</th>
+            <th>Сторона</th>
+            <th>Тип</th>
+            <th>Цена</th>
+            <th>Кол-во</th>
+            <th>Статус</th>
           </tr>
         </thead>
         <tbody>
@@ -50,7 +50,7 @@ export function FuturesOrdersTable({ orders }: FuturesOrdersTableProps) {
                 <div className="surface-table__stack">
                   <strong>{order.order_type ?? "n/a"}</strong>
                   <span className="panel-muted">
-                    {order.reduce_only ? "reduce-only" : "standard"} · {order.time_in_force ?? "n/a"}
+                    {order.reduce_only ? "reduce-only" : "стандартный"} · {order.time_in_force ?? "n/a"}
                   </span>
                 </div>
               </td>
@@ -59,7 +59,7 @@ export function FuturesOrdersTable({ orders }: FuturesOrdersTableProps) {
               <td>
                 <div className="surface-table__stack">
                   <span className="surface-badge surface-badge--soft">{order.status}</span>
-                  <span className="panel-muted">{order.close_on_trigger ? "close on trigger" : "no trigger close"}</span>
+                  <span className="panel-muted">{order.close_on_trigger ? "закрытие по триггеру" : "без триггера"}</span>
                 </div>
               </td>
             </tr>

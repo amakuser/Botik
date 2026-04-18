@@ -39,74 +39,74 @@ type RouteChromeMeta = {
 
 const ROUTE_CHROME_META: Record<string, RouteChromeMeta> = {
   "/": {
-    section: "Foundation",
-    title: "Foundation Health",
-    note: "Bootstrap, health, and product-path readiness.",
+    section: "Система",
+    title: "Состояние системы",
+    note: "Инициализация, здоровье и готовность компонентов.",
   },
   "/jobs": {
-    section: "Operations",
-    title: "Job Monitor",
-    note: "Active controls, recent job state, and execution context.",
+    section: "Операции",
+    title: "Мониторинг задач",
+    note: "Активные задачи, история выполнения и контекст запуска.",
   },
   "/logs": {
-    section: "Observability",
-    title: "Unified Logs",
-    note: "Bounded live channels across the current primary stack.",
+    section: "Наблюдение",
+    title: "Логи",
+    note: "Живые каналы логов текущего стека.",
   },
   "/runtime": {
     section: "Runtime",
-    title: "Runtime Control",
-    note: "Spot and futures runtime state with bounded controls.",
+    title: "Управление рантаймом",
+    note: "Состояние спот и фьючерс рантаймов с управлением.",
   },
   "/spot": {
-    section: "Product Surface",
-    title: "Spot Read",
-    note: "Read-only spot balances, holdings, and order flow.",
+    section: "Данные",
+    title: "Спот",
+    note: "Балансы, холдинги и поток ордеров — только чтение.",
   },
   "/futures": {
-    section: "Product Surface",
-    title: "Futures Read",
-    note: "Positions, protection state, and bounded futures activity.",
+    section: "Данные",
+    title: "Фьючерсы",
+    note: "Позиции, защита и активность фьючерсного аккаунта.",
   },
   "/telegram": {
-    section: "Operations",
-    title: "Telegram Ops",
-    note: "Bot health, delivery status, and recent bounded activity.",
+    section: "Операции",
+    title: "Телеграм",
+    note: "Здоровье бота, статус доставки и последняя активность.",
   },
   "/analytics": {
-    section: "Analytics",
-    title: "PnL / Analytics",
-    note: "Headline performance metrics and recent closed outcomes.",
+    section: "Аналитика",
+    title: "PnL / Аналитика",
+    note: "Ключевые метрики производительности и закрытые сделки.",
   },
   "/models": {
-    section: "Models",
-    title: "Models / Status",
-    note: "Registry readiness, training state, and bounded control.",
+    section: "Модели",
+    title: "Модели",
+    note: "Готовность реестра, состояние обучения и управление.",
   },
   "/diagnostics": {
-    section: "Diagnostics",
-    title: "Diagnostics",
-    note: "Resolved config, path visibility, and compatibility warnings.",
+    section: "Диагностика",
+    title: "Диагностика",
+    note: "Конфигурация, пути и предупреждения совместимости.",
   },
   "/settings": {
-    section: "System",
-    title: "Settings",
-    note: "API keys, connection settings, and environment configuration.",
+    section: "Система",
+    title: "Настройки",
+    note: "API ключи, подключение и конфигурация окружения.",
   },
   "/market": {
-    section: "Market Data",
-    title: "Market",
-    note: "Live price tickers and 24h market statistics from Bybit.",
+    section: "Рыночные данные",
+    title: "Рынок",
+    note: "Цены в реальном времени и статистика рынка Bybit за 24ч.",
   },
   "/orderbook": {
-    section: "Market Data",
-    title: "Order Book",
-    note: "Real-time order book depth for selected instruments.",
+    section: "Рыночные данные",
+    title: "Стакан ордеров",
+    note: "Глубина стакана в реальном времени по выбранному инструменту.",
   },
   "/backtest": {
-    section: "Strategy",
-    title: "Backtest",
-    note: "Historical strategy simulation on local OHLCV candle data.",
+    section: "Стратегия",
+    title: "Бэктест",
+    note: "Историческая симуляция стратегии на локальных OHLCV данных.",
   },
 };
 
@@ -218,23 +218,23 @@ export function DesktopFrame({ children }: PropsWithChildren) {
       <header className="desktop-frame__titlebar" data-testid="foundation.desktop-titlebar">
 
         {/* macOS-style window controls — LEFT */}
-        <div className="desktop-frame__window-controls" aria-label="Window controls" onDoubleClick={handleToggleMaximize}>
+        <div className="desktop-frame__window-controls" aria-label="Управление окном" onDoubleClick={handleToggleMaximize}>
           <button
             type="button"
             className="desktop-frame__window-control desktop-frame__window-control--close"
-            aria-label="Close window"
+            aria-label="Закрыть"
             onClick={handleClose}
           />
           <button
             type="button"
             className="desktop-frame__window-control desktop-frame__window-control--minimize"
-            aria-label="Minimize window"
+            aria-label="Свернуть"
             onClick={handleMinimize}
           />
           <button
             type="button"
             className="desktop-frame__window-control desktop-frame__window-control--maximize"
-            aria-label={isMaximized ? "Restore window" : "Maximize window"}
+            aria-label={isMaximized ? "Восстановить" : "Развернуть"}
             onClick={handleToggleMaximize}
           />
         </div>
@@ -251,7 +251,7 @@ export function DesktopFrame({ children }: PropsWithChildren) {
               title={botActive ? "Бот запущен" : "Бот остановлен"}
             />
             <strong className="desktop-frame__brand">Botik</strong>
-            <span className="desktop-frame__bot-state">{botActive ? "Running" : "Idle"}</span>
+            <span className="desktop-frame__bot-state">{botActive ? "Работает" : "Остановлен"}</span>
           </div>
         </div>
 
@@ -268,7 +268,7 @@ export function DesktopFrame({ children }: PropsWithChildren) {
             <p className="desktop-frame__route-note">{routeMeta.note}</p>
           </div>
           <span className="desktop-frame__window-state">
-            {isMaximized ? "Maximized" : "Windowed"} workspace
+            {isMaximized ? "Развёрнуто" : "В окне"}
           </span>
         </div>
 

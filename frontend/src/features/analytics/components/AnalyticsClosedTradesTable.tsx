@@ -8,8 +8,8 @@ export function AnalyticsClosedTradesTable({ trades }: AnalyticsClosedTradesTabl
   if (trades.length === 0) {
     return (
       <div className="surface-table-empty">
-        <strong>No recent closed trades are available yet.</strong>
-        <p className="panel-muted">Closed-trade history will appear here once the bounded analytics snapshot contains outcomes.</p>
+        <strong>Последних закрытых сделок нет.</strong>
+        <p className="panel-muted">История сделок появится после появления закрытых позиций.</p>
       </div>
     );
   }
@@ -19,11 +19,11 @@ export function AnalyticsClosedTradesTable({ trades }: AnalyticsClosedTradesTabl
       <table className="surface-table" data-testid="analytics.closed-trades.table">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Scope</th>
-            <th>Net PnL</th>
-            <th>Result</th>
-            <th>Closed At</th>
+            <th>Символ</th>
+            <th>Скоуп</th>
+            <th>PnL</th>
+            <th>Результат</th>
+            <th>Закрыто</th>
           </tr>
         </thead>
         <tbody>
@@ -45,7 +45,7 @@ export function AnalyticsClosedTradesTable({ trades }: AnalyticsClosedTradesTabl
               </td>
               <td>
                 <span className={trade.was_profitable ? "surface-badge surface-badge--buy" : "surface-badge surface-badge--sell"}>
-                  {trade.was_profitable ? "Win" : "Loss"}
+                  {trade.was_profitable ? "Прибыль" : "Убыток"}
                 </span>
               </td>
               <td>{trade.closed_at}</td>

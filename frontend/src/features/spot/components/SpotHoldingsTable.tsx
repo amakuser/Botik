@@ -17,7 +17,7 @@ function formatPrice(value: number | null | undefined) {
 
 export function SpotHoldingsTable({ holdings }: SpotHoldingsTableProps) {
   if (holdings.length === 0) {
-    return <p className="panel-muted surface-table-empty">No active spot holdings are available in the current read model.</p>;
+    return <p className="panel-muted surface-table-empty">Активных холдингов нет.</p>;
   }
 
   return (
@@ -25,11 +25,11 @@ export function SpotHoldingsTable({ holdings }: SpotHoldingsTableProps) {
       <table className="surface-table">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Total Qty</th>
-            <th>Avg Entry</th>
-            <th>Hold Reason</th>
-            <th>Strategy</th>
+            <th>Символ</th>
+            <th>Кол-во</th>
+            <th>Средняя цена</th>
+            <th>Причина удержания</th>
+            <th>Стратегия</th>
           </tr>
         </thead>
         <tbody>

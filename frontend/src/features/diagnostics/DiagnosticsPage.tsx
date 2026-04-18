@@ -18,17 +18,17 @@ export function DiagnosticsPage() {
     <AppShell>
       <div className="app-route diagnostics-layout">
         <PageIntro
-          eyebrow="Diagnostics"
-          title="Settings / Diagnostics Compatibility"
-          description="Read-only resolved config, path, and compatibility diagnostics for the already migrated primary product path."
+          eyebrow="Диагностика"
+          title="Диагностика совместимости"
+          description="Конфигурация, пути и предупреждения совместимости — только чтение."
           meta={
             <>
               <p className="status-caption" data-testid="diagnostics.source-mode">
-                Source mode: {snapshot?.source_mode ?? "loading"}
+                Режим: {snapshot?.source_mode ?? "загрузка"}
               </p>
-              <p className="status-caption">Warnings: {snapshot?.summary.warnings_count ?? "loading"}</p>
-              <p className="status-caption">Missing paths: {snapshot?.summary.missing_paths_count ?? "loading"}</p>
-              <p className="status-caption">Runtime mode: {snapshot?.summary.runtime_control_mode ?? "loading"}</p>
+              <p className="status-caption">Предупреждений: {snapshot?.summary.warnings_count ?? "загрузка"}</p>
+              <p className="status-caption">Отсутствующих путей: {snapshot?.summary.missing_paths_count ?? "загрузка"}</p>
+              <p className="status-caption">Режим рантайма: {snapshot?.summary.runtime_control_mode ?? "загрузка"}</p>
             </>
           }
         />
@@ -36,58 +36,58 @@ export function DiagnosticsPage() {
         {diagnosticsQuery.isError ? (
           <section className="panel diagnostics-warning-panel">
             <SectionHeading
-              title="Diagnostics Error"
-              description="The route remains read-only; this only affects diagnostics visibility."
+              title="Ошибка диагностики"
+              description="Маршрут остаётся доступным только для чтения."
             />
             <p className="inline-error" data-testid="diagnostics.error">
-              Failed to load the diagnostics snapshot.
+              Не удалось загрузить снепшот диагностики.
             </p>
           </section>
         ) : null}
 
         <section className="panel diagnostics-summary-panel">
           <SectionHeading
-            title="Compatibility Snapshot"
-            description="Current resolved environment, fixture usage, and path-health posture for the migrated product path."
+            title="Снепшот совместимости"
+            description="Текущее окружение, фикстуры и состояние путей."
           />
           <div className="diagnostics-summary-grid">
             <section className="summary-card diagnostics-summary-card" data-testid="diagnostics.summary.routes">
-              <p className="diagnostics-summary-card__eyebrow">Coverage</p>
-              <p className="diagnostics-summary-card__label">Routes</p>
+              <p className="diagnostics-summary-card__eyebrow">Покрытие</p>
+              <p className="diagnostics-summary-card__label">Маршруты</p>
               <p className="diagnostics-summary-card__value">{snapshot?.summary.routes_count ?? "..."}</p>
-              <p className="summary-card__note">Migrated route count currently visible on the new stack.</p>
+              <p className="summary-card__note">Количество зарегистрированных маршрутов.</p>
             </section>
             <section className="summary-card diagnostics-summary-card" data-testid="diagnostics.summary.fixtures">
-              <p className="diagnostics-summary-card__eyebrow">Inputs</p>
-              <p className="diagnostics-summary-card__label">Fixture Overrides</p>
+              <p className="diagnostics-summary-card__eyebrow">Входные данные</p>
+              <p className="diagnostics-summary-card__label">Фикстурные переопределения</p>
               <p className="diagnostics-summary-card__value">{snapshot?.summary.fixture_overrides_count ?? "..."}</p>
-              <p className="summary-card__note">Current fixture-backed compatibility inputs in the resolved settings.</p>
+              <p className="summary-card__note">Текущие фикстурные входные данные в настройках.</p>
             </section>
             <section className="summary-card diagnostics-summary-card" data-testid="diagnostics.summary.missing-paths">
-              <p className="diagnostics-summary-card__eyebrow">Path Health</p>
-              <p className="diagnostics-summary-card__label">Missing Paths</p>
+              <p className="diagnostics-summary-card__eyebrow">Пути</p>
+              <p className="diagnostics-summary-card__label">Отсутствующих путей</p>
               <p className="diagnostics-summary-card__value">{snapshot?.summary.missing_paths_count ?? "..."}</p>
-              <p className="summary-card__note">Missing paths across the bounded diagnostics snapshot.</p>
+              <p className="summary-card__note">Недостающие пути в снепшоте диагностики.</p>
             </section>
             <section className="summary-card diagnostics-summary-card" data-testid="diagnostics.summary.runtime-mode">
-              <p className="diagnostics-summary-card__eyebrow">Control</p>
-              <p className="diagnostics-summary-card__label">Runtime Control Mode</p>
+              <p className="diagnostics-summary-card__eyebrow">Управление</p>
+              <p className="diagnostics-summary-card__label">Режим рантайма</p>
               <p className="diagnostics-summary-card__value">{snapshot?.summary.runtime_control_mode ?? "..."}</p>
-              <p className="summary-card__note">Current runtime-control mode for the migrated runtime surface.</p>
+              <p className="summary-card__note">Текущий режим управления рантаймом.</p>
             </section>
           </div>
         </section>
 
         <section className="panel diagnostics-panel">
-          <SectionHeading title="Resolved Config" description="Masked where appropriate. No settings editing is exposed in this slice." />
+          <SectionHeading title="Конфигурация" description="Скрыто там где необходимо. Редактирование настроек недоступно." />
           {configEntries.length > 0 ? (
             <div className="surface-table-wrap">
               <table className="surface-table">
                 <thead>
                   <tr>
-                    <th>Label</th>
-                    <th>Value</th>
-                    <th>Masked</th>
+                    <th>Параметр</th>
+                    <th>Значение</th>
+                    <th>Скрыто</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -109,24 +109,24 @@ export function DiagnosticsPage() {
             </div>
           ) : (
             <div className="surface-table-empty" data-testid="diagnostics.config.empty">
-              <strong>No resolved config entries</strong>
-              <p>The current bounded snapshot did not expose any config values.</p>
+              <strong>Записей конфигурации нет</strong>
+              <p>Текущий снепшот не содержит значений конфигурации.</p>
             </div>
           )}
         </section>
 
         <section className="panel diagnostics-panel">
-          <SectionHeading title="Resolved Paths" description="Read-only path/config diagnostics for the current migrated flows." />
+          <SectionHeading title="Пути" description="Диагностика путей — только чтение." />
           {pathEntries.length > 0 ? (
             <div className="surface-table-wrap">
               <table className="surface-table">
                 <thead>
                   <tr>
-                    <th>Label</th>
-                    <th>Source</th>
-                    <th>Kind</th>
-                    <th>Exists</th>
-                    <th>Path</th>
+                    <th>Параметр</th>
+                    <th>Источник</th>
+                    <th>Тип</th>
+                    <th>Существует</th>
+                    <th>Путь</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -152,27 +152,27 @@ export function DiagnosticsPage() {
             </div>
           ) : (
             <div className="surface-table-empty" data-testid="diagnostics.paths.empty">
-              <strong>No resolved paths</strong>
-              <p>The current bounded diagnostics snapshot did not return any path rows.</p>
+              <strong>Путей нет</strong>
+              <p>Текущий снепшот диагностики не содержит записей путей.</p>
             </div>
           )}
         </section>
 
         <section className="panel diagnostics-warning-panel">
-          <SectionHeading title="Warnings" description="Bounded compatibility warnings only, with no mutation controls." />
+          <SectionHeading title="Предупреждения" description="Предупреждения совместимости — только чтение." />
           {warnings.length > 0 ? (
             <ul className="diagnostics-warning-list">
               {warnings.map((warning, index) => (
                 <li key={`${warning}-${index}`} data-testid={`diagnostics.warning.${index}`} className="diagnostics-warning-item">
-                  <span className="diagnostics-warning-item__badge">Attention</span>
+                  <span className="diagnostics-warning-item__badge">Внимание</span>
                   <span>{warning}</span>
                 </li>
               ))}
             </ul>
           ) : (
             <div className="surface-table-empty" data-testid="diagnostics.warnings.empty">
-              <strong>No compatibility warnings</strong>
-              <p>No bounded warnings were present in the current diagnostics snapshot.</p>
+              <strong>Предупреждений нет</strong>
+              <p>В текущем снепшоте диагностики предупреждений не обнаружено.</p>
             </div>
           )}
         </section>

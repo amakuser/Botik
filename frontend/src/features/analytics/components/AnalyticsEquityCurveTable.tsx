@@ -8,8 +8,8 @@ export function AnalyticsEquityCurveTable({ points }: AnalyticsEquityCurveTableP
   if (points.length === 0) {
     return (
       <div className="surface-table-empty">
-        <strong>No closed-trade performance points are available yet.</strong>
-        <p className="panel-muted">The bounded analytics snapshot does not include any cumulative series rows yet.</p>
+        <strong>Точек кривой доходности нет.</strong>
+        <p className="panel-muted">Накопленная серия появится после первых закрытых сделок.</p>
       </div>
     );
   }
@@ -19,9 +19,9 @@ export function AnalyticsEquityCurveTable({ points }: AnalyticsEquityCurveTableP
       <table className="surface-table" data-testid="analytics.equity.table">
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Daily PnL</th>
-            <th>Cumulative PnL</th>
+            <th>Дата</th>
+            <th>Дневной PnL</th>
+            <th>Накопленный PnL</th>
           </tr>
         </thead>
         <tbody>
@@ -30,7 +30,7 @@ export function AnalyticsEquityCurveTable({ points }: AnalyticsEquityCurveTableP
               <td>
                 <div className="surface-table__stack">
                   <span className="surface-table__primary">{point.date}</span>
-                  <span className="panel-muted">{index === points.length - 1 ? "Latest point" : "Historical point"}</span>
+                  <span className="panel-muted">{index === points.length - 1 ? "Последняя точка" : "Историческая точка"}</span>
                 </div>
               </td>
               <td>

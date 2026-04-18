@@ -63,9 +63,9 @@ function PipelineStep({
     unknown: "rgba(201,209,220,0.18)",
   };
   const labels: Record<PipelineState, string> = {
-    running: "Active",
-    idle: "Idle",
-    unknown: "Unknown",
+    running: "Активно",
+    idle: "Остановлен",
+    unknown: "Неизвестно",
   };
 
   return (
@@ -139,14 +139,14 @@ export function HealthPage() {
     <AppShell>
       <div className="app-route home-layout">
         <PageIntro
-          eyebrow="Overview"
-          title="Foundation Health"
-          description="Primary stack health, live trading metrics, and pipeline status."
+          eyebrow="Обзор"
+          title="Состояние системы"
+          description="Здоровье стека, метрики торговли в реальном времени и статус пайплайна."
           meta={
             <>
-              <p data-testid="health.status">Health: {health.isLoading ? "loading" : (health.data?.status ?? "unavailable")}</p>
-              <p data-testid="health.service">Service: {health.data?.service ?? "n/a"}</p>
-              <p data-testid="health.version">Version: {health.data?.version ?? "n/a"}</p>
+              <p data-testid="health.status">Статус: {health.isLoading ? "загрузка" : (health.data?.status ?? "недоступен")}</p>
+              <p data-testid="health.service">Сервис: {health.data?.service ?? "n/a"}</p>
+              <p data-testid="health.version">Версия: {health.data?.version ?? "n/a"}</p>
             </>
           }
         />
@@ -154,28 +154,28 @@ export function HealthPage() {
         {/* Metric cards */}
         <div className="home-metrics-grid">
           <MetricCard
-            label="PnL Today"
+            label="PnL сегодня"
             value={(todayPnl !== undefined ? (todayPnl >= 0 ? "+" : "") : "") + fmt(todayPnl) + " USDT"}
-            sub={`Total: ${fmt(totalPnl, "+")} USDT`}
+            sub={`Всего: ${fmt(totalPnl, "+")} USDT`}
             color={pnlColor(todayPnl)}
             testId="home.metric.pnl-today"
           />
           <MetricCard
-            label="USDT Balance"
+            label="Баланс USDT"
             value={usdtBalance !== undefined ? fmt(usdtBalance) + " USDT" : "—"}
-            sub="Spot account"
+            sub="Спот аккаунт"
             testId="home.metric.balance"
           />
           <MetricCard
-            label="Trades (Total)"
+            label="Сделок (всего)"
             value={String(tradeCount)}
-            sub={winRate !== undefined ? `Win rate: ${fmt(winRate)}%` : undefined}
+            sub={winRate !== undefined ? `Винрейт: ${fmt(winRate)}%` : undefined}
             testId="home.metric.trades"
           />
           <MetricCard
-            label="Open Positions"
+            label="Открытых позиций"
             value={String(openPositions)}
-            sub={`Spot ${spotHoldings} · Futures ${futuresPosCount}`}
+            sub={`Спот ${spotHoldings} · Фьючерсы ${futuresPosCount}`}
             testId="home.metric.positions"
           />
         </div>
@@ -183,26 +183,26 @@ export function HealthPage() {
         {/* Pipeline */}
         <section className="panel">
           <SectionHeading
-            title="Pipeline"
-            description="Data → Models → Trading — current status of each stage."
+            title="Пайплайн"
+            description="Данные → Модели → Торговля — текущий статус каждого этапа."
           />
           <div className="pipeline-grid">
             <PipelineStep
               step={1}
-              title="Historical Data"
-              description="OHLCV candles for training and backtesting."
+              title="Исторические данные"
+              description="OHLCV свечи для обучения и бэктеста."
               state="unknown"
             />
             <PipelineStep
               step={2}
-              title="ML Models"
-              description={`${readyScopes} of 2 scopes ready (Spot / Futures).`}
+              title="ML Модели"
+              description={`${readyScopes} из 2 скоупов готово (Spot / Futures).`}
               state={modelsState}
             />
             <PipelineStep
               step={3}
-              title="Live Trading"
-              description={anyRunning ? `${runtimeList.filter((r) => r.state === "running").length} runtime(s) active.` : "All runtimes idle."}
+              title="Торговля"
+              description={anyRunning ? `${runtimeList.filter((r) => r.state === "running").length} рантайм(ов) активно.` : "Все рантаймы остановлены."}
               state={tradingState}
             />
           </div>
@@ -212,16 +212,16 @@ export function HealthPage() {
         <section className="panel" aria-labelledby="foundation-bootstrap-title">
           <SectionHeading
             title="Bootstrap"
-            description="App-service session details and registered routes."
+            description="Детали сессии сервиса и зарегистрированные маршруты."
           />
           <p data-testid="bootstrap.app-name" style={{ marginTop: 0 }}>
-            App: {bootstrap.isLoading ? "loading" : (bootstrap.data?.app_name ?? "n/a")}
+            Приложение: {bootstrap.isLoading ? "загрузка" : (bootstrap.data?.app_name ?? "n/a")}
           </p>
           <p data-testid="bootstrap.session-id">
-            Session: {bootstrap.data?.session.session_id ?? "n/a"}
+            Сессия: {bootstrap.data?.session.session_id ?? "n/a"}
           </p>
           <p data-testid="bootstrap.routes" style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
-            Routes: {bootstrap.data?.routes.join(", ") ?? "n/a"}
+            Маршруты: {bootstrap.data?.routes.join(", ") ?? "n/a"}
           </p>
         </section>
       </div>
