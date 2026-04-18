@@ -15,13 +15,17 @@ from botik_app_service.api.routes_futures import router as futures_router
 from botik_app_service.api.routes_health import router as health_router
 from botik_app_service.api.routes_jobs import router as jobs_router
 from botik_app_service.api.routes_logs import router as logs_router
+from botik_app_service.api.routes_market import router as market_router
 from botik_app_service.api.routes_models import router as models_router
+from botik_app_service.api.routes_settings import router as settings_router
 from botik_app_service.api.routes_spot import router as spot_router
 from botik_app_service.api.routes_telegram import router as telegram_router
 from botik_app_service.api.routes_runtime_control import router as runtime_control_router
 from botik_app_service.api.routes_runtime_status import router as runtime_status_router
 from botik_app_service.diagnostics_compat.service import DiagnosticsCompatibilityService
 from botik_app_service.futures_read.service import FuturesReadService
+from botik_app_service.market_read.service import MarketReadService
+from botik_app_service.settings_read.service import SettingsReadService
 from botik_app_service.infra.config import Settings
 from botik_app_service.infra.logging import configure_logging
 from botik_app_service.jobs.event_publisher import EventPublisher
@@ -115,6 +119,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fixture_db_path=resolved_settings.models_read_fixture_db_path,
             manifest_path=resolved_settings.models_read_manifest_path,
         )
+        settings_read_service = SettingsReadService(
+            repo_root=Path(__file__).resolve().parents[3],
+        )
+        market_read_service = MarketReadService(
+            repo_root=Path(__file__).resolve().parents[3],
+        )
         await logs_manager.start(publisher)
 
         app.state.settings = resolved_settings
@@ -129,6 +139,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.analytics_read_service = analytics_read_service
         app.state.diagnostics_service = diagnostics_service
         app.state.models_read_service = models_read_service
+        app.state.settings_read_service = settings_read_service
+        app.state.market_read_service = market_read_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -180,6 +192,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(analytics_router)
     app.include_router(diagnostics_router)
     app.include_router(models_router)
+    app.include_router(settings_router)
+    app.include_router(market_router)
     app.include_router(admin_router)
     return app
 

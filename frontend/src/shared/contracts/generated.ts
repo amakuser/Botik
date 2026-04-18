@@ -328,6 +328,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings Snapshot */
+        get: operations["get_settings_snapshot_settings_get"];
+        put?: never;
+        /** Save Settings */
+        post: operations["save_settings_settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/test-bybit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Bybit Api */
+        post: operations["test_bybit_api_settings_test_bybit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/market-ticker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Market Ticker */
+        get: operations["get_market_ticker_market_ticker_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -472,6 +524,35 @@ export interface components {
             capabilities: components["schemas"]["UiCapabilities"];
             /** Routes */
             routes: string[];
+        };
+        /** BybitTestRequest */
+        BybitTestRequest: {
+            /**
+             * Host
+             * @default demo
+             */
+            host: string;
+            /** Api Key */
+            api_key: string;
+            /** Api Secret */
+            api_secret: string;
+        };
+        /** BybitTestResult */
+        BybitTestResult: {
+            /**
+             * Tested At
+             * Format: date-time
+             */
+            tested_at?: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "error" | "skipped" | "unknown";
+            /** Detail */
+            detail?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
         };
         /** DataBackfillJobPayload */
         DataBackfillJobPayload: {
@@ -920,6 +1001,43 @@ export interface components {
             /** Source */
             source: string;
         };
+        /** MarketTickerEntry */
+        MarketTickerEntry: {
+            /** Symbol */
+            symbol: string;
+            /** Last Price */
+            last_price: string;
+            /** Price 24H Pcnt */
+            price_24h_pcnt: string;
+            /** Turnover 24H */
+            turnover_24h: string;
+            /** High Price 24H */
+            high_price_24h: string;
+            /** Low Price 24H */
+            low_price_24h: string;
+        };
+        /** MarketTickerSnapshot */
+        MarketTickerSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source
+             * @default bybit_public
+             */
+            source: string;
+            /**
+             * Category
+             * @default linear
+             */
+            category: string;
+            /** Tickers */
+            tickers?: components["schemas"]["MarketTickerEntry"][];
+            /** Error */
+            error?: string | null;
+        };
         /** ModelRegistryEntry */
         ModelRegistryEntry: {
             /** Model Id */
@@ -1162,6 +1280,78 @@ export interface components {
              * @default 80
              */
             sleep_ms: number;
+        };
+        /** SettingsField */
+        SettingsField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+            /**
+             * Masked
+             * @default false
+             */
+            masked: boolean;
+            /**
+             * Present
+             * @default false
+             */
+            present: boolean;
+        };
+        /** SettingsSaveRequest */
+        SettingsSaveRequest: {
+            /** Bybit Api Key */
+            bybit_api_key?: string | null;
+            /** Bybit Api Secret */
+            bybit_api_secret?: string | null;
+            /** Bybit Mainnet Api Key */
+            bybit_mainnet_api_key?: string | null;
+            /** Bybit Mainnet Api Secret */
+            bybit_mainnet_api_secret?: string | null;
+            /** Telegram Bot Token */
+            telegram_bot_token?: string | null;
+            /** Telegram Chat Id */
+            telegram_chat_id?: string | null;
+            /** Db Url */
+            db_url?: string | null;
+        };
+        /** SettingsSaveResult */
+        SettingsSaveResult: {
+            /**
+             * Saved At
+             * Format: date-time
+             */
+            saved_at?: string;
+            /** Success */
+            success: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Fields Written */
+            fields_written?: string[];
+        };
+        /** SettingsSnapshot */
+        SettingsSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /**
+             * Source Mode
+             * @enum {string}
+             */
+            source_mode: "env_file" | "environment" | "unknown";
+            /** Env File Path */
+            env_file_path?: string | null;
+            /**
+             * Env File Exists
+             * @default false
+             */
+            env_file_exists: boolean;
+            /** Fields */
+            fields?: components["schemas"]["SettingsField"][];
         };
         /** SpotBalance */
         SpotBalance: {
@@ -2153,6 +2343,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelsReadSnapshot"];
+                };
+            };
+        };
+    };
+    get_settings_snapshot_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsSnapshot"];
+                };
+            };
+        };
+    };
+    save_settings_settings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsSaveResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_bybit_api_settings_test_bybit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BybitTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BybitTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_market_ticker_market_ticker_get: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated symbols, empty = default set */
+                symbols?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketTickerSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

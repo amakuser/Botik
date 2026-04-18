@@ -31,7 +31,14 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/telegram", label: "Telegram Ops" },
       { to: "/analytics", label: "PnL / Analytics" },
       { to: "/models", label: "Models / Status" },
+      { to: "/market", label: "Market" },
       { to: "/diagnostics", label: "Diagnostics" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { to: "/settings", label: "Settings" },
     ],
   },
 ];

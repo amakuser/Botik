@@ -49,6 +49,14 @@ export type SpotOrder = components["schemas"]["SpotOrder"];
 export type SpotFill = components["schemas"]["SpotFill"];
 export type SpotReadSummary = components["schemas"]["SpotReadSummary"];
 export type SpotReadSnapshot = components["schemas"]["SpotReadSnapshot"];
+export type SettingsField = components["schemas"]["SettingsField"];
+export type SettingsSnapshot = components["schemas"]["SettingsSnapshot"];
+export type SettingsSaveRequest = components["schemas"]["SettingsSaveRequest"];
+export type SettingsSaveResult = components["schemas"]["SettingsSaveResult"];
+export type BybitTestRequest = components["schemas"]["BybitTestRequest"];
+export type BybitTestResult = components["schemas"]["BybitTestResult"];
+export type MarketTickerEntry = components["schemas"]["MarketTickerEntry"];
+export type MarketTickerSnapshot = components["schemas"]["MarketTickerSnapshot"];
 
 // SSE/error payloads are consumed by the frontend, but they are not emitted as OpenAPI
 // response models because they currently flow through StreamingResponse/manual envelopes.
@@ -144,4 +152,12 @@ export const contractSchemaNames = [
   "SpotFill",
   "SpotReadSummary",
   "SpotReadSnapshot",
+  "SettingsField",
+  "SettingsSnapshot",
+  "SettingsSaveRequest",
+  "SettingsSaveResult",
+  "BybitTestRequest",
+  "BybitTestResult",
+  "MarketTickerEntry",
+  "MarketTickerSnapshot",
 ] as const;

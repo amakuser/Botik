@@ -1,100 +1,109 @@
 # AGENTS_CONTEXT.md — Общая доска агентов
 
-> Читается и обновляется каждым агентом и оркестратором.
-> Сбрасывается в начале каждой новой задачи.
+> **ПРОТОКОЛ (обязательно):**
+> 1. Оркестратор ВСЕГДА пишет задачу сюда ДО запуска агентов
+> 2. Каждый агент читает этот файл ПЕРВЫМ — до любых других действий
+> 3. Агент пишет статус "🔄 в работе" сразу при старте
+> 4. Агент пишет результат сюда ПЕРЕД тем как завершить работу
+> 5. Оркестратор сбрасывает ## Задания и ## Статусы в начале новой задачи
 
 ---
 
 ## Текущая задача
 
-_Нет активной задачи_
+**Миграция GUI: старый pywebview → новый Tauri + React**
+
+Задача состоит из 4 фаз:
+1. Аудит старого и нового GUI (агенты запущены, ждём результат)
+2. Добавление недостающих страниц в новый React-фронтенд + app-service backend
+3. Удаление старого кода (src/botik/gui/)
+4. Верификация (визуальный аудит через Playwright)
 
 ---
 
 ## Задания агентам
 
-_Пусто_
+| Агент | Задача | Приоритет |
+|-------|--------|-----------|
+| Аудит-OLD (a22f1fd256da6e0b7) | Инвентарь старого GUI: все страницы, компоненты, API | HIGH |
+| Аудит-NEW (a939c45e1994b8104) | Инвентарь нового фронтенда: все страницы, контракты, пробелы | HIGH |
 
 ---
 
-## Результаты агентов
+## Статусы (обновляется агентами в реальном времени)
 
-### Core/Data-агент — модуль бэктестинга (2026-04-05)
-
-**Статус:** ✅ завершено
-
-**Что создано:**
-
-1. **`src/botik/backtest/__init__.py`** — реэкспорт `BacktestResult`, `BacktestRunner`, `FuturesBacktestRunner`, `SpotBacktestRunner`
-
-2. **`src/botik/backtest/backtest_result.py`** — `@dataclass BacktestResult` со всеми полями и методом `to_dict()`
-
-3. **`src/botik/backtest/backtest_runner.py`** — иерархия:
-   - `_BaseBacktestRunner` — загрузка свечей из `price_history`, торговый цикл, вычисление метрик (drawdown, Sharpe, profit_factor)
-   - `FuturesBacktestRunner` — in-memory long/short, category='linear', комиссия 0.055%
-   - `SpotBacktestRunner` — in-memory long only, category='spot', комиссия 0.1%
-
-4. **`tests/test_backtest.py`** — 13 тестов
-
-**Результат тестов:**
-```
-13 passed in 1.96s
-```
-
-Все 13 тестов прошли:
-- `test_backtest_result_to_dict` ✅
-- `test_backtest_result_win_rate_zero_trades` ✅
-- `test_futures_backtest_runner_no_data` ✅
-- `test_futures_backtest_runner_single_candle` ✅
-- `test_futures_backtest_basic` ✅
-- `test_spot_backtest_basic` ✅
-- `test_backtest_profit_factor_no_losses` ✅
-- `test_backtest_max_drawdown` ✅
-- `test_calc_sharpe_too_few_trades` ✅
-- `test_calc_sharpe_stable_returns` ✅
-- `test_calc_profit_factor_no_wins` ✅
-- `test_futures_runner_scope_and_category` ✅
-- `test_spot_runner_scope_and_category` ✅
-
-**Зависимость закрыта:**
-- GUI-агент ожидал `FuturesBacktestRunner` / `SpotBacktestRunner` — теперь доступны.
+| Агент | Статус | Последнее обновление |
+|-------|--------|----------------------|
+| Аудит-OLD | ✅ завершён | 2026-04-18 |
+| Аудит-NEW | ✅ завершён | 2026-04-18 |
 
 ---
 
-### GUI-агент — страница Бэктест (2026-04-05)
+## Предварительный анализ оркестратора
 
-**Статус:** ✅ завершено
+### Страницы в СТАРОМ GUI (13 HTML-файлов)
+| Страница | Ключевые элементы |
+|----------|-------------------|
+| page-home | 4 метрики, PnL-chart, Spot/Fut Start/Stop, Pipeline (Data→Train→Trade) |
+| page-spot | Таблица позиций, ордеров, заполнений; кнопки продажи |
+| page-futures | Позиции с PnL, ордера защиты, кнопки управления |
+| page-models | 6 карточек моделей, статус обучения, Start/Stop per scope |
+| page-data | Таблица символов, прогресс-бары backfill, Start/Stop |
+| page-logs | 5 вкладок: sys/spot/futures/ml/telegram |
+| page-analytics | PnL-equity curve, drawdown, таблица закрытых сделок |
+| page-settings | API keys Bybit Demo/MainNet, Telegram, DB URL, тест-кнопки |
+| page-market | Glassmorphism ценовые карточки, LIVE badge |
+| page-orderbook | Order book таблица, REST-поллер |
+| page-ops | RAM/CPU/DB-пинг, статус процессов |
+| page-backtest | Форма параметров, метрики, таблица сделок |
+| page-telegram | История команд, алерты, ошибки |
 
-**Что создано / изменено:**
+### Страницы в НОВОМ фронтенде (React)
+| Страница | URL | Статус vs старый |
+|----------|-----|-----------------|
+| Foundation Health | / | ⚠️ Беднее старой Home (нет метрик, нет Pipeline) |
+| Job Monitor | /jobs | ✅ Новое, хорошее |
+| Unified Logs | /logs | ✅ Аналог старых Logs |
+| Runtime Control | /runtime | ✅ Аналог Start/Stop из старой Home |
+| Spot Read | /spot | ✅ Аналог старой Spot |
+| Futures Read | /futures | ✅ Аналог старой Futures |
+| Telegram Ops | /telegram | ✅ Аналог старой Telegram |
+| PnL / Analytics | /analytics | ✅ Аналог старой Analytics |
+| Models / Status | /models | ✅ Аналог старой Models |
+| Diagnostics | /diagnostics | ✅ Новое, нет аналога |
 
-1. **`src/botik/gui/api_backtest_mixin.py`** — новый файл
-   - Класс `BacktestMixin` с методами:
-     - `run_backtest(scope, symbol, interval, days_back, balance)` — синхронный запуск через `FuturesBacktestRunner` / `SpotBacktestRunner`, graceful fallback при `ImportError`
-     - `get_backtest_symbols()` — `SELECT DISTINCT symbol FROM symbol_registry WHERE is_active=1`, fallback список из 5 пар
-   - py_compile: ✅ OK
+### ОТСУТСТВУЮЩИЕ в новом (нужно добавить)
+| Страница | Приоритет | Статус |
+|----------|-----------|--------|
+| **Settings** (Настройки) | CRITICAL | ✅ Реализовано (2026-04-18) |
+| **Market** (Рынок) | HIGH | ✅ Реализовано (2026-04-18) |
+| **Orderbook** (Стакан) | MEDIUM | ⬜ Ожидает |
+| **Backtest** | LOW | ⬜ Ожидает |
 
-2. **`src/botik/gui/webview_app.py`** — добавлен импорт `BacktestMixin` и включён в базовые классы `DashboardAPI`
-   - py_compile: ✅ OK
+### Цветовая палитра OLD GUI (dark blue tech)
+- bg: #03070F, cards: #0C1630
+- accent: #3D8BFF (blue)
+- success: #00E599 (green), danger: #FF4D6A
 
-3. **`dashboard_preview.html`** — добавлены:
-   - Nav-item `data-page="backtest"` в боковой панели (раздел Система, между Telegram и Настройки)
-   - Страница `#page-backtest`: форма параметров (scope/symbol/interval/days_back + кнопка), спиннер, сетка 2×4 метрик, мета-строка, таблица сделок (последние 50)
-   - CSS анимация `@keyframes spin` для спиннера
-   - JS функции: `_loadBacktestPage()`, `apiGetBacktestSymbols()`, `apiRunBacktest()`, `_runBacktest()`, `_renderBacktestResult()`, `_btHideAll()`, `_btShowError()`
-   - Обработчик навигации: `if (page === 'backtest') { _loadBacktestPage(); }`
+### Цветовая палитра NEW GUI (warm dark)
+- bg: #05070b, surface: rgba(14,18,24,0.9)
+- accent: #d7cbb1 (warm gold)
+- success: #22c55e (green), failure: #f87171
 
-**Зависимость от параллельного агента:**
-- Ожидается `src/botik/backtest/backtest_runner.py` с классами `FuturesBacktestRunner` / `SpotBacktestRunner`.
-- При его отсутствии — mixin возвращает `{"error": "backtest_runner not available: ..."}`, JS показывает сообщение об ошибке. Страница работает без краша.
+---
+
+## Результаты агентов (заполняется агентами)
 
 ---
 
 ## Зависимости между агентами
 
-_Нет активных зависимостей_
+Фаза 2 (реализация) начнётся только после того как оба аудит-агента завершат работу.
 
 ---
 
 ## Незакрытые вопросы
 
-_Нет_
+1. Как main.py должен запускать новый Tauri-app? (сейчас запускает pywebview)
+2. Нужно ли переносить api_settings_mixin.py в app-service или писать с нуля?
+3. Что делать с dashboard_preview.html и dashboard_template.html?

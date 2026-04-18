@@ -1,12 +1,14 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AnalyticsRoute } from "./routes/analytics-route";
 import { DiagnosticsRoute } from "./routes/diagnostics-route";
+import { MarketRoute } from "./routes/market-route";
 import { ModelsRoute } from "./routes/models-route";
 import { HealthRoute } from "./routes/health-route";
 import { FuturesRoute } from "./routes/futures-route";
 import { JobsRoute } from "./routes/jobs-route";
 import { LogsRoute } from "./routes/logs-route";
 import { RuntimeRoute } from "./routes/runtime-route";
+import { SettingsRoute } from "./routes/settings-route";
 import { SpotRoute } from "./routes/spot-route";
 import { TelegramRoute } from "./routes/telegram-route";
 
@@ -50,5 +52,13 @@ export const router = createBrowserRouter([
   {
     path: "/diagnostics",
     element: <DiagnosticsRoute />,
+  },
+  {
+    path: "/settings",
+    element: <SettingsRoute />,
+  },
+  {
+    path: "/market",
+    element: <MarketRoute />,
   },
 ]);

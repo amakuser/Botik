@@ -1,4 +1,6 @@
 import {
+  BybitTestRequest,
+  BybitTestResult,
   DiagnosticsSnapshot,
   BootstrapPayload,
   HealthResponse,
@@ -8,6 +10,7 @@ import {
   LogChannelSnapshot,
   LogStreamEvent,
   LogEvent,
+  MarketTickerSnapshot,
   RuntimeStatus,
   RuntimeStatusSnapshot,
   RuntimeId,
@@ -15,6 +18,9 @@ import {
   FuturesReadSnapshot,
   AnalyticsReadSnapshot,
   ModelsReadSnapshot,
+  SettingsSaveRequest,
+  SettingsSaveResult,
+  SettingsSnapshot,
   TelegramConnectivityCheckResult,
   TelegramOpsSnapshot,
   SpotReadSnapshot,
@@ -165,6 +171,35 @@ export async function runTelegramConnectivityCheck(): Promise<TelegramConnectivi
     method: "POST",
   });
   return parseJsonOrThrow<TelegramConnectivityCheckResult>(response);
+}
+
+export async function getSettingsSnapshot(): Promise<SettingsSnapshot> {
+  const response = await authenticatedFetch("/settings");
+  return parseJsonOrThrow<SettingsSnapshot>(response);
+}
+
+export async function saveSettings(request: SettingsSaveRequest): Promise<SettingsSaveResult> {
+  const response = await authenticatedFetch("/settings", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseJsonOrThrow<SettingsSaveResult>(response);
+}
+
+export async function testBybitApi(request: BybitTestRequest): Promise<BybitTestResult> {
+  const response = await authenticatedFetch("/settings/test-bybit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseJsonOrThrow<BybitTestResult>(response);
+}
+
+export async function getMarketTicker(symbols?: string[]): Promise<MarketTickerSnapshot> {
+  const params = symbols?.length ? `?symbols=${symbols.join(",")}` : "";
+  const response = await authenticatedFetch(`/market-ticker${params}`);
+  return parseJsonOrThrow<MarketTickerSnapshot>(response);
 }
 
 export interface EventPayloadMap {

@@ -467,6 +467,133 @@ body {
   gap: 16px;
 }
 
+.settings-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.settings-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.settings-fields-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-field__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.settings-field__badge {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  color: #86efac;
+}
+
+.settings-field__input {
+  background: rgba(10, 14, 20, 0.72);
+  border: 1px solid rgba(201, 209, 220, 0.14);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  transition: border-color 120ms ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.settings-field__input:focus {
+  outline: none;
+  border-color: rgba(215, 203, 177, 0.38);
+}
+
+.settings-field__input::placeholder {
+  color: var(--text-muted);
+}
+
+.market-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.market-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  margin-top: 16px;
+}
+
+.market-card {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+}
+
+.market-card__symbol {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.market-card__quote {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.market-card__price {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+
+.market-card__change {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.market-card__meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
 .jobs-page,
 .logs-page {
   display: grid;
