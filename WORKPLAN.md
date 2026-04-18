@@ -115,6 +115,7 @@
 | 2026-04-07 | implementation | T36-T39 UX Data/Balance/CMD: прогресс-бары Futures/Spot + "СЕЙЧАС КАЧАЕТСЯ" карточка (backfill_progress в bot_settings) + мини-лог + пайплайн home page + balance poller BalanceMixin + CREATE_NO_WINDOW в обоих местах + раздельные Spot/Futures кнопки управления; v0.0.61 |
 | 2026-04-07 | architecture | Предложены следующие улучшения: SSE/EventBus (T40), стакан orderbook (T41), компонентный HTML (T42), расширение таймфреймов (T43); пользователь согласовал все четыре |
 | 2026-03-22 | implementation | T27 Страница "Рынок": nav item + `<div id="page-market">` + `<div class="market-grid">` в HTML; `_renderMarketPage()` — glassmorphism price-cards (flash-up/flash-down при смене цены, range-bar H/L, stale-оверлей); `_pollTickers()` теперь вызывает и `_renderMarketPage`; CSS market-grid/price-card/flash keyframes уже в HTML; v0.0.46; exe пересобран |
+| 2026-04-18 | implementation | GUI Migration → Tauri+React: удалён весь старый pywebview GUI (src/botik/gui/ — 22 файла, dashboard_preview.html, dashboard_template.html); добавлены страницы Settings + Market + Orderbook + Backtest в новый React-фронтенд; Foundation Health обогащён 4 MetricCard + PipelineStep; windows_entry.py переписан под запуск Tauri exe + app-service subprocess; visual audit 14/14 страниц — heading visible, нет JS-ошибок |
 
 ---
 

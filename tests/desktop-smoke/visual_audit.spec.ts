@@ -20,7 +20,7 @@ const PAGES = [
   { name: "futures-read",       url: "/futures",      heading: "Futures Read" },
   { name: "telegram-ops",       url: "/telegram",     heading: "Telegram Ops" },
   { name: "analytics",          url: "/analytics",    heading: "PnL / Analytics" },
-  { name: "models-status",      url: "/models",       heading: "Models / Status" },
+  { name: "models-status",      url: "/models",       heading: "Models Registry / Training Status" },
   { name: "diagnostics",        url: "/diagnostics",  heading: "Diagnostics" },
   { name: "settings",           url: "/settings",     heading: "Settings" },
   { name: "market",             url: "/market",       heading: "Market" },
