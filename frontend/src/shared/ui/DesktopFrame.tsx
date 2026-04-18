@@ -2,6 +2,34 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PropsWithChildren, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { isDesktopRuntime } from "../host";
+import { loadRuntimeConfig } from "../config";
+
+function useBotActive(): boolean {
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function check() {
+      try {
+        const cfg = await loadRuntimeConfig();
+        const url = new URL("/runtime-status", cfg.appServiceUrl);
+        const res = await fetch(url, { headers: { "x-botik-session-token": cfg.sessionToken } });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { runtimes?: { state: string }[] };
+        if (!cancelled) setActive(data?.runtimes?.some(r => r.state === "running") ?? false);
+      } catch {
+        /* offline — stay idle */
+      }
+    }
+
+    void check();
+    const timer = setInterval(() => void check(), 3_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
+
+  return active;
+}
 
 type RouteChromeMeta = {
   section: string;
@@ -85,6 +113,7 @@ export function DesktopFrame({ children }: PropsWithChildren) {
   const appWindow = useMemo(() => (desktop ? getCurrentWindow() : null), [desktop]);
   const [isMaximized, setIsMaximized] = useState(false);
   const routeMeta = useMemo(() => getRouteChromeMeta(location.pathname), [location.pathname]);
+  const botActive = useBotActive();
 
   const syncMaximizedState = useCallback(async () => {
     if (!appWindow) {
@@ -167,19 +196,46 @@ export function DesktopFrame({ children }: PropsWithChildren) {
       data-testid="foundation.desktop-frame"
     >
       <header className="desktop-frame__titlebar" data-testid="foundation.desktop-titlebar">
+
+        {/* macOS-style window controls — LEFT */}
+        <div className="desktop-frame__window-controls" aria-label="Window controls" onDoubleClick={handleToggleMaximize}>
+          <button
+            type="button"
+            className="desktop-frame__window-control desktop-frame__window-control--close"
+            aria-label="Close window"
+            onClick={handleClose}
+          />
+          <button
+            type="button"
+            className="desktop-frame__window-control desktop-frame__window-control--minimize"
+            aria-label="Minimize window"
+            onClick={handleMinimize}
+          />
+          <button
+            type="button"
+            className="desktop-frame__window-control desktop-frame__window-control--maximize"
+            aria-label={isMaximized ? "Restore window" : "Maximize window"}
+            onClick={handleToggleMaximize}
+          />
+        </div>
+
+        {/* Drag surface — CENTER (brand + status) */}
         <div
           className="desktop-frame__drag-surface"
           data-tauri-drag-region
           onDoubleClick={handleToggleMaximize}
         >
-          <div className="desktop-frame__brand-lockup">
-            <p className="desktop-frame__eyebrow">Primary Desktop Shell</p>
-            <div className="desktop-frame__brand-row">
-              <strong className="desktop-frame__brand">Botik Foundation</strong>
-            </div>
+          <div className="desktop-frame__brand-lockup" data-tauri-drag-region>
+            <span
+              className={botActive ? "desktop-frame__bot-dot desktop-frame__bot-dot--running" : "desktop-frame__bot-dot"}
+              title={botActive ? "Бот запущен" : "Бот остановлен"}
+            />
+            <strong className="desktop-frame__brand">Botik</strong>
+            <span className="desktop-frame__bot-state">{botActive ? "Running" : "Idle"}</span>
           </div>
         </div>
 
+        {/* Route context — RIGHT (hidden visually, kept for tests) */}
         <div
           className="desktop-frame__route-context"
           data-tauri-drag-region
@@ -196,39 +252,6 @@ export function DesktopFrame({ children }: PropsWithChildren) {
           </span>
         </div>
 
-        <div className="desktop-frame__window-controls" aria-label="Window controls">
-          <button
-            type="button"
-            className="desktop-frame__window-control"
-            aria-label="Minimize window"
-            onClick={handleMinimize}
-          >
-            <span className="desktop-frame__window-icon desktop-frame__window-icon--minimize" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="desktop-frame__window-control"
-            aria-label={isMaximized ? "Restore window" : "Maximize window"}
-            onClick={handleToggleMaximize}
-          >
-            <span
-              className={
-                isMaximized
-                  ? "desktop-frame__window-icon desktop-frame__window-icon--restore"
-                  : "desktop-frame__window-icon desktop-frame__window-icon--maximize"
-              }
-              aria-hidden="true"
-            />
-          </button>
-          <button
-            type="button"
-            className="desktop-frame__window-control desktop-frame__window-control--close"
-            aria-label="Close window"
-            onClick={handleClose}
-          >
-            <span className="desktop-frame__window-icon desktop-frame__window-icon--close" aria-hidden="true" />
-          </button>
-        </div>
       </header>
 
       <div className="desktop-frame__body">
