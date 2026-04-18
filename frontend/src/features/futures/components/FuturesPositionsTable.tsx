@@ -32,7 +32,7 @@ export function FuturesPositionsTable({ positions }: FuturesPositionsTableProps)
             <th>Сторона</th>
             <th>Кол-во</th>
             <th>Цена входа</th>
-            <th>Mark</th>
+            <th>Марк. цена</th>
             <th>uPnL</th>
             <th>Защита</th>
           </tr>

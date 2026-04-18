@@ -54,7 +54,7 @@ const ROUTE_CHROME_META: Record<string, RouteChromeMeta> = {
     note: "Живые каналы логов текущего стека.",
   },
   "/runtime": {
-    section: "Runtime",
+    section: "Управление",
     title: "Управление рантаймом",
     note: "Состояние спот и фьючерс рантаймов с управлением.",
   },
