@@ -88,6 +88,26 @@ const ROUTE_CHROME_META: Record<string, RouteChromeMeta> = {
     title: "Diagnostics",
     note: "Resolved config, path visibility, and compatibility warnings.",
   },
+  "/settings": {
+    section: "System",
+    title: "Settings",
+    note: "API keys, connection settings, and environment configuration.",
+  },
+  "/market": {
+    section: "Market Data",
+    title: "Market",
+    note: "Live price tickers and 24h market statistics from Bybit.",
+  },
+  "/orderbook": {
+    section: "Market Data",
+    title: "Order Book",
+    note: "Real-time order book depth for selected instruments.",
+  },
+  "/backtest": {
+    section: "Strategy",
+    title: "Backtest",
+    note: "Historical strategy simulation on local OHLCV candle data.",
+  },
 };
 
 function getRouteChromeMeta(pathname: string): RouteChromeMeta {
