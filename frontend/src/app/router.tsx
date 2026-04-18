@@ -13,6 +13,7 @@ import { RuntimeRoute } from "./routes/runtime-route";
 import { SettingsRoute } from "./routes/settings-route";
 import { SpotRoute } from "./routes/spot-route";
 import { TelegramRoute } from "./routes/telegram-route";
+import { UiLabPage } from "../features/ui-lab/UiLabPage";
 
 export const router = createBrowserRouter([
   {
@@ -70,5 +71,9 @@ export const router = createBrowserRouter([
   {
     path: "/backtest",
     element: <BacktestRoute />,
+  },
+  {
+    path: "/ui-lab",
+    element: <UiLabPage />,
   },
 ]);

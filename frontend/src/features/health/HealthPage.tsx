@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { fadeIn, staggerContainer, staggerItem } from "../../styles/motion";
 import { getBootstrap, getHealth, getAnalyticsReadModel, getSpotReadModel, getFuturesReadModel, getRuntimeStatus, getModelsReadModel } from "../../shared/api/client";
 import { AppShell } from "../../shared/ui/AppShell";
 import { PageIntro } from "../../shared/ui/PageIntro";
@@ -137,7 +139,7 @@ export function HealthPage() {
 
   return (
     <AppShell>
-      <div className="app-route home-layout">
+      <motion.div className="app-route home-layout" {...fadeIn}>
         <PageIntro
           eyebrow="Обзор"
           title="Состояние системы"
@@ -152,33 +154,46 @@ export function HealthPage() {
         />
 
         {/* Metric cards */}
-        <div className="home-metrics-grid">
-          <MetricCard
-            label="PnL сегодня"
-            value={(todayPnl !== undefined ? (todayPnl >= 0 ? "+" : "") : "") + fmt(todayPnl) + " USDT"}
-            sub={`Всего: ${fmt(totalPnl, "+")} USDT`}
-            color={pnlColor(todayPnl)}
-            testId="home.metric.pnl-today"
-          />
-          <MetricCard
-            label="Баланс USDT"
-            value={usdtBalance !== undefined ? fmt(usdtBalance) + " USDT" : "—"}
-            sub="Спот аккаунт"
-            testId="home.metric.balance"
-          />
-          <MetricCard
-            label="Сделок (всего)"
-            value={String(tradeCount)}
-            sub={winRate !== undefined ? `Винрейт: ${fmt(winRate)}%` : undefined}
-            testId="home.metric.trades"
-          />
-          <MetricCard
-            label="Открытых позиций"
-            value={String(openPositions)}
-            sub={`Спот ${spotHoldings} · Фьючерсы ${futuresPosCount}`}
-            testId="home.metric.positions"
-          />
-        </div>
+        <motion.div
+          className="home-metrics-grid"
+          variants={staggerContainer}
+          initial="initial"
+          animate="animate"
+        >
+          <motion.div variants={staggerItem}>
+            <MetricCard
+              label="PnL сегодня"
+              value={(todayPnl !== undefined ? (todayPnl >= 0 ? "+" : "") : "") + fmt(todayPnl) + " USDT"}
+              sub={`Всего: ${fmt(totalPnl, "+")} USDT`}
+              color={pnlColor(todayPnl)}
+              testId="home.metric.pnl-today"
+            />
+          </motion.div>
+          <motion.div variants={staggerItem}>
+            <MetricCard
+              label="Баланс USDT"
+              value={usdtBalance !== undefined ? fmt(usdtBalance) + " USDT" : "—"}
+              sub="Спот аккаунт"
+              testId="home.metric.balance"
+            />
+          </motion.div>
+          <motion.div variants={staggerItem}>
+            <MetricCard
+              label="Сделок (всего)"
+              value={String(tradeCount)}
+              sub={winRate !== undefined ? `Винрейт: ${fmt(winRate)}%` : undefined}
+              testId="home.metric.trades"
+            />
+          </motion.div>
+          <motion.div variants={staggerItem}>
+            <MetricCard
+              label="Открытых позиций"
+              value={String(openPositions)}
+              sub={`Спот ${spotHoldings} · Фьючерсы ${futuresPosCount}`}
+              testId="home.metric.positions"
+            />
+          </motion.div>
+        </motion.div>
 
         {/* Pipeline */}
         <section className="panel">
@@ -224,7 +239,7 @@ export function HealthPage() {
             Маршруты: {bootstrap.data?.routes.join(", ") ?? "n/a"}
           </p>
         </section>
-      </div>
+      </motion.div>
     </AppShell>
   );
 }

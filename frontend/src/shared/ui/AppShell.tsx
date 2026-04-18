@@ -41,6 +41,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/backtest", label: "Бэктест" },
       { to: "/settings", label: "Настройки" },
+      { to: "/ui-lab", label: "UI Lab" },
     ],
   },
 ];

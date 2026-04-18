@@ -1,0 +1,46 @@
+@layer base {
+  :root {
+    /* Surface */
+    --token-bg-base: 5 7 11;
+    --token-bg-surface: 14 18 24;
+    --token-bg-panel: 18 22 28;
+    --token-bg-subtle: 15 23 42;
+
+    /* Borders */
+    --token-border-default: 201 209 220 / 0.12;
+    --token-border-strong: 215 203 177 / 0.22;
+    --token-border-accent: 215 203 177 / 0.38;
+
+    /* Text */
+    --token-text-primary: 237 241 247;
+    --token-text-secondary: 174 184 199;
+    --token-text-muted: 125 136 152;
+
+    /* Accent (warm gold) */
+    --token-accent: 215 203 177;
+    --token-accent-soft: 215 203 177 / 0.12;
+
+    /* Semantic */
+    --token-green: 34 197 94;
+    --token-red: 248 113 113;
+    --token-amber: 245 158 11;
+
+    /* Radius */
+    --token-radius-sm: 8px;
+    --token-radius-md: 12px;
+    --token-radius-lg: 16px;
+    --token-radius-xl: 22px;
+    --token-radius-full: 999px;
+
+    /* Shadow */
+    --token-shadow-surface: 0 28px 72px rgba(0, 0, 0, 0.36);
+    --token-shadow-panel: 0 8px 24px rgba(2, 6, 23, 0.32);
+
+    /* Motion */
+    --token-dur-fast: 80ms;
+    --token-dur-base: 150ms;
+    --token-dur-slow: 280ms;
+    --token-ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+    --token-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}

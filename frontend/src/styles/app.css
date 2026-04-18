@@ -1,6 +1,9 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
 :root {
   color-scheme: dark;
-  font-family: "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
+  font-family: "Inter Variable", "Inter", "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
   --shell-bg-top: #05070b;
   --shell-bg-bottom: #0b1016;
   --surface-bg: rgba(14, 18, 24, 0.9);
