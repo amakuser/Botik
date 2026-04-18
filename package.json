@@ -7,7 +7,9 @@
     "build:desktop": "corepack pnpm --dir ./apps/desktop build",
     "generate:contracts": "pwsh ./scripts/generate-contracts.ps1",
     "test:e2e": "pwsh ./scripts/test-e2e.ps1",
-    "test:desktop-smoke": "pwsh ./scripts/test-desktop-smoke.ps1"
+    "test:desktop-smoke": "pwsh ./scripts/test-desktop-smoke.ps1",
+    "test:visual": "pwsh ./scripts/visual-audit.ps1",
+    "build:exe": "pwsh ./scripts/build-exe.ps1"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
