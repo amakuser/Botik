@@ -380,6 +380,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orderbook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Orderbook */
+        get: operations["get_orderbook_orderbook_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backtest/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Backtest */
+        post: operations["run_backtest_backtest_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/shutdown": {
         parameters: {
             query?: never;
@@ -513,6 +547,177 @@ export interface components {
             transport_base_url: string;
             /** Events Url */
             events_url: string;
+        };
+        /** BacktestRunRequest */
+        BacktestRunRequest: {
+            /**
+             * Scope
+             * @default futures
+             * @enum {string}
+             */
+            scope: "futures" | "spot";
+            /**
+             * Symbol
+             * @default BTCUSDT
+             */
+            symbol: string;
+            /**
+             * Interval
+             * @default 15
+             * @enum {string}
+             */
+            interval: "1" | "5" | "15" | "60";
+            /**
+             * Days Back
+             * @default 30
+             */
+            days_back: number;
+            /**
+             * Balance
+             * @default 10000
+             */
+            balance: number;
+        };
+        /** BacktestRunResult */
+        BacktestRunResult: {
+            /**
+             * Ran At
+             * Format: date-time
+             */
+            ran_at?: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "futures" | "spot";
+            /** Symbol */
+            symbol: string;
+            /** Interval */
+            interval: string;
+            /** Days Back */
+            days_back: number;
+            /**
+             * Start Date
+             * @default
+             */
+            start_date: string;
+            /**
+             * End Date
+             * @default
+             */
+            end_date: string;
+            /**
+             * Total Candles
+             * @default 0
+             */
+            total_candles: number;
+            /**
+             * Trades
+             * @default 0
+             */
+            trades: number;
+            /**
+             * Wins
+             * @default 0
+             */
+            wins: number;
+            /**
+             * Losses
+             * @default 0
+             */
+            losses: number;
+            /**
+             * Win Rate
+             * @default 0
+             */
+            win_rate: number;
+            /**
+             * Total Pnl
+             * @default 0
+             */
+            total_pnl: number;
+            /**
+             * Max Drawdown
+             * @default 0
+             */
+            max_drawdown: number;
+            /**
+             * Max Drawdown Pct
+             * @default 0
+             */
+            max_drawdown_pct: number;
+            /**
+             * Sharpe Ratio
+             * @default 0
+             */
+            sharpe_ratio: number;
+            /**
+             * Avg Win
+             * @default 0
+             */
+            avg_win: number;
+            /**
+             * Avg Loss
+             * @default 0
+             */
+            avg_loss: number;
+            /**
+             * Profit Factor
+             * @default 0
+             */
+            profit_factor: unknown;
+            /** Trades List */
+            trades_list?: components["schemas"]["BacktestTrade"][];
+            /** Error */
+            error?: string | null;
+        };
+        /** BacktestTrade */
+        BacktestTrade: {
+            /**
+             * Opened At
+             * @default
+             */
+            opened_at: string;
+            /**
+             * Closed At
+             * @default
+             */
+            closed_at: string;
+            /**
+             * Symbol
+             * @default
+             */
+            symbol: string;
+            /**
+             * Side
+             * @default
+             */
+            side: string;
+            /**
+             * Entry Price
+             * @default 0
+             */
+            entry_price: number;
+            /**
+             * Exit Price
+             * @default 0
+             */
+            exit_price: number;
+            /**
+             * Qty
+             * @default 0
+             */
+            qty: number;
+            /**
+             * Pnl
+             * @default 0
+             */
+            pnl: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** BootstrapPayload */
         BootstrapPayload: {
@@ -1225,6 +1430,36 @@ export interface components {
              * @default false
              */
             db_available: boolean;
+        };
+        /** OrderbookLevel */
+        OrderbookLevel: {
+            /** Price */
+            price: string;
+            /** Size */
+            size: string;
+            /** Total */
+            total: string;
+        };
+        /** OrderbookSnapshot */
+        OrderbookSnapshot: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /** Symbol */
+            symbol: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "linear" | "spot";
+            /** Bids */
+            bids?: components["schemas"]["OrderbookLevel"][];
+            /** Asks */
+            asks?: components["schemas"]["OrderbookLevel"][];
+            /** Error */
+            error?: string | null;
         };
         /** RuntimeStatus */
         RuntimeStatus: {
@@ -2452,6 +2687,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketTickerSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_orderbook_orderbook_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                category?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderbookSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_backtest_backtest_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BacktestRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestRunResult"];
                 };
             };
             /** @description Validation Error */

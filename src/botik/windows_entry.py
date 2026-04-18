@@ -41,9 +41,34 @@ def _show_error_box(text: str) -> None:
 
 
 def _run_gui() -> None:
-    from src.botik.gui.webview_app import main as gui_main
+    import subprocess
+    import signal
 
-    gui_main()
+    _log("Starting Tauri desktop app + app-service")
+    root = ROOT_DIR
+
+    # Start Python app-service in background
+    app_service_proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "botik_app_service.main:app",
+         "--host", "127.0.0.1", "--port", "8765", "--no-access-log"],
+        cwd=str(root / "app-service" / "src"),
+    )
+
+    # Try to launch Tauri desktop exe (built separately)
+    tauri_exe = root / "botik.exe"
+    if not tauri_exe.exists():
+        tauri_exe = root / "apps" / "desktop" / "src-tauri" / "target" / "release" / "botik_desktop.exe"
+
+    if tauri_exe.exists():
+        tauri_proc = subprocess.Popen([str(tauri_exe)])
+        tauri_proc.wait()
+    else:
+        _log("Tauri exe not found, app-service running headless")
+        try:
+            app_service_proc.wait()
+        except KeyboardInterrupt:
+            pass
+    app_service_proc.terminate()
 
 
 def _run_worker(worker_type: str, worker_args: list[str]) -> None:

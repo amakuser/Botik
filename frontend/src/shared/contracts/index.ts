@@ -57,6 +57,11 @@ export type BybitTestRequest = components["schemas"]["BybitTestRequest"];
 export type BybitTestResult = components["schemas"]["BybitTestResult"];
 export type MarketTickerEntry = components["schemas"]["MarketTickerEntry"];
 export type MarketTickerSnapshot = components["schemas"]["MarketTickerSnapshot"];
+export type OrderbookLevel = components["schemas"]["OrderbookLevel"];
+export type OrderbookSnapshot = components["schemas"]["OrderbookSnapshot"];
+export type BacktestRunRequest = components["schemas"]["BacktestRunRequest"];
+export type BacktestTrade = components["schemas"]["BacktestTrade"];
+export type BacktestRunResult = components["schemas"]["BacktestRunResult"];
 
 // SSE/error payloads are consumed by the frontend, but they are not emitted as OpenAPI
 // response models because they currently flow through StreamingResponse/manual envelopes.
@@ -160,4 +165,9 @@ export const contractSchemaNames = [
   "BybitTestResult",
   "MarketTickerEntry",
   "MarketTickerSnapshot",
+  "OrderbookLevel",
+  "OrderbookSnapshot",
+  "BacktestRunRequest",
+  "BacktestTrade",
+  "BacktestRunResult",
 ] as const;

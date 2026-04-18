@@ -1,4 +1,6 @@
 import {
+  BacktestRunRequest,
+  BacktestRunResult,
   BybitTestRequest,
   BybitTestResult,
   DiagnosticsSnapshot,
@@ -11,6 +13,7 @@ import {
   LogStreamEvent,
   LogEvent,
   MarketTickerSnapshot,
+  OrderbookSnapshot,
   RuntimeStatus,
   RuntimeStatusSnapshot,
   RuntimeId,
@@ -200,6 +203,20 @@ export async function getMarketTicker(symbols?: string[]): Promise<MarketTickerS
   const params = symbols?.length ? `?symbols=${symbols.join(",")}` : "";
   const response = await authenticatedFetch(`/market-ticker${params}`);
   return parseJsonOrThrow<MarketTickerSnapshot>(response);
+}
+
+export async function getOrderbook(symbol: string, category: string): Promise<OrderbookSnapshot> {
+  const response = await authenticatedFetch(`/orderbook?symbol=${symbol}&category=${category}`);
+  return parseJsonOrThrow<OrderbookSnapshot>(response);
+}
+
+export async function runBacktest(request: BacktestRunRequest): Promise<BacktestRunResult> {
+  const response = await authenticatedFetch("/backtest/run", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseJsonOrThrow<BacktestRunResult>(response);
 }
 
 export interface EventPayloadMap {

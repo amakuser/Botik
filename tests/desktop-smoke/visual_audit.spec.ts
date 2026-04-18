@@ -24,6 +24,8 @@ const PAGES = [
   { name: "diagnostics",        url: "/diagnostics",  heading: "Diagnostics" },
   { name: "settings",           url: "/settings",     heading: "Settings" },
   { name: "market",             url: "/market",       heading: "Market" },
+  { name: "orderbook",          url: "/orderbook",    heading: "Order Book" },
+  { name: "backtest",           url: "/backtest",     heading: "Backtest" },
 ];
 
 // ── Titlebar ──────────────────────────────────────────────────────────────────
