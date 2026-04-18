@@ -40,10 +40,23 @@ def _show_error_box(text: str) -> None:
         pass
 
 
+def _wait_for_service(url: str, timeout: float = 10.0) -> bool:
+    import urllib.request
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            urllib.request.urlopen(url, timeout=1)  # noqa: S310
+            return True
+        except Exception:
+            time.sleep(0.25)
+    return False
+
+
 def _run_gui() -> None:
     import asyncio
+    import subprocess
     import threading
-    import time
     import webbrowser
 
     # In dev (non-frozen) mode add app-service to sys.path
@@ -72,10 +85,21 @@ def _run_gui() -> None:
 
     t = threading.Thread(target=_serve, daemon=True)
     t.start()
-    time.sleep(2)
-    _log("Opening browser at http://127.0.0.1:8765")
-    webbrowser.open("http://127.0.0.1:8765")
-    t.join()
+
+    # Wait until app-service is ready
+    if not _wait_for_service("http://127.0.0.1:8765/health"):
+        _log("app-service did not start in time")
+
+    # Prefer Tauri desktop window; fall back to browser
+    desktop_exe = ROOT_DIR / "botik_desktop.exe"
+    if desktop_exe.exists():
+        _log(f"Launching Tauri window: {desktop_exe}")
+        proc = subprocess.Popen([str(desktop_exe)])
+        proc.wait()
+    else:
+        _log("botik_desktop.exe not found — opening browser at http://127.0.0.1:8765")
+        webbrowser.open("http://127.0.0.1:8765")
+        t.join()
 
 
 def _run_worker(worker_type: str, worker_args: list[str]) -> None:
