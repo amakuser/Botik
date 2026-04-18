@@ -1,9 +1,12 @@
 import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from botik_app_service.analytics_read.service import AnalyticsReadService
 from botik_app_service.api.routes_analytics import router as analytics_router
@@ -175,8 +178,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
 
-    import contextlib
-
     app = FastAPI(
         title="Botik Foundation App Service",
         version=resolved_settings.version,
@@ -185,7 +186,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[resolved_settings.frontend_url],
+        allow_origins=["*"],
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["x-botik-session-token", "content-type"],
@@ -209,6 +210,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(orderbook_router)
     app.include_router(backtest_router)
     app.include_router(admin_router)
+
+    # Serve compiled frontend from frontend/dist/ if it exists (production/exe mode)
+    _repo_root = Path(__file__).resolve().parents[3]
+    _dist_dir = _repo_root / "frontend" / "dist"
+    if _dist_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(_dist_dir / "assets")), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str, request: Request) -> FileResponse:
+            return FileResponse(str(_dist_dir / "index.html"))
+
     return app
 
 
