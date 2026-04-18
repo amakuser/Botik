@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -7,6 +8,19 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+# Repo root: next to the exe when frozen, or 3 dirs up from this file in dev mode
+_REPO_ROOT: Path = (
+    Path(sys.executable).parent
+    if getattr(sys, "frozen", False)
+    else Path(__file__).resolve().parents[3]
+)
+# Frontend static dist (bundled inside exe or built locally)
+_STATIC_ROOT: Path = (
+    Path(getattr(sys, "_MEIPASS", "")) / "frontend" / "dist"
+    if getattr(sys, "frozen", False)
+    else _REPO_ROOT / "frontend" / "dist"
+)
 
 from botik_app_service.analytics_read.service import AnalyticsReadService
 from botik_app_service.api.routes_analytics import router as analytics_router
@@ -76,7 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         recovery_guard = RecoveryGuard()
         manager = JobManager(registry=registry, store=store, supervisor=supervisor, publisher=publisher)
         runtime_control_service = RuntimeControlService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             process_adapter=process_adapter,
             mode=resolved_settings.runtime_control_mode,
             runtime_status_fixture_path=resolved_settings.runtime_status_fixture_path,
@@ -94,49 +108,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         )
         runtime_status_service = RuntimeStatusService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             heartbeat_stale_seconds=resolved_settings.runtime_status_heartbeat_stale_seconds,
             fixture_path=resolved_settings.runtime_status_fixture_path,
             observation_provider=runtime_control_service,
         )
         spot_read_service = SpotReadService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             account_type=resolved_settings.spot_read_account_type,
             fixture_db_path=resolved_settings.spot_read_fixture_db_path,
         )
         futures_read_service = FuturesReadService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             account_type=resolved_settings.futures_read_account_type,
             fixture_db_path=resolved_settings.futures_read_fixture_db_path,
         )
         telegram_ops_service = TelegramOpsService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             fixture_path=resolved_settings.telegram_ops_fixture_path,
         )
         analytics_read_service = AnalyticsReadService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             fixture_db_path=resolved_settings.analytics_read_fixture_db_path,
         )
         diagnostics_service = DiagnosticsCompatibilityService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             settings=resolved_settings,
         )
         models_read_service = ModelsReadService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
             fixture_db_path=resolved_settings.models_read_fixture_db_path,
             manifest_path=resolved_settings.models_read_manifest_path,
         )
         settings_read_service = SettingsReadService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
         )
         market_read_service = MarketReadService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
         )
         orderbook_read_service = OrderbookReadService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
         )
         backtest_run_service = BacktestRunService(
-            repo_root=Path(__file__).resolve().parents[3],
+            repo_root=_REPO_ROOT,
         )
         await logs_manager.start(publisher)
 
@@ -211,15 +225,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(backtest_router)
     app.include_router(admin_router)
 
-    # Serve compiled frontend from frontend/dist/ if it exists (production/exe mode)
-    _repo_root = Path(__file__).resolve().parents[3]
-    _dist_dir = _repo_root / "frontend" / "dist"
-    if _dist_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(_dist_dir / "assets")), name="assets")
+    # Serve compiled frontend (production/exe mode)
+    if _STATIC_ROOT.exists():
+        if (_STATIC_ROOT / "assets").exists():
+            app.mount("/assets", StaticFiles(directory=str(_STATIC_ROOT / "assets")), name="assets")
 
         @app.get("/{full_path:path}", include_in_schema=False)
         async def spa_fallback(full_path: str, request: Request) -> FileResponse:
-            return FileResponse(str(_dist_dir / "index.html"))
+            return FileResponse(str(_STATIC_ROOT / "index.html"))
 
     return app
 

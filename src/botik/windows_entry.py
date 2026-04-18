@@ -41,35 +41,41 @@ def _show_error_box(text: str) -> None:
 
 
 def _run_gui() -> None:
-    import subprocess
+    import asyncio
+    import threading
     import time
     import webbrowser
 
-    _log("Starting app-service + opening browser")
-    root = ROOT_DIR
+    # In dev (non-frozen) mode add app-service to sys.path
+    if not getattr(sys, "frozen", False):
+        _svc = ROOT_DIR / "app-service" / "src"
+        if str(_svc) not in sys.path:
+            sys.path.insert(0, str(_svc))
 
-    app_service_proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "botik_app_service.main:app",
-         "--host", "127.0.0.1", "--port", "8765", "--no-access-log"],
-        cwd=str(root / "app-service" / "src"),
-    )
+    import uvicorn
+    from botik_app_service.main import create_app
 
-    # Try Tauri desktop exe first
-    tauri_exe = root / "apps" / "desktop" / "src-tauri" / "target" / "release" / "botik_desktop.exe"
-    if tauri_exe.exists():
-        tauri_proc = subprocess.Popen([str(tauri_exe)])
-        tauri_proc.wait()
-    else:
-        # Fallback: open browser after app-service starts
-        _log("Tauri exe not found — opening browser at http://127.0.0.1:8765")
-        time.sleep(1.5)
-        webbrowser.open("http://127.0.0.1:8765")
+    _log("Starting app-service in-process")
+    botik_app = create_app()
+
+    def _serve() -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        config = uvicorn.Config(botik_app, host="127.0.0.1", port=8765, log_level="warning")
+        server = uvicorn.Server(config)
         try:
-            app_service_proc.wait()
-        except KeyboardInterrupt:
-            pass
+            loop.run_until_complete(server.serve())
+        except Exception as exc:
+            _log(f"app-service crashed: {exc}")
+        finally:
+            loop.close()
 
-    app_service_proc.terminate()
+    t = threading.Thread(target=_serve, daemon=True)
+    t.start()
+    time.sleep(2)
+    _log("Opening browser at http://127.0.0.1:8765")
+    webbrowser.open("http://127.0.0.1:8765")
+    t.join()
 
 
 def _run_worker(worker_type: str, worker_args: list[str]) -> None:
