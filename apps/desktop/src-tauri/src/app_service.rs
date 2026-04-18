@@ -51,7 +51,7 @@ pub fn start_managed_app_service() -> Result<ManagedAppService, String> {
     let port = env::var("BOTIK_APP_SERVICE_PORT").unwrap_or_else(|_| DEFAULT_APP_SERVICE_PORT.to_string());
     let session_token = env::var("BOTIK_SESSION_TOKEN").unwrap_or_else(|_| DEFAULT_SESSION_TOKEN.to_string());
     let frontend_url = env::var("BOTIK_FRONTEND_URL").unwrap_or_else(|_| DEFAULT_FRONTEND_URL.to_string());
-    let python_executable = env::var("BOTIK_PYTHON_EXECUTABLE").unwrap_or_else(|_| "python".to_string());
+    let python_executable = env::var("BOTIK_PYTHON_EXECUTABLE").unwrap_or_else(|_| "pythonw".to_string());
     let artifacts_root = env::var("BOTIK_ARTIFACTS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_root.join(".artifacts").join("local").join("latest").join("desktop-shell"));
