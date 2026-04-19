@@ -44,6 +44,23 @@
 
 ---
 
+## 2026-04-19 — Fix: broken imports after Tauri migration
+
+**Задача:** Устранить сломанные импорты `src.botik.gui.api_helpers` в app-service после удаления pywebview GUI.
+
+**Что сделано:**
+- Создан `app-service/src/botik_app_service/infra/legacy_helpers.py` — standalone замена всех функций из удалённого `api_helpers.py`
+- Исправлены 8 legacy_adapter.py файлов (spot_read, futures_read, models_read, runtime_status, telegram_ops, diagnostics_compat, analytics_read ×2)
+- Реализован `_compute_analytics()` прямо в `analytics_read/legacy_adapter.py` без внешних зависимостей
+- Удалены 25 тестовых файлов для pywebview GUI-модулей (модулей больше нет)
+- Исправлены 11 e2e тестов: English headings → Russian (Состояние системы, Спот, Фьючерсы, и т.д.)
+
+**Результат:** 239 Python тестов pass, 0 fail. Push: ac23926.
+
+**Следующее:** Запустить e2e suite (требует frontend dev server). UI-Foundation из AGENTS_CONTEXT.md.
+
+---
+
 ## 2026-04-07 — T36-T43 UX/EventBus/OrderBook/HTML Components
 
 **Задача:** Пакет UX и инфраструктурных улучшений.

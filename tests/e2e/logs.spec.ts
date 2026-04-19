@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 test("unified logs shows approved channels and streams job log entries", async ({ page, request }) => {
   await page.goto("/logs");
 
-  await expect(page.getByRole("heading", { name: "Unified Logs" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Логи" })).toBeVisible();
   await expect(page.getByTestId("logs.channel.app")).toBeVisible();
   await expect(page.getByTestId("logs.channel.jobs")).toBeVisible();
   await expect(page.getByTestId("logs.channel.desktop")).toBeVisible();

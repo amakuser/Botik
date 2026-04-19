@@ -10,9 +10,9 @@ test("runtime control can start and stop the fixture-backed spot runtime", async
   await expect(state).toContainText("OFFLINE");
   await start.click();
   await expect(state).toContainText("RUNNING");
-  await expect(page.getByTestId("runtime.pids.spot")).not.toContainText("none");
+  await expect(page.getByTestId("runtime.pids.spot")).not.toContainText("нет");
 
   await stop.click();
   await expect(state).toContainText("OFFLINE");
-  await expect(page.getByTestId("runtime.pids.spot")).toContainText("none");
+  await expect(page.getByTestId("runtime.pids.spot")).toContainText("нет");
 });

@@ -33,4 +33,4 @@ class TelegramOpsService:
     def _load_fixture_payload(self) -> dict[str, object]:
         if self._fixture_path is None:
             raise RuntimeError("telegram fixture path is not configured")
-        return json.loads(self._fixture_path.read_text(encoding="utf-8"))
+        return json.loads(self._fixture_path.read_text(encoding="utf-8-sig"))

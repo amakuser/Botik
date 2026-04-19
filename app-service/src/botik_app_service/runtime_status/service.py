@@ -34,7 +34,7 @@ class RuntimeStatusService:
     def snapshot(self) -> RuntimeStatusSnapshot:
         observations = self._observation_provider.observations() if self._observation_provider is not None else {}
         if self._fixture_path:
-            payload = json.loads(self._fixture_path.read_text(encoding="utf-8"))
+            payload = json.loads(self._fixture_path.read_text(encoding="utf-8-sig"))
             snapshot = RuntimeStatusSnapshot.model_validate(payload)
             return self._overlay_fixture_snapshot(snapshot, observations=observations, source_mode="fixture")
 
