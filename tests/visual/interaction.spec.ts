@@ -17,7 +17,52 @@ const BASE = "http://127.0.0.1:4173";
 
 // ── Telegram: check button → result panel ─────────────────────────────────────
 
+// Fixed telegram snapshot for GET /telegram (prevents SPA route collision and live-data dependency).
+const TELEGRAM_FIXTURE = {
+  generated_at: "2026-01-01T00:00:00Z",
+  source_mode: "fixture",
+  summary: {
+    bot_profile: "default",
+    token_profile_name: "TELEGRAM_BOT_TOKEN",
+    token_configured: false,
+    internal_bot_disabled: false,
+    connectivity_state: "unknown",
+    connectivity_detail: "Проверка не выполнялась.",
+    allowed_chat_count: 0,
+    allowed_chats_masked: [],
+    commands_count: 0,
+    alerts_count: 0,
+    errors_count: 0,
+    last_successful_send: null,
+    last_error: null,
+    startup_status: "unknown",
+  },
+  recent_commands: [],
+  recent_alerts: [],
+  recent_errors: [],
+  truncated: { recent_commands: false, recent_alerts: false, recent_errors: false },
+};
+
+// Fixed connectivity check response — deterministic state label in the result panel.
+const CONNECTIVITY_CHECK_RESULT = {
+  checked_at: "2026-01-01T00:00:00Z",
+  source_mode: "fixture",
+  state: "healthy",
+  detail: "getMe succeeded — bot is reachable.",
+  bot_username: "test_bot",
+  latency_ms: 42,
+  error: null,
+};
+
 test("interaction: telegram check → result panel appears with state label", async ({ page }) => {
+  // Mock GET /telegram — port-specific to avoid intercepting the SPA navigation at 4173/telegram.
+  // Also prevents live state from the previous connectivity check polluting the page.
+  await injectMockResponse(page, /127\.0\.0\.1:8765\/telegram$/, TELEGRAM_FIXTURE);
+
+  // Mock POST /telegram/connectivity-check — makes the check result deterministic.
+  // Path has no SPA collision, so simple glob is safe.
+  await injectMockResponse(page, "**/telegram/connectivity-check", CONNECTIVITY_CHECK_RESULT);
+
   await page.goto(`${BASE}/telegram`);
   await waitForStableUI(page);
 
@@ -32,9 +77,9 @@ test("interaction: telegram check → result panel appears with state label", as
 
   // Verify visible content — state label is present (not masked)
   const result = page.getByTestId("telegram.check.result");
-  await expect(result.locator("strong")).toBeVisible();
+  await expect(result.locator("strong")).toHaveText("healthy");
 
-  // Region snapshot — mask the latency badge and bot metadata (dynamic numbers)
+  // Region snapshot — mask only the meta badges (bot username, latency, source mode)
   await expect(result).toHaveScreenshot("telegram-check-result.png", {
     mask: [page.locator(".telegram-check-result__meta")],
   });
