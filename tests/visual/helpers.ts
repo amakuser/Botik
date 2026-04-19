@@ -1,10 +1,14 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Route } from "@playwright/test";
+
+// ── Stability ──────────────────────────────────────────────────────────────────
 
 /** Wait for page to be visually stable — DOM loaded + Framer Motion animations settled. */
 export async function waitForStableUI(page: Page): Promise<void> {
   await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(400);
 }
+
+// ── Layout integrity ───────────────────────────────────────────────────────────
 
 export interface LayoutIssue {
   selector: string;
@@ -56,6 +60,68 @@ export async function checkLayoutIntegrity(page: Page): Promise<LayoutIssue[]> {
   });
 }
 
+// ── Text clipping ──────────────────────────────────────────────────────────────
+
+export interface ClipIssue {
+  selector: string;
+  text: string;
+  issue: "ellipsis-active" | "scroll-clipped";
+}
+
+/**
+ * JS-based text clipping check.
+ * Detects elements where overflow: hidden clips text OR text-overflow: ellipsis is active.
+ * Checks elements matching the given CSS selectors (defaults to common interactive/label elements).
+ */
+export async function checkTextClipping(
+  page: Page,
+  selectors = ["h1", "h2", "h3", "button", "a", ".status-chip", ".surface-badge", ".app-shell__nav-link"],
+): Promise<ClipIssue[]> {
+  return page.evaluate((sels: string[]): ClipIssue[] => {
+    const issues: ClipIssue[] = [];
+
+    for (const sel of sels) {
+      const els = Array.from(document.querySelectorAll<HTMLElement>(sel));
+      for (const el of els) {
+        const style = getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        if (el.getAttribute("aria-hidden") === "true") continue;
+
+        const text = (el.textContent ?? "").trim();
+        if (!text) continue;
+
+        const tag = el.tagName.toLowerCase();
+        const id = el.id ? `#${el.id}` : "";
+        const cls = el.className && typeof el.className === "string"
+          ? `.${el.className.trim().split(/\s+/)[0]}`
+          : "";
+        const desc = `${tag}${id}${cls}`;
+
+        // Ellipsis is visually active when: overflow hidden AND text-overflow ellipsis AND content wider than box
+        const hasEllipsisStyle =
+          style.overflow === "hidden" || style.overflowX === "hidden";
+        const hasEllipsisText = style.textOverflow === "ellipsis";
+        if (hasEllipsisStyle && hasEllipsisText && el.scrollWidth > el.clientWidth) {
+          issues.push({ selector: desc, text: text.slice(0, 60), issue: "ellipsis-active" });
+        }
+
+        // Text is hidden by overflow:hidden without ellipsis — scroll-clipped
+        if (
+          (style.overflow === "hidden" || style.overflowX === "hidden") &&
+          !hasEllipsisText &&
+          el.scrollWidth > el.clientWidth + 2
+        ) {
+          issues.push({ selector: desc, text: text.slice(0, 60), issue: "scroll-clipped" });
+        }
+      }
+    }
+
+    return issues;
+  }, selectors);
+}
+
+// ── Dynamic masks ──────────────────────────────────────────────────────────────
+
 /**
  * Returns locators for dynamic content (timestamps, live values) to mask
  * during pixel-regression snapshots so they don't cause spurious failures.
@@ -70,4 +136,51 @@ export function getDynamicMasks(page: Page): Locator[] {
     // Prices and percentages in table cells are live-data
     page.locator("table tbody td"),
   ];
+}
+
+/**
+ * Returns locators for dynamic fields in a RuntimeStatusCard.
+ * Masks: heartbeat age, timestamp DDs, PID value, and the generated_at row.
+ */
+export function getRuntimeCardDynamicMasks(page: Page, runtimeId: string): Locator[] {
+  return [
+    page.locator(`[data-testid="runtime.heartbeat.${runtimeId}"]`),
+    page.locator(`[data-testid="runtime.pids.${runtimeId}"]`),
+    // The <dl> details section contains timestamps (last heartbeat, last error)
+    page.locator(`[data-testid="runtime.card.${runtimeId}"] dl dd`),
+  ];
+}
+
+// ── Network interception ───────────────────────────────────────────────────────
+
+/**
+ * Intercepts all requests matching urlPattern and returns HTTP 500.
+ * Must be called before page.goto().
+ */
+export async function injectBackendError(
+  page: Page,
+  urlPattern: string | RegExp,
+  body = '{"detail": "Injected test error"}',
+): Promise<void> {
+  await page.route(urlPattern, async (route: Route) => {
+    await route.fulfill({ status: 500, contentType: "application/json", body });
+  });
+}
+
+/**
+ * Intercepts all requests matching urlPattern and returns the given JSON body.
+ * Must be called before page.goto().
+ */
+export async function injectMockResponse(
+  page: Page,
+  urlPattern: string | RegExp,
+  json: unknown,
+): Promise<void> {
+  await page.route(urlPattern, async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(json),
+    });
+  });
 }

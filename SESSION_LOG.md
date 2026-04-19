@@ -5,6 +5,33 @@
 
 ---
 
+## 2026-04-19 — Interaction-aware visual layer upgrade (45/45 green)
+
+**Задача:** Расширить visual suite до interaction-aware системы: before/after actions, region baselines, text clipping, missing states.
+
+**Что добавлено:**
+- `tests/visual/interaction.spec.ts` — 4 теста: telegram check result, jobs error banner, runtime start→running (fully mocked), sidebar active link
+- `tests/visual/regions.spec.ts` — 8 region baselines: runtime cards (offline+running), job cards, health metrics grid, pipeline, telegram summary grid, titlebar (skipped без desktop mode)
+- `tests/visual/text-clip.spec.ts` — 8 тестов JS-проверки обрезания текста: 7 страниц + sidebar nav
+- `tests/visual/states.spec.ts` — 5 тестов: empty jobs, runtime error (500), telegram error (500, port-specific regex), pipeline running (mocked), loading text
+- `tests/visual/VISUAL_TESTING.md` — правила расширения системы для будущих сессий
+- `tests/visual/helpers.ts` — добавлены `checkTextClipping`, `injectBackendError`, `injectMockResponse`, `getRuntimeCardDynamicMasks`
+- Новых PNG baseline: 16 (итого 22 в baselines/)
+
+**Критические решения:**
+- `page.route("**/telegram")` ломает SPA navigation → использовать `/127\.0\.0\.1:8765\/telegram$/`
+- runtime interaction test: не использовать `route.continue()` — реальный backend мог поменяться; полный mock обоих состояний
+- `retry: 1` в QueryClient → error banner появляется ~1-2 сек, timeout 5000ms достаточен
+
+**Результат:** 45/45 visual pass (4 interaction + 14 layout + 8 region + 6 regression + 5 state + 8 text-clip = 45, +1 skipped), 14/14 vitest pass.
+
+**Файлы созданы:** interaction.spec.ts, regions.spec.ts, text-clip.spec.ts, states.spec.ts, VISUAL_TESTING.md, baselines/*.png (×16)
+**Файлы изменены:** helpers.ts
+
+**Следующее:** Определить следующую задачу с пользователем.
+
+---
+
 ## 2026-04-19 — Visual Testing Architecture (20/20 green)
 
 **Задача:** Реализовать многослойную систему визуального тестирования поверх существующего Playwright.
