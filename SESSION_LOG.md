@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-04-19 — Visual Testing Architecture (20/20 green)
+
+**Задача:** Реализовать многослойную систему визуального тестирования поверх существующего Playwright.
+
+**Что сделано:**
+- `tests/visual/playwright.visual.config.ts` — конфиг: viewport 1280×800, `maxDiffPixelRatio: 0.05`, `threshold: 0.2`, `animations: "disabled"`, `snapshotDir: baselines/`
+- `tests/visual/helpers.ts` — `waitForStableUI` (DOM + 400ms анимация), `checkLayoutIntegrity` (JS evaluate: overflow-x / zero-height / clipped), `getDynamicMasks` (locators для маскировки live данных)
+- `tests/visual/layout.spec.ts` — 14 страниц, JS-проверка layout integrity (без baselines, детерминированно)
+- `tests/visual/regression.spec.ts` — 6 страниц с `toHaveScreenshot()` (health, spot, futures, analytics, models, jobs)
+- `tests/visual/baselines/*.png` — 6 baseline PNG сгенерированы и закоммичены
+- `scripts/test-visual.ps1` — запуск suite (-Layout / -Regression / -OpenReport)
+- `scripts/update-visual-baselines.ps1` — обновление baselines после намеренных UI-изменений
+- `frontend/CLAUDE.md` — добавлена секция Visual Test Suite с таблицей слоёв и командами
+
+**Результаты:**
+- 20/20 visual tests pass (14 layout + 6 regression)
+- 14/14 vitest pass (не затронуты)
+- TypeScript: 0 ошибок
+
+**Файлы созданы:** tests/visual/ (5 файлов), scripts/test-visual.ps1, scripts/update-visual-baselines.ps1
+**Файлы изменены:** frontend/CLAUDE.md
+
+**Следующее:** Определить следующую задачу с пользователем.
+
+---
+
+## 2026-04-19 — fix: data_backfill 18/18 e2e green + DesktopFrame test
+
+**Задача:** Устранить последний failing e2e тест (data_backfill "wrote 0 candles") и DesktopFrame vitest.
+
+**Root cause (data_backfill):** `data_backfill.sqlite3` по умолчанию-пути уже содержал 12 строк из предыдущего ручного запуска. `INSERT OR IGNORE` пропускал все дубликаты → rowcount=0. Решение: перед backfill делаем `DELETE FROM price_history WHERE symbol/category/interval` — идемпотентная замена.
+
+**Root cause (DesktopFrame test):** `__TAURI_INTERNALS__` не был установлен в jsdom-среде, поэтому `appWindow=null` и spies не вызывались. Решение: `window["__TAURI_INTERNALS__"] = {}` в `beforeEach`, удалять в `afterEach`.
+
+**Файлы изменены:**
+- `app-service/src/botik_app_service/runtime/data_backfill_worker.py` — DELETE перед backfill
+- `frontend/src/shared/ui/DesktopFrame.test.tsx` — __TAURI_INTERNALS__ setup/teardown
+
+**Итог:** 14/14 vitest pass. Push: cfd4139.
+
+**Следующее:** Запустить `test-e2e.ps1` для финальной верификации 18/18.
+
+---
+
 ## 2026-04-19 — Аудит сессии: UI-Foundation подтверждён выполненным
 
 **Задача:** Аудит текущего состояния + верификация UI-Foundation.

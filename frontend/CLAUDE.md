@@ -51,6 +51,34 @@ CSS-переменные в `src/styles/tokens.css`. **Не использова
 2. Снять скриншот: `GET http://localhost:9989/screenshot`
 3. Проверить каждую затронутую страницу
 
+## Visual Test Suite (`tests/visual/`)
+
+Три слоя, независимые от друг друга:
+
+| Слой | Файл | Что проверяет | Нужны baselines? |
+|------|------|---------------|-----------------|
+| Layout integrity | `layout.spec.ts` | overflow-x, zero-height, clipping — все 14 страниц | Нет — JS evaluate |
+| Pixel regression | `regression.spec.ts` | Полностраничные PNG-diff для 6 ключевых страниц | Да — в `baselines/` |
+| Helpers | `helpers.ts` | `waitForStableUI`, `checkLayoutIntegrity`, `getDynamicMasks` | — |
+
+**Запуск:**
+```powershell
+# Все тесты (layout + regression)
+.\scripts\test-visual.ps1
+
+# Только layout (без baselines, быстро)
+.\scripts\test-visual.ps1 -Layout
+
+# Обновить baselines после намеренного UI-изменения
+.\scripts\update-visual-baselines.ps1
+```
+
+**Правило:** После изменения CSS/компонентов → запустить `.\scripts\test-visual.ps1 -Layout`.  
+После изменения layout/цветовой схемы → `.\scripts\update-visual-baselines.ps1` + commit baselines.
+
+**Config:** `tests/visual/playwright.visual.config.ts` — `maxDiffPixelRatio: 0.05`, `threshold: 0.2`, viewport 1280×800, headless.  
+**Baselines:** `tests/visual/baselines/*.png` — коммитить в git; платформо-независимы (генерируются headless Chromium).
+
 ## Запрещено
 - Хардкод цветов (#hex, rgba()) вне `tokens.css` — использовать `var(--token-*)`
 - Произвольные анимации без `motion.ts` пресетов
