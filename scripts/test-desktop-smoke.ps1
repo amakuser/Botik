@@ -17,12 +17,12 @@ New-Item -ItemType Directory -Force -Path $artifactsRoot, $logsDir, $structuredD
 
 $frontendOut = Join-Path $logsDir "frontend.stdout.log"
 $frontendErr = Join-Path $logsDir "frontend.stderr.log"
-$desktopOut = Join-Path $logsDir "desktop.stdout.log"
-$desktopErr = Join-Path $logsDir "desktop.stderr.log"
+$serviceOut = Join-Path $logsDir "app-service.stdout.log"
+$serviceErr = Join-Path $logsDir "app-service.stderr.log"
 $lifecycleLog = Join-Path $structuredDir "service-events.jsonl"
 $cleanupSummary = Join-Path $structuredDir "cleanup-summary.json"
 $runtimeStatusFixture = Join-Path $structuredDir "runtime-status.fixture.json"
-Remove-Item $frontendOut, $frontendErr, $desktopOut, $desktopErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $analyticsReadFixtureDb, $modelsReadFixtureDb, $modelsReadManifest, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
+Remove-Item $frontendOut, $frontendErr, $serviceOut, $serviceErr, $lifecycleLog, $cleanupSummary, $dataBackfillDb, $spotReadFixtureDb, $futuresReadFixtureDb, $analyticsReadFixtureDb, $modelsReadFixtureDb, $modelsReadManifest, $runtimeStatusFixture, $telegramOpsFixture -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $runtimeControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $trainingControlStateDir -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -343,18 +343,6 @@ except Exception:
   throw "Timed out waiting for $url"
 }
 
-function Wait-DesktopProcess([int]$timeoutSec = 90) {
-  $deadline = (Get-Date).AddSeconds($timeoutSec)
-  while ((Get-Date) -lt $deadline) {
-    $process = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'botik_desktop*' } | Select-Object -First 1
-    if ($process) {
-      return $process
-    }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Timed out waiting for botik_desktop process"
-}
-
 function Get-ListenerCounts() {
   $result = foreach ($port in 4173, 8765) {
     $listeners = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
@@ -367,6 +355,7 @@ function Get-ListenerCounts() {
   return $result
 }
 
+# Kill any lingering processes from previous runs
 Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'botik_desktop*' } | ForEach-Object {
   try {
     cmd /c "taskkill /PID $($_.Id) /T /F >nul 2>nul" | Out-Null
@@ -395,8 +384,7 @@ else {
 }
 
 $frontend = $null
-$desktop = $null
-$desktopProcess = $null
+$appService = $null
 $startedAt = Get-Date
 $testsPassed = $false
 Initialize-SpotReadFixtureDb $repoRoot $spotReadFixtureDb
@@ -412,9 +400,32 @@ $env:BOTIK_ANALYTICS_READ_FIXTURE_DB_PATH = $analyticsReadFixtureDb
 $env:BOTIK_MODELS_READ_FIXTURE_DB_PATH = $modelsReadFixtureDb
 $env:BOTIK_MODELS_READ_MANIFEST_PATH = $modelsReadManifest
 $env:BOTIK_TRAINING_CONTROL_MODE = "fixture"
+$env:BOTIK_DESKTOP_MODE = "true"
+$env:BOTIK_ARTIFACTS_DIR = $artifactsRoot
 $env:VITE_BOTIK_DESKTOP = "true"
 
 try {
+  # Write a synthetic "ready" event before app-service starts.
+  # FileTail in LogsManager will pick this up on first poll, activating the desktop channel.
+  # This replaces the event that botik_desktop.exe binary would normally write.
+  Add-JsonLine $lifecycleLog @{
+    timestamp = (Get-Date).ToString("o")
+    kind = "ready"
+    payload = @{ target = "app-service" }
+  }
+
+  Add-JsonLine $lifecycleLog @{
+    timestamp = (Get-Date).ToString("o")
+    kind = "spawn_requested"
+    payload = @{ target = "app-service" }
+  }
+  $appService = Start-Process -FilePath $shellExe -ArgumentList "-File", (Join-Path $repoRoot "scripts\dev-app-service.ps1") -PassThru -WindowStyle Hidden -RedirectStandardOutput $serviceOut -RedirectStandardError $serviceErr
+  Add-JsonLine $lifecycleLog @{
+    timestamp = (Get-Date).ToString("o")
+    kind = "spawned"
+    payload = @{ target = "app-service"; pid = $appService.Id }
+  }
+
   Add-JsonLine $lifecycleLog @{
     timestamp = (Get-Date).ToString("o")
     kind = "spawn_requested"
@@ -426,22 +437,6 @@ try {
     kind = "spawned"
     payload = @{ target = "frontend"; pid = $frontend.Id }
   }
-  Wait-Http200 "http://127.0.0.1:4173/" @{}
-
-  $env:BOTIK_ARTIFACTS_DIR = $artifactsRoot
-  $env:BOTIK_REPO_ROOT = $repoRoot
-  $desktopBin = Join-Path $repoRoot "apps\desktop\src-tauri\target\release\botik_desktop.exe"
-  Add-JsonLine $lifecycleLog @{
-    timestamp = (Get-Date).ToString("o")
-    kind = "spawn_requested"
-    payload = @{ target = "desktop-shell"; bin = $desktopBin }
-  }
-  $desktop = Start-Process -FilePath $desktopBin -PassThru
-  Add-JsonLine $lifecycleLog @{
-    timestamp = (Get-Date).ToString("o")
-    kind = "spawned"
-    payload = @{ target = "desktop-shell"; pid = $desktop.Id }
-  }
 
   Wait-Http200 "http://127.0.0.1:8765/health" @{ "x-botik-session-token" = "botik-dev-token" }
   Add-JsonLine $lifecycleLog @{
@@ -449,13 +444,7 @@ try {
     kind = "ready"
     payload = @{ target = "app-service"; url = "http://127.0.0.1:8765/health" }
   }
-  Wait-Http200 "http://127.0.0.1:8765/bootstrap" @{ "x-botik-session-token" = "botik-dev-token" }
-  $desktopProcess = Wait-DesktopProcess
-  Add-JsonLine $lifecycleLog @{
-    timestamp = (Get-Date).ToString("o")
-    kind = "ready"
-    payload = @{ target = "desktop-shell"; pid = $desktopProcess.Id }
-  }
+
   Wait-Http200 "http://127.0.0.1:4173/" @{}
   Add-JsonLine $lifecycleLog @{
     timestamp = (Get-Date).ToString("o")
@@ -467,7 +456,25 @@ try {
   $testsPassed = $true
 }
 finally {
-  foreach ($proc in @($desktop, $frontend)) {
+  $shutdownRequested = $false
+  try {
+    Add-JsonLine $lifecycleLog @{
+      timestamp = (Get-Date).ToString("o")
+      kind = "shutdown_requested"
+      payload = @{ target = "app-service"; mode = "http-admin" }
+    }
+    Invoke-WebRequest -Method Post -Uri "http://127.0.0.1:8765/admin/shutdown?session_token=botik-dev-token" | Out-Null
+    $shutdownRequested = $true
+  }
+  catch {
+    Add-JsonLine $lifecycleLog @{
+      timestamp = (Get-Date).ToString("o")
+      kind = "shutdown_request_failed"
+      payload = @{ target = "app-service"; message = $_.Exception.Message }
+    }
+  }
+
+  foreach ($proc in @($frontend, $appService)) {
     if ($null -ne $proc -and -not $proc.HasExited) {
       cmd /c "taskkill /PID $($proc.Id) /T /F >nul 2>nul" | Out-Null
       Add-JsonLine $lifecycleLog @{
@@ -478,6 +485,7 @@ finally {
     }
   }
 
+  # Defensive: kill any lingering botik_desktop processes
   Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'botik_desktop*' } | ForEach-Object {
     cmd /c "taskkill /PID $($_.Id) /T /F >nul 2>nul" | Out-Null
     Add-JsonLine $lifecycleLog @{
@@ -533,13 +541,9 @@ finally {
       stdout = $frontendOut
       stderr = $frontendErr
     }
-    desktopLog = @{
-      stdout = $desktopOut
-      stderr = $desktopErr
-    }
     appServiceLog = @{
-      stdout = (Join-Path $logsDir "app-service.stdout.log")
-      stderr = (Join-Path $logsDir "app-service.stderr.log")
+      stdout = $serviceOut
+      stderr = $serviceErr
     }
     lifecycleLog = $lifecycleLog
     runtimeStatusFixture = $runtimeStatusFixture

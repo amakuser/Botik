@@ -47,7 +47,7 @@ if ($exitCode -eq 0) {
 Write-Host "  Report: $reportDir\index.html"
 Write-Host ""
 
-if ($OpenReport -or $exitCode -ne 0) {
+if ($OpenReport) {
     if (Test-Path "$reportDir\index.html") {
         Start-Process "$reportDir\index.html"
     }

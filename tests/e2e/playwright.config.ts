@@ -13,6 +13,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     trace: "on-first-retry",
     launchOptions: {
+      headless: true,
       args: ["--no-proxy-server"],
     },
   },
