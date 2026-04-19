@@ -3,18 +3,18 @@ import { expect, test } from "./fixtures";
 test("settings surface renders configuration panels and save controls", async ({ page }) => {
   await page.goto("/settings");
 
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible();
 
   // Three configuration panels
   await expect(page.getByRole("heading", { name: "Bybit Demo" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Bybit MainNet" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Telegram" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Telegram/ })).toBeVisible();
 
   // Save action
-  await expect(page.getByRole("button", { name: /save/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /сохранить/i })).toBeVisible();
 
   // Test connection buttons (two — demo and mainnet)
-  const testButtons = page.getByRole("button", { name: /test/i });
+  const testButtons = page.getByRole("button", { name: /проверить/i });
   await expect(testButtons).toHaveCount(2);
 
   // No destructive trading actions

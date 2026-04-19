@@ -230,14 +230,14 @@ class LegacyTelegramOpsAdapter:
         return (entries, int(count_row["cnt"] or 0) if count_row else 0)
 
     def _load_runtime_inputs(self) -> tuple[dict[str, object], dict[str, str]]:
-        from src.botik.gui.api_helpers import _load_yaml, _read_env_map
+        from botik_app_service.infra.legacy_helpers import load_config, read_env_map
 
-        return _load_yaml(), _read_env_map()
+        return load_config(self._repo_root), read_env_map(self._repo_root)
 
     def _resolve_db_path(self) -> Path:
-        from src.botik.gui.api_helpers import _load_yaml, _resolve_db_path
+        from botik_app_service.infra.legacy_helpers import load_config, resolve_db_path
 
-        return _resolve_db_path(_load_yaml())
+        return resolve_db_path(self._repo_root, load_config(self._repo_root))
 
     @staticmethod
     def _split_chat_ids(raw_value: object) -> list[str]:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,8 +50,6 @@ class LegacyAnalyticsReadAdapter:
         trades = self._collect_bounded_trades(connection)
         if not trades:
             return self._empty_snapshot(source_mode=source_mode)
-
-        from src.botik.gui.api_analytics_mixin import _compute_analytics
 
         analytics = _compute_analytics(trades)
         wins = sum(int(trade["win"]) for trade in trades)
@@ -168,9 +168,9 @@ class LegacyAnalyticsReadAdapter:
         ]
 
     def _resolve_db_path(self) -> Path:
-        from src.botik.gui.api_helpers import _load_yaml, _resolve_db_path
+        from botik_app_service.infra.legacy_helpers import load_config, resolve_db_path
 
-        return _resolve_db_path(_load_yaml())
+        return resolve_db_path(self._repo_root, load_config(self._repo_root))
 
     @staticmethod
     def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
@@ -193,3 +193,38 @@ class LegacyAnalyticsReadAdapter:
     @staticmethod
     def _empty_snapshot(*, source_mode: AnalyticsReadSourceMode) -> AnalyticsReadSnapshot:
         return AnalyticsReadSnapshot(source_mode=source_mode)
+
+
+def _compute_analytics(trades: list[dict[str, Any]]) -> dict[str, Any]:
+    if not trades:
+        return {
+            "win_rate": 0.0,
+            "total_pnl": 0.0,
+            "avg_pnl": 0.0,
+            "today_pnl": 0.0,
+            "recent_trades": [],
+            "equity_curve": [],
+        }
+    total = len(trades)
+    wins = sum(1 for t in trades if int(t.get("win", 0)))
+    total_pnl = sum(float(t.get("pnl", 0.0)) for t in trades)
+    today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    today_pnl = sum(float(t.get("pnl", 0.0)) for t in trades if str(t.get("closed_at", "")).startswith(today))
+    daily: dict[str, float] = defaultdict(float)
+    for t in trades:
+        date = str(t.get("closed_at", ""))[:10]
+        if date:
+            daily[date] += float(t.get("pnl", 0.0))
+    cumulative = 0.0
+    equity_curve = []
+    for date in sorted(daily):
+        cumulative += daily[date]
+        equity_curve.append({"date": date, "daily_pnl": daily[date], "cumulative_pnl": cumulative})
+    return {
+        "win_rate": float(wins) / total if total else 0.0,
+        "total_pnl": total_pnl,
+        "avg_pnl": total_pnl / total if total else 0.0,
+        "today_pnl": today_pnl,
+        "recent_trades": list(reversed(trades[-RECENT_CLOSED_TRADES_LIMIT:])),
+        "equity_curve": equity_curve,
+    }

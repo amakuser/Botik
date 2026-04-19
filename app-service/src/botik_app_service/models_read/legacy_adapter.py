@@ -272,9 +272,9 @@ class LegacyModelsReadAdapter:
             return payload
 
     def _resolve_db_path(self) -> Path:
-        from src.botik.gui.api_helpers import _load_yaml, _resolve_db_path
+        from botik_app_service.infra.legacy_helpers import load_config, resolve_db_path
 
-        return Path(_resolve_db_path(_load_yaml()))
+        return resolve_db_path(self._repo_root, load_config(self._repo_root))
 
     def _resolve_manifest_path(self) -> Path:
         return self._repo_root / "active_models.yaml"

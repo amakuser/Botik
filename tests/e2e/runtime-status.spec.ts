@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 test("runtime status renders fixture-backed spot and futures states", async ({ page }) => {
   await page.goto("/runtime");
 
-  await expect(page.getByRole("heading", { name: "Runtime Control" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Управление рантаймом" })).toBeVisible();
   await expect(page.getByTestId("runtime.card.spot")).toBeVisible();
   await expect(page.getByTestId("runtime.card.futures")).toBeVisible();
   await expect(page.getByTestId("runtime.state.spot")).toContainText("OFFLINE");

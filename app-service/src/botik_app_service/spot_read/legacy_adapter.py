@@ -264,9 +264,9 @@ class LegacySpotReadAdapter:
         return int(row["cnt"] or 0) if row else 0
 
     def _resolve_db_path(self) -> Path:
-        from src.botik.gui.api_helpers import _load_yaml, _resolve_db_path
+        from botik_app_service.infra.legacy_helpers import load_config, resolve_db_path
 
-        return _resolve_db_path(_load_yaml())
+        return resolve_db_path(self._repo_root, load_config(self._repo_root))
 
     @staticmethod
     def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:

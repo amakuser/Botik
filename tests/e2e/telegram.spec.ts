@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 test("telegram ops renders bounded fixture-backed operational data and safe connectivity check", async ({ page }) => {
   await page.goto("/telegram");
 
-  await expect(page.getByRole("heading", { name: "Telegram Ops" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Телеграм" })).toBeVisible();
   await expect(page.getByTestId("telegram.source-mode")).toContainText("fixture");
   await expect(page.getByTestId("telegram.summary.allowed-chats")).toContainText("2");
   await expect(page.getByTestId("telegram.summary.alerts")).toContainText("1");
