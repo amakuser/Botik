@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-04-19 — desktop-smoke 36/36 green
+
+**Задача:** Исправить и верифицировать desktop-smoke suite (был stale, 14/14 из прошлой сессии устарел).
+
+**Что сделано:**
+- Все 13 spec-файлов desktop-smoke: English headings/buttons → Russian (Спот, Фьючерсы, Телеграм и т.д.)
+- `DesktopFrame.tsx`: guard `getCurrentWindow()` проверкой `__TAURI_INTERNALS__` — без этого Playwright (обычный Chromium) падал с `TypeError: Cannot read properties of undefined (reading 'metadata')`
+- `test-desktop-smoke.ps1`: добавлен `VITE_BOTIK_DESKTOP=true` (иначе desktop titlebar не рендерится); запуск pre-built release binary (`target/release/botik_desktop.exe`) вместо `tauri dev` (избегает пересборки)
+- `visual_audit.spec.ts`: `networkidle` → `domcontentloaded` (SSE на /jobs и /logs не позволял networkidle сработать)
+- `DataBackfillJobCard` + `DataIntegrityJobCard`: добавлены `data-testid="job.preset.*"` атрибуты
+
+**Итог:** 36/36 desktop-smoke pass, 18/18 e2e pass, 239/239 Python unit pass. Push: e2a1ece.
+
+**Следующее:** UI-Foundation (Tailwind v4 + shadcn/ui + Framer Motion) из WORKPLAN.md.
+
+---
+
 ## 2026-04-19 — Memory Enforcement System
 
 **Задача:** Аудит + внедрение системы персистентной памяти для проекта Botik.
@@ -57,7 +74,21 @@
 
 **Результат:** 239 Python тестов pass, 0 fail. Push: ac23926.
 
-**Следующее:** Запустить e2e suite (требует frontend dev server). UI-Foundation из AGENTS_CONTEXT.md.
+**Следующее:** UI-Foundation из AGENTS_CONTEXT.md.
+
+---
+
+## 2026-04-19 — e2e тесты: 18/18 green
+
+**Задача:** Запустить e2e Playwright и добиться полного прохода.
+
+**Что сделано:**
+- Запущен `scripts/test-e2e.ps1` (убивает старые процессы, создаёт fixture DBs, стартует backend+frontend)
+- Исправлены оставшиеся e2e тесты с English текстом: data_backfill, data-integrity, jobs, logs, market, orderbook
+- Исправлен UTF-8 BOM в чтении fixture JSON (telegram, runtime-status сервисы → `utf-8-sig`)
+- Исправлен runtime-control тест: `"none"` → `"нет"` (русский текст)
+
+**Итог:** 18/18 e2e pass, 239/239 Python pass. Push: 809421b.
 
 ---
 
