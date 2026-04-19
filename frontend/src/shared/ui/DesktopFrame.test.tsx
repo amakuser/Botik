@@ -27,7 +27,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 describe("DesktopFrame", () => {
   beforeEach(() => {
     // Simulate Tauri runtime — DesktopFrame gates on __TAURI_INTERNALS__ presence
-    (window as Record<string, unknown>)["__TAURI_INTERNALS__"] = {};
+    (window as unknown as Record<string, unknown>)["__TAURI_INTERNALS__"] = {};
     close.mockClear();
     isMaximized.mockClear();
     minimize.mockClear();
@@ -36,7 +36,7 @@ describe("DesktopFrame", () => {
   });
 
   afterEach(() => {
-    delete (window as Record<string, unknown>)["__TAURI_INTERNALS__"];
+    delete (window as unknown as Record<string, unknown>)["__TAURI_INTERNALS__"];
   });
 
   it("renders custom chrome and dispatches window actions", async () => {
