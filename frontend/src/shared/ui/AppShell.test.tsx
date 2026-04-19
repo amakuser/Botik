@@ -18,12 +18,12 @@ describe("AppShell", () => {
       ),
     );
 
-    expect(screen.getByRole("heading", { name: "Botik Foundation" })).toBeTruthy();
-    expect(screen.getByText("Core")).toBeTruthy();
-    expect(screen.getByText("Surfaces")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Botik" })).toBeTruthy();
+    expect(screen.getByText("Основное")).toBeTruthy();
+    expect(screen.getByText("Данные")).toBeTruthy();
     expect(screen.getByText("child-content")).toBeTruthy();
 
-    const runtimeLink = screen.getByRole("link", { name: "Runtime Control" });
+    const runtimeLink = screen.getByRole("link", { name: "Управление рантаймом" });
     expect(runtimeLink.className).toContain("is-active");
 
     view.unmount();

@@ -109,7 +109,7 @@ describe("TelegramPage", () => {
       ),
     );
 
-    expect(await screen.findByRole("heading", { name: "Telegram Ops" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Телеграм" })).toBeTruthy();
     expect((await screen.findByTestId("telegram.source-mode")).textContent).toContain("fixture");
     expect((await screen.findByTestId("telegram.summary.allowed-chats")).textContent).toContain("2");
     expect(await screen.findByTestId("telegram.command.0")).toBeTruthy();

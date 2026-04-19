@@ -64,7 +64,7 @@ describe("DiagnosticsPage", () => {
       ),
     );
 
-    expect(screen.getByRole("heading", { name: "Settings / Diagnostics Compatibility" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Диагностика совместимости" })).toBeTruthy();
     expect(screen.getByTestId("diagnostics.source-mode").textContent).toContain("resolved");
     expect(screen.getByTestId("diagnostics.summary.routes").textContent).toContain("10");
     expect(screen.getByTestId("diagnostics.summary.fixtures").textContent).toContain("7");

@@ -46,13 +46,13 @@ describe("DesktopFrame", () => {
 
     expect(screen.getByText("desktop-child")).toBeTruthy();
     expect(screen.getByTestId("foundation.desktop-titlebar")).toBeTruthy();
-    expect(screen.getByTestId("foundation.desktop-route-context").textContent).toContain("Runtime");
-    expect(screen.getByTestId("foundation.desktop-route-context").textContent).toContain("Runtime Control");
+    expect(screen.getByTestId("foundation.desktop-route-context").textContent).toContain("Управление");
+    expect(screen.getByTestId("foundation.desktop-route-context").textContent).toContain("Управление рантаймом");
 
-    fireEvent.click(screen.getByRole("button", { name: "Minimize window" }));
-    fireEvent.click(screen.getByRole("button", { name: "Maximize window" }));
+    fireEvent.click(screen.getByRole("button", { name: "Свернуть" }));
+    fireEvent.click(screen.getByRole("button", { name: "Развернуть" }));
     fireEvent.doubleClick(screen.getByTestId("foundation.desktop-titlebar").firstElementChild as HTMLElement);
-    fireEvent.click(screen.getByRole("button", { name: "Close window" }));
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть" }));
 
     await waitFor(() => {
       expect(minimize).toHaveBeenCalledTimes(1);

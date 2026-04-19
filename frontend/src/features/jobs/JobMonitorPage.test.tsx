@@ -77,9 +77,9 @@ describe("JobMonitorPage", () => {
       ),
     );
 
-    expect(screen.getByRole("button", { name: "Start Sample Import" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Start Data Backfill" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Start Data Integrity" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Запустить импорт" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Запустить загрузку" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Запустить проверку" })).toBeTruthy();
     expect(await screen.findByText("data_backfill")).toBeTruthy();
     expect(screen.getByTestId("jobs.backfill.interval").textContent).toContain("1m");
     expect(screen.getByTestId("jobs.integrity.interval").textContent).toContain("1m");

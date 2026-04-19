@@ -125,7 +125,7 @@ describe("SpotPage", () => {
       ),
     );
 
-    expect(await screen.findByRole("heading", { name: "Spot Read Surface" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Спот" })).toBeTruthy();
     expect((await screen.findByTestId("spot.source-mode")).textContent).toContain("fixture");
     expect((await screen.findByTestId("spot.summary.holdings")).textContent).toContain("2");
     expect(await screen.findByTestId("spot.holding.BTCUSDT")).toBeTruthy();

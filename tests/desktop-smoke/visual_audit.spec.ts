@@ -12,20 +12,20 @@ import { expect, test } from "./fixtures";
 const BASE = "http://127.0.0.1:4173";
 
 const PAGES = [
-  { name: "foundation-health",  url: "/",            heading: "Foundation Health" },
-  { name: "jobs-monitor",       url: "/jobs",         heading: "Job Monitor" },
-  { name: "unified-logs",       url: "/logs",         heading: "Unified Logs" },
-  { name: "runtime-control",    url: "/runtime",      heading: "Runtime Control" },
-  { name: "spot-read",          url: "/spot",         heading: "Spot Read" },
-  { name: "futures-read",       url: "/futures",      heading: "Futures Read" },
-  { name: "telegram-ops",       url: "/telegram",     heading: "Telegram Ops" },
-  { name: "analytics",          url: "/analytics",    heading: "PnL / Analytics" },
-  { name: "models-status",      url: "/models",       heading: "Models Registry / Training Status" },
-  { name: "diagnostics",        url: "/diagnostics",  heading: "Diagnostics" },
-  { name: "settings",           url: "/settings",     heading: "Settings" },
-  { name: "market",             url: "/market",       heading: "Market" },
-  { name: "orderbook",          url: "/orderbook",    heading: "Order Book" },
-  { name: "backtest",           url: "/backtest",     heading: "Backtest" },
+  { name: "foundation-health",  url: "/",            heading: "Состояние системы" },
+  { name: "jobs-monitor",       url: "/jobs",         heading: "Мониторинг задач" },
+  { name: "unified-logs",       url: "/logs",         heading: "Логи" },
+  { name: "runtime-control",    url: "/runtime",      heading: "Управление рантаймом" },
+  { name: "spot-read",          url: "/spot",         heading: "Спот" },
+  { name: "futures-read",       url: "/futures",      heading: "Фьючерсы" },
+  { name: "telegram-ops",       url: "/telegram",     heading: "Телеграм" },
+  { name: "analytics",          url: "/analytics",    heading: "PnL / Аналитика" },
+  { name: "models-status",      url: "/models",       heading: "Реестр моделей / Обучение" },
+  { name: "diagnostics",        url: "/diagnostics",  heading: "Диагностика совместимости" },
+  { name: "settings",           url: "/settings",     heading: "Настройки" },
+  { name: "market",             url: "/market",       heading: "Рынок" },
+  { name: "orderbook",          url: "/orderbook",    heading: "Стакан ордеров" },
+  { name: "backtest",           url: "/backtest",     heading: "Бэктест" },
 ];
 
 // ── Titlebar ──────────────────────────────────────────────────────────────────
@@ -37,9 +37,9 @@ test("titlebar: custom chrome visible, window controls present", async ({ page }
   await expect(titlebar).toBeVisible();
 
   // macOS-style window controls
-  await expect(page.getByRole("button", { name: "Close window" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Minimize window/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Maximize window|Restore window/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Закрыть" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Свернуть/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Развернуть|Восстановить/ })).toBeVisible();
 
   // Bot status dot rendered (idle or running)
   const botDot = titlebar.locator(".desktop-frame__bot-dot");
@@ -142,7 +142,7 @@ test("telegram-ops: connectivity check button is visible", async ({ page }) => {
 
   await page.screenshot({ fullPage: true });
 
-  await expect(page.getByRole("button", { name: /connectivity|check/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Проверить связь|Проверяю/i })).toBeVisible();
 });
 
 // ── Sidebar navigation ────────────────────────────────────────────────────────

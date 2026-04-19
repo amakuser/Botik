@@ -81,7 +81,7 @@ describe("RuntimeStatusPage", () => {
       ),
     );
 
-    expect(await screen.findByRole("heading", { name: "Runtime Control" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Управление рантаймом" })).toBeTruthy();
     expect(await screen.findByTestId("runtime.card.spot")).toBeTruthy();
     expect(await screen.findByTestId("runtime.card.futures")).toBeTruthy();
     expect((await screen.findByTestId("runtime.state.spot")).textContent).toContain("OFFLINE");

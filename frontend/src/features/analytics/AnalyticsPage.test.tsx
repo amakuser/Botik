@@ -50,7 +50,7 @@ describe("AnalyticsPage", () => {
       ),
     );
 
-    expect(screen.getByRole("heading", { name: "PnL / Analytics" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "PnL / Аналитика" })).toBeTruthy();
     expect(screen.getByTestId("analytics.source-mode").textContent).toContain("fixture");
     expect(screen.getByTestId("analytics.summary.closed-trades").textContent).toContain("4");
     expect(screen.getByTestId("analytics.summary.total-pnl").textContent).toContain("15.5000");

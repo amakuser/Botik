@@ -72,7 +72,7 @@ describe("LogsPage", () => {
       ),
     );
 
-    expect(await screen.findByRole("heading", { name: "Unified Logs" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Логи" })).toBeTruthy();
     expect(await screen.findByTestId("logs.channel.app")).toBeTruthy();
     expect(await screen.findByTestId("logs.channel.jobs")).toBeTruthy();
     expect(await screen.findByTestId("logs.channel.desktop")).toBeTruthy();

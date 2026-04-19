@@ -120,7 +120,7 @@ describe("FuturesPage", () => {
       ),
     );
 
-    expect(await screen.findByRole("heading", { name: "Futures Read Surface" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Фьючерсы" })).toBeTruthy();
     expect((await screen.findByTestId("futures.source-mode")).textContent).toContain("fixture");
     expect((await screen.findByTestId("futures.summary.positions")).textContent).toContain("1");
     expect(await screen.findByTestId("futures.position.ETHUSDT.Buy")).toBeTruthy();

@@ -110,7 +110,7 @@ describe("ModelsPage", () => {
       expect(screen.getByTestId("models.training-control.state").textContent).toContain("idle");
     });
 
-    expect(screen.getByRole("heading", { name: "Models Registry / Training Status" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Реестр моделей / Обучение" })).toBeTruthy();
     expect(screen.getByTestId("models.source-mode").textContent).toContain("fixture");
     expect(screen.getByTestId("models.summary.total-models").textContent).toContain("3");
     expect(screen.getByTestId("models.summary.active-declared").textContent).toContain("2");
@@ -118,7 +118,7 @@ describe("ModelsPage", () => {
     expect(screen.getByTestId("models.scope.futures").textContent).toContain("futures-paper-v2");
     expect(screen.getByTestId("models.registry.0").textContent).toContain("spot-champion-v3");
     expect(screen.getByTestId("models.run.0").textContent).toContain("run-futures-1");
-    expect(screen.getByRole("button", { name: "Start Futures Training" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Stop Futures Training" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Запустить обучение" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Остановить обучение" })).toBeTruthy();
   });
 });
