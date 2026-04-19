@@ -51,6 +51,22 @@ All suites run via: `.\scripts\test-visual.ps1`
 - Never add per-component — already covers all 14 routes globally
 - Only extend if new structural element types need coverage beyond `main/section/table/.app-route`
 
+## Fragile Baseline Rule
+
+**If a baseline fails after a backend restart or data change, do NOT regenerate it.**
+
+That is a symptom of live-backend dependency, not a legitimate baseline update. The fix is:
+1. Inject a stable fixture via `injectMockResponse()` before `page.goto()`
+2. Regenerate the baseline once against the fixed fixture
+3. The test is now deterministic and immune to backend state
+
+**Examples of fragile baselines fixed this way:**
+- RuntimeStatusCard offline: `last_heartbeat_at` → null/timestamp swaps DL row height
+- Telegram summary grid: `connectivity_detail` wraps to 2 lines after connectivity check → masked rectangle height shifts surrounding layout
+- Models regression: `latest_run_scope/status` in `status-caption` changes when a job has run
+
+**Rule:** masked area HEIGHT is still part of the screenshot. A masked rectangle sized by 2-line text differs from one sized by 1-line text even though the content is black. When note/description text wraps differently depending on backend state, mocking is required — masking alone is insufficient.
+
 ## When to Update Baselines
 
 **Correct approach:** run `.\scripts\update-visual-baselines.ps1`, review the diff visually, then commit.
@@ -61,9 +77,10 @@ All suites run via: `.\scripts\test-visual.ps1`
 - A dependency upgrade changes rendering (e.g., Framer Motion, Tailwind version)
 
 **Do NOT update baselines when:**
-- Tests fail due to dynamic data escaping the mask (fix the mask instead)
+- Tests fail due to dynamic data escaping the mask (fix the mask or add `injectMockResponse`)
 - Tests fail due to timing (fix `waitForStableUI` timeout instead)
 - Tests fail due to real visual regression (fix the regression)
+- Tests fail after backend restart when no UI change occurred (add mock fixture instead)
 
 ## Masking Rules
 
