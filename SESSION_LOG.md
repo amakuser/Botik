@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-04-19 — Visual layer stabilization (45/45 → baseline hardening)
+
+**Задача:** Финализация и стабилизация visual testing layer — устранить нестабильные baselines.
+
+**Проблема:** 4 теста ломались после рестарта backend:
+- `region: runtime spot/futures card (offline)` — DL с `last_heartbeat_at` менял высоту (686→662px) при изменении backend state
+- `region: telegram summary grid` — `connectivity_detail` меняло длину note text → masked rectangle другой высоты → pixel diff в немаскированных зонах вокруг
+- `visual: models — pixel regression` — `latest_run_scope/status` в `status-caption` менялись после job runs (не покрыты `getDynamicMasks`)
+
+**Решение:**
+- `regions.spec.ts`: добавлены `OFFLINE_RUNTIME_FIXTURE` + `TELEGRAM_FIXTURE`, `injectMockResponse()` перед `page.goto()` в 3 тестах
+- `regression.spec.ts`: добавлен `MODELS_FIXTURE`, `injectMockResponse` для models в цикле
+- 4 baseline перегенерированы с фиксированными данными
+
+**Принцип:** Mocked fixture ≠ хуже живого backend. Мокинг исключает зависимость от state, сохраняя структурную валидность.
+
+**Результат:** 45/45 visual pass, 1 skipped (desktop titlebar без VITE_BOTIK_DESKTOP=true)
+
+**Файлы изменены:** `tests/visual/regions.spec.ts`, `tests/visual/regression.spec.ts`, `tests/visual/baselines/region-runtime-spot-offline.png`, `region-runtime-futures-offline.png`, `region-telegram-summary-grid.png`, `models.png`
+
+---
+
 ## 2026-04-19 — Interaction-aware visual layer upgrade (45/45 green)
 
 **Задача:** Расширить visual suite до interaction-aware системы: before/after actions, region baselines, text clipping, missing states.

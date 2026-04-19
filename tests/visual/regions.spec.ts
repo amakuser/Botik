@@ -11,20 +11,68 @@ import { injectMockResponse, waitForStableUI } from "./helpers";
 
 const BASE = "http://127.0.0.1:4173";
 
+// Stable offline fixture — eliminates backend-state dependency for runtime card baselines.
+// last_heartbeat_at: null → DL always renders "n/a"; source_mode: "fixture" is consistent.
+const OFFLINE_RUNTIME_FIXTURE = {
+  generated_at: "2026-01-01T00:00:00Z",
+  runtimes: [
+    {
+      runtime_id: "spot", label: "Spot Runtime", state: "offline",
+      pids: [], pid_count: 0, last_heartbeat_at: null, last_heartbeat_age_seconds: null,
+      last_error: null, last_error_at: null,
+      status_reason: "no matching runtime process detected", source_mode: "fixture",
+    },
+    {
+      runtime_id: "futures", label: "Futures Runtime", state: "offline",
+      pids: [], pid_count: 0, last_heartbeat_at: null, last_heartbeat_age_seconds: null,
+      last_error: null, last_error_at: null,
+      status_reason: "no matching runtime process detected", source_mode: "fixture",
+    },
+  ],
+};
+
+// Stable telegram fixture — prevents connectivity_detail text from wrapping differently
+// after a connectivity check changes it, which shifts masked-rectangle height.
+const TELEGRAM_FIXTURE = {
+  generated_at: "2026-01-01T00:00:00Z",
+  source_mode: "fixture",
+  summary: {
+    bot_profile: "default",
+    token_profile_name: "TELEGRAM_BOT_TOKEN",
+    token_configured: false,
+    internal_bot_disabled: false,
+    connectivity_state: "unknown",
+    connectivity_detail: "Проверка не выполнялась.",
+    allowed_chat_count: 0,
+    allowed_chats_masked: [],
+    commands_count: 0,
+    alerts_count: 0,
+    errors_count: 0,
+    last_successful_send: null,
+    last_error: null,
+    startup_status: "unknown",
+  },
+  recent_commands: [],
+  recent_alerts: [],
+  recent_errors: [],
+  truncated: { recent_commands: false, recent_alerts: false, recent_errors: false },
+};
+
 // ── Runtime cards (offline/fixture state) ─────────────────────────────────────
 
 test("region: runtime spot card (offline state)", async ({ page }) => {
+  await injectMockResponse(page, "**/runtime-status", OFFLINE_RUNTIME_FIXTURE);
   await page.goto(`${BASE}/runtime`);
   await waitForStableUI(page);
 
   const card = page.getByTestId("runtime.card.spot");
   await expect(card).toBeVisible();
 
-  // No masking needed: fixture returns stable "n/a" values and "fixture" source
   await expect(card).toHaveScreenshot("region-runtime-spot-offline.png");
 });
 
 test("region: runtime futures card (offline state)", async ({ page }) => {
+  await injectMockResponse(page, "**/runtime-status", OFFLINE_RUNTIME_FIXTURE);
   await page.goto(`${BASE}/runtime`);
   await waitForStableUI(page);
 
@@ -90,6 +138,8 @@ test("region: health pipeline section", async ({ page }) => {
 // ── Telegram summary cards grid (mask numeric counters and note text) ──────────
 
 test("region: telegram summary grid", async ({ page }) => {
+  // Port-specific regex: "**/telegram" also matches the SPA navigation URL (4173/telegram).
+  await injectMockResponse(page, /127\.0\.0\.1:8765\/telegram$/, TELEGRAM_FIXTURE);
   await page.goto(`${BASE}/telegram`);
   await waitForStableUI(page);
 
