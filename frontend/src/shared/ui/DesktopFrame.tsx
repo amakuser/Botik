@@ -130,7 +130,10 @@ async function runWindowAction(action: () => Promise<void>) {
 export function DesktopFrame({ children }: PropsWithChildren) {
   const desktop = isDesktopRuntime();
   const location = useLocation();
-  const appWindow = useMemo(() => (desktop ? getCurrentWindow() : null), [desktop]);
+  const appWindow = useMemo(
+    () => (desktop && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? getCurrentWindow() : null),
+    [desktop],
+  );
   const [isMaximized, setIsMaximized] = useState(false);
   const routeMeta = useMemo(() => getRouteChromeMeta(location.pathname), [location.pathname]);
   const botActive = useBotActive();

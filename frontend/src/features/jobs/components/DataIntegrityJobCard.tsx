@@ -7,7 +7,7 @@ interface DataIntegrityJobCardProps {
 
 export function DataIntegrityJobCard({ disabled, onStart }: DataIntegrityJobCardProps) {
   return (
-    <section className="panel job-action-card job-preset-card">
+    <section className="panel job-action-card job-preset-card" data-testid="job.preset.data-integrity">
       <SectionHeading
         title="Проверка данных"
         description="Только чтение — валидация загруженных данных без изменений."

@@ -7,7 +7,7 @@ interface DataBackfillJobCardProps {
 
 export function DataBackfillJobCard({ disabled, onStart }: DataBackfillJobCardProps) {
   return (
-    <section className="panel job-action-card job-preset-card">
+    <section className="panel job-action-card job-preset-card" data-testid="job.preset.data-backfill">
       <SectionHeading
         title="Загрузка данных"
         description="Запуск задачи загрузки исторических данных."

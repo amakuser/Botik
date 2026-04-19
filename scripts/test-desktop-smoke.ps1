@@ -412,6 +412,7 @@ $env:BOTIK_ANALYTICS_READ_FIXTURE_DB_PATH = $analyticsReadFixtureDb
 $env:BOTIK_MODELS_READ_FIXTURE_DB_PATH = $modelsReadFixtureDb
 $env:BOTIK_MODELS_READ_MANIFEST_PATH = $modelsReadManifest
 $env:BOTIK_TRAINING_CONTROL_MODE = "fixture"
+$env:VITE_BOTIK_DESKTOP = "true"
 
 try {
   Add-JsonLine $lifecycleLog @{
@@ -428,12 +429,14 @@ try {
   Wait-Http200 "http://127.0.0.1:4173/" @{}
 
   $env:BOTIK_ARTIFACTS_DIR = $artifactsRoot
+  $env:BOTIK_REPO_ROOT = $repoRoot
+  $desktopBin = Join-Path $repoRoot "apps\desktop\src-tauri\target\release\botik_desktop.exe"
   Add-JsonLine $lifecycleLog @{
     timestamp = (Get-Date).ToString("o")
     kind = "spawn_requested"
-    payload = @{ target = "desktop-shell" }
+    payload = @{ target = "desktop-shell"; bin = $desktopBin }
   }
-  $desktop = Start-Process -FilePath $shellExe -ArgumentList "-File", (Join-Path $repoRoot "scripts\dev-desktop.ps1") -PassThru -WindowStyle Hidden -RedirectStandardOutput $desktopOut -RedirectStandardError $desktopErr
+  $desktop = Start-Process -FilePath $desktopBin -PassThru
   Add-JsonLine $lifecycleLog @{
     timestamp = (Get-Date).ToString("o")
     kind = "spawned"

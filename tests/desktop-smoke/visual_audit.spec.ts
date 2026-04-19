@@ -31,7 +31,7 @@ const PAGES = [
 // ── Titlebar ──────────────────────────────────────────────────────────────────
 test("titlebar: custom chrome visible, window controls present", async ({ page }) => {
   await page.goto(BASE);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   const titlebar = page.getByTestId("foundation.desktop-titlebar");
   await expect(titlebar).toBeVisible();
@@ -51,7 +51,7 @@ test("titlebar: custom chrome visible, window controls present", async ({ page }
 // ── Bot-dot animation when running ───────────────────────────────────────────
 test("titlebar: bot-dot applies pulse animation class when running", async ({ page }) => {
   await page.goto(BASE);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   const botDot = page.locator(".desktop-frame__bot-dot");
   await expect(botDot).toBeVisible();
@@ -72,7 +72,7 @@ for (const { name, url, heading } of PAGES) {
     page.on("pageerror", err => jsErrors.push(err.message));
 
     await page.goto(`${BASE}${url}`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Heading visible
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -89,7 +89,7 @@ for (const { name, url, heading } of PAGES) {
 // ── Runtime page: start/stop buttons ─────────────────────────────────────────
 test("runtime-control: start buttons enabled, stop buttons disabled in fixture mode", async ({ page }) => {
   await page.goto(`${BASE}/runtime`);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   await page.screenshot({ fullPage: true });
 
@@ -102,7 +102,7 @@ test("runtime-control: start buttons enabled, stop buttons disabled in fixture m
 // ── Jobs page: preset cards render ───────────────────────────────────────────
 test("jobs-monitor: data backfill and integrity job cards render", async ({ page }) => {
   await page.goto(`${BASE}/jobs`);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   await page.screenshot({ fullPage: true });
 
@@ -113,7 +113,7 @@ test("jobs-monitor: data backfill and integrity job cards render", async ({ page
 // ── Spot page: positions table ────────────────────────────────────────────────
 test("spot-read: holdings table renders fixture rows", async ({ page }) => {
   await page.goto(`${BASE}/spot`);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   await page.screenshot({ fullPage: true });
 
@@ -126,7 +126,7 @@ test("spot-read: holdings table renders fixture rows", async ({ page }) => {
 // ── Futures page: positions table ────────────────────────────────────────────
 test("futures-read: positions table renders fixture rows", async ({ page }) => {
   await page.goto(`${BASE}/futures`);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   await page.screenshot({ fullPage: true });
 
@@ -138,7 +138,7 @@ test("futures-read: positions table renders fixture rows", async ({ page }) => {
 // ── Telegram: connectivity check button reachable ─────────────────────────────
 test("telegram-ops: connectivity check button is visible", async ({ page }) => {
   await page.goto(`${BASE}/telegram`);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   await page.screenshot({ fullPage: true });
 
@@ -148,7 +148,7 @@ test("telegram-ops: connectivity check button is visible", async ({ page }) => {
 // ── Sidebar navigation ────────────────────────────────────────────────────────
 test("sidebar: all nav links present and navigate without errors", async ({ page }) => {
   await page.goto(BASE);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   const nav = page.getByRole("navigation", { name: "Primary" });
   await expect(nav).toBeVisible();
@@ -162,7 +162,7 @@ test("sidebar: all nav links present and navigate without errors", async ({ page
     if (!href) continue;
 
     await page.goto(`${BASE}${href}`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.screenshot({ fullPage: true });
 
     const jsErrors: string[] = [];
