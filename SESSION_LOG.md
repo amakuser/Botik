@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-04-19 — Аудит сессии: UI-Foundation подтверждён выполненным
+
+**Задача:** Аудит текущего состояния + верификация UI-Foundation.
+
+**Что найдено:**
+- UI-Foundation полностью реализован (все 9 частей из спецификации в AGENTS_CONTEXT.md)
+- Tailwind v4, tokens.css, motion.ts, Button.tsx, Badge.tsx, utils.ts, UiLabPage.tsx — все существуют
+- HealthPage с Framer Motion (fadeIn + staggerContainer + staggerItem)
+- /ui-lab роут в router.tsx, "UI Lab" в nav AppShell.tsx
+- frontend/CLAUDE.md существует
+
+**Верификация:**
+- 259 Python тестов OK (было 239 → рост)
+- TypeScript typecheck — 0 ошибок
+
+**Файлы обновлены:** AGENTS_CONTEXT.md, progress.md, SESSION_LOG.md
+
+**Следующее:** Определить следующую задачу с пользователем.
+
+---
+
+## 2026-04-19 — Headless execution model (Phase B)
+
+**Задача:** Убрать все видимые окна и focus-stealing из routine workflows.
+
+**Что сделано:**
+- `test-desktop-smoke.ps1`: удалён запуск `botik_desktop.exe` (Tauri WebView — фокус-стилинг); вместо него запускается app-service с `-WindowStyle Hidden`; устанавливаются `BOTIK_DESKTOP_MODE=true` и `BOTIK_ARTIFACTS_DIR`; синтетическое событие `ready` пишется в `service-events.jsonl` ДО старта app-service — FileTail подхватывает его на первом poll и активирует desktop channel в LogsManager; добавлен graceful `/admin/shutdown` в cleanup; удалена `Wait-DesktopProcess`
+- `playwright.desktop.config.ts` + `playwright.config.ts`: добавлен `headless: true` в `launchOptions`
+- `visual-audit.ps1`: удалено авто-открытие HTML-отчёта при провале (теперь только по `-OpenReport`)
+
+**Итог:** 36/36 desktop-smoke pass, 18/18 e2e pass — ни одного видимого окна. Push: 8cd0b16.
+
+**Следующее:** UI-Foundation из WORKPLAN.md.
+
+---
+
 ## 2026-04-19 — desktop-smoke 36/36 green
 
 **Задача:** Исправить и верифицировать desktop-smoke suite (был stale, 14/14 из прошлой сессии устарел).

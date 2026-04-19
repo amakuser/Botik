@@ -82,6 +82,11 @@ async def _run(args: argparse.Namespace) -> int:
     from src.botik.storage.schema import bootstrap_db
 
     db = bootstrap_db(args.db_url)
+    with db.connect() as _conn:
+        _conn.execute(
+            "DELETE FROM price_history WHERE symbol=? AND category=? AND interval=?",
+            (symbol, category, to_legacy_interval("1m")),
+        )
     _emit_log("INFO", "Bootstrapped DB for BTCUSDT/spot/1m.")
     _emit_progress(
         progress=0.1,

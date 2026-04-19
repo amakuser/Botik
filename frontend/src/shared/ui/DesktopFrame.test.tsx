@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopFrame } from "./DesktopFrame";
 
 const close = vi.fn(() => Promise.resolve());
@@ -26,11 +26,17 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 describe("DesktopFrame", () => {
   beforeEach(() => {
+    // Simulate Tauri runtime — DesktopFrame gates on __TAURI_INTERNALS__ presence
+    (window as Record<string, unknown>)["__TAURI_INTERNALS__"] = {};
     close.mockClear();
     isMaximized.mockClear();
     minimize.mockClear();
     onResized.mockClear();
     toggleMaximize.mockClear();
+  });
+
+  afterEach(() => {
+    delete (window as Record<string, unknown>)["__TAURI_INTERNALS__"];
   });
 
   it("renders custom chrome and dispatches window actions", async () => {

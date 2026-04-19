@@ -21,7 +21,7 @@
 **Путь:** `C:\ai\aiBotik\frontend\`  
 **Статус:** ✅ Работает (14 страниц)  
 **CSS:** Кастомный app.css (2000+ строк, BEM), тёмная тема, warm accent (#d7cbb1)  
-**Ждёт:** UI-Foundation (Tailwind v4 + shadcn/ui + Framer Motion) — агент подготовлен, не запущен
+**UI-Foundation:** ✅ Tailwind v4 + shadcn/ui primitives (Button, Badge) + Framer Motion + tokens.css + motion.ts + UiLabPage + frontend/CLAUDE.md
 
 ### Core / Runners
 
@@ -63,7 +63,7 @@
 
 | Задача | Статус | Примечание |
 |--------|--------|------------|
-| UI-Foundation (Tailwind v4 + shadcn/ui + Framer Motion) | ⬜ ожидает | Задание готово в AGENTS_CONTEXT.md |
+| UI-Foundation (Tailwind v4 + shadcn/ui + Framer Motion) | ✅ done | 259 py OK, tsc OK, /ui-lab route существует |
 | BLOCKER-2 (R1-R4) | 🔒 записан | Фактически все R1-R4 помечены ✅ done в WORKPLAN |
 | BLOCKER-3 (demo API spot) | 🔒 записан | Требует demo API ключей |
 
