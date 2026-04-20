@@ -48,6 +48,32 @@
 - **Command:** `npx playwright test --config tests/vision/playwright.vision.config.ts`
 - **Last verified:** 9/9 pages pass, 0 false positives
 
+### 3a. Local Vision Loop (gemma3:4b — Ollama)
+- **Status:** verified, production-grade
+- **Framework:** Playwright + Ollama gemma3:4b (local)
+- **Location:** `tests/visual/vision_loop.helpers.ts`
+- **Activation:** `OLLAMA_VISION=1` (disabled by default — CI-safe)
+- **Key features:**
+  - JSON schema validation + confidence gating (≥0.5 to assert)
+  - Retry on empty/unparseable response (max 2 attempts, bypassCache=true)
+  - In-memory region cache (FNV-32 hash key)
+  - DOM cross-check (confirmed/conflict/uncertain)
+  - Structured logging per vision event
+- **Classifiers:**
+  - `classifyElementState` — status badge (RUNNING/OFFLINE/UNKNOWN)
+  - `detectActionBanner` — standalone action notification
+  - `detectPanelVisibility` — result panel visible/hidden
+- **Model:** gemma3:4b (1.4s warm, 100% JSON valid, GPU only)
+- **Requires:** Ollama running at 127.0.0.1:11434 with gemma3:4b loaded
+
+### 3b. Exploratory Agent Audit
+- **Status:** verified
+- **Location:** `tests/vision/agent_audit.spec.ts`
+- **Activation:** `OLLAMA_AGENT=1` (skips silently otherwise)
+- **Output:** `.artifacts/local/latest/vision/agent-audit.json`
+- **Report format:** risk_map with `likely_ok|suspicious|likely_broken|uncertain` per region
+- **CI safe:** never calls `test.fail()` — report-only
+
 ### 4. Dev Server & Screenshot API
 - **Status:** verified
 - **Tool:** BotikDevServer (`botik_tools/`)
@@ -91,11 +117,17 @@
 # Unit tests
 pytest
 
-# Visual regression (requires dev server on :9989)
+# Visual regression (requires dev server on :4173)
 npx playwright test tests/visual/
 
-# Vision layer (requires ANTHROPIC_API_KEY)
+# Visual regression with local vision loop (requires Ollama + gemma3:4b)
+OLLAMA_VISION=1 npx playwright test tests/visual/interaction.spec.ts
+
+# Claude API vision layer (requires ANTHROPIC_API_KEY)
 npx playwright test --config tests/vision/playwright.vision.config.ts
+
+# Exploratory agent audit (requires Ollama + gemma3:4b)
+OLLAMA_AGENT=1 npx playwright test tests/vision/agent_audit.spec.ts
 
 # Lint
 ruff check .

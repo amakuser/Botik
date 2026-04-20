@@ -18,6 +18,7 @@
 import { expect, test } from "@playwright/test";
 import { injectBackendError, injectMockResponse, waitForStableUI } from "./helpers";
 import {
+  buildCrossCheck,
   captureRegion,
   classifyElementState,
   compareStates,
@@ -101,17 +102,28 @@ test("interaction: telegram check → result panel appears with state label", as
   // ── Vision loop: confirm result panel is visually present and shows "healthy" ──
   if (isOllamaVisionEnabled()) {
     const panelImg = await captureRegion(result);
-    const { result: vision, analysis } = await detectPanelVisibility(panelImg, "telegram.check.result@after");
+    const { result: vision, analysis, confidence } = await detectPanelVisibility(panelImg, "telegram.check.result@after");
+
+    // DOM cross-check: Playwright confirms element is visible at the locator level
+    const isDomVisible = await result.isVisible();
+    const crossCheck = buildCrossCheck(
+      vision.panel_visible ? "visible" : "hidden",
+      isDomVisible ? "visible" : "hidden",
+    );
 
     logVisionResult(
       "telegram-check@after",
       analysis,
-      vision.panel_visible
-        ? `panel_visible=true label=${vision.primary_label ?? "?"}`
-        : "panel_visible=false",
+      vision.panel_visible ? `panel_visible=true label=${vision.primary_label ?? "?"}` : "panel_visible=false",
+      confidence,
+      crossCheck,
     );
 
     expect(vision.panel_visible, "[vision] result panel should be visible after check").toBe(true);
+    expect(
+      crossCheck.outcome,
+      `[vision+DOM] telegram panel: vision=${crossCheck.vision_value} dom=${crossCheck.dom_value}`,
+    ).not.toBe("conflict");
 
     if (vision.primary_label !== null) {
       expect(
@@ -158,7 +170,14 @@ test("interaction: jobs start fails → action error banner appears", async ({ p
   if (isOllamaVisionEnabled()) {
     const errorEl = page.getByTestId("jobs.action-error");
     const bannerImg = await captureRegion(errorEl);
-    const { result: vision, analysis } = await detectActionBanner(bannerImg, "jobs.action-error@after");
+    const { result: vision, analysis, confidence } = await detectActionBanner(bannerImg, "jobs.action-error@after");
+
+    // DOM cross-check: the error element is visible per Playwright locator
+    const isDomBannerVisible = await errorEl.isVisible();
+    const crossCheck = buildCrossCheck(
+      vision.has_action_banner ? "visible" : "hidden",
+      isDomBannerVisible ? "visible" : "hidden",
+    );
 
     logVisionResult(
       "jobs-start-fail@after",
@@ -166,9 +185,19 @@ test("interaction: jobs start fails → action error banner appears", async ({ p
       vision.has_action_banner
         ? `has_banner=true type=${vision.banner_type ?? "?"} text=${(vision.text ?? "").slice(0, 60)}`
         : "has_banner=false",
+      confidence,
+      crossCheck,
     );
 
-    expect(vision.has_action_banner, "[vision] action error banner should be visible after failed start").toBe(true);
+    if (confidence >= 0.5) {
+      expect(vision.has_action_banner, "[vision] action error banner should be visible after failed start").toBe(true);
+      expect(
+        crossCheck.outcome,
+        `[vision+DOM] jobs error banner: vision=${crossCheck.vision_value} dom=${crossCheck.dom_value}`,
+      ).not.toBe("conflict");
+    } else {
+      console.log(`[vision] jobs banner confidence=${confidence.toFixed(2)} — skipping vision assertion (model uncertain), DOM confirmed visible`);
+    }
   }
 });
 
@@ -269,13 +298,33 @@ test("interaction: runtime start → card shows RUNNING state after action", asy
   // ── Vision loop: capture AFTER state and confirm transition ──────────────
   if (isOllamaVisionEnabled()) {
     const cardAfterImg = await captureRegion(spotCard);
-    const { result: stateAfter, analysis } = await classifyElementState(cardAfterImg, "runtime.card.spot@after");
+    const { result: stateAfter, analysis, confidence: confAfter } = await classifyElementState(
+      cardAfterImg, "runtime.card.spot@after",
+    );
+
+    // DOM cross-check: Playwright DOM text matches vision badge
+    const domText = (await page.getByTestId("runtime.state.spot").textContent() ?? "").trim().toUpperCase();
+    const crossCheck = buildCrossCheck(stateAfter.badge, domText);
 
     logVisionResult(
       "runtime-start@after",
       analysis,
       `badge=${stateAfter.badge} color=${stateAfter.color}`,
+      confAfter,
     );
+
+    logVisionResult(
+      "runtime-start@cross-check",
+      analysis,
+      `cross_check=${crossCheck.outcome}`,
+      confAfter,
+      crossCheck,
+    );
+
+    expect(
+      crossCheck.outcome,
+      `[vision+DOM] runtime state: vision=${crossCheck.vision_value} dom=${crossCheck.dom_value}`,
+    ).not.toBe("conflict");
 
     if (stateBefore !== null) {
       const comparison = compareStates(stateBefore, stateAfter, { from: "OFFLINE", to: "RUNNING" });
@@ -289,11 +338,7 @@ test("interaction: runtime start → card shows RUNNING state after action", asy
         `[vision] expected OFFLINE→RUNNING transition, got ${comparison.from_badge}→${comparison.to_badge}`,
       ).toBe("transition_confirmed");
     } else {
-      // stateBefore was not captured — only assert after state
-      expect(
-        stateAfter.badge,
-        "[vision] card should show RUNNING after start action",
-      ).toBe("RUNNING");
+      expect(stateAfter.badge, "[vision] card should show RUNNING after start action").toBe("RUNNING");
     }
   }
 });

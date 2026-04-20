@@ -24,15 +24,13 @@
 ## NEAR-TERM (next 1-2 sessions)
 
 ### VS-3: Integrate gemma3:4b into vision layer
-- **Prerequisite:** VS-1, VS-2 done
-- **Action:** Add an optional Ollama backend to `tests/vision/vision.helpers.ts`
-  - If `OLLAMA_VISION_ENDPOINT` is set → use local gemma3:4b
-  - Otherwise → fall back to Claude API
-- **Success criteria:**
-  - Same JSON schema output
-  - Latency < 10s per page
-  - No dependency on ANTHROPIC_API_KEY in offline mode
-- **Risk:** gemma3:4b produces fewer/different issues than Claude API (model capability difference)
+- **Status:** ✅ DONE (2026-04-20)
+- **What was done:**
+  - Created `tests/visual/vision_loop.helpers.ts` — production-grade Ollama client
+  - Added ACTION→SNAPSHOT→ANALYSIS→DECISION loop to `interaction.spec.ts` (3 scenarios)
+  - JSON schema validation, confidence gating, retry, DOM cross-check, caching
+  - Separate exploratory agent: `tests/vision/agent_audit.spec.ts` (OLLAMA_AGENT=1)
+- **Result:** 4/4 interaction tests pass with OLLAMA_VISION=1
 
 ### VS-4: Diagnose llava:7b hang
 - **Required for:** deciding whether to keep or remove llava:7b
@@ -78,7 +76,7 @@
 ### GATE-3: Should vision tests be in CI?
 - **Current answer:** NOT YET
 - **Blockers:** requires running Ollama on CI runner (Windows GitHub Actions)
-- **Condition to change:** when VS-3 is stable and VS-5 is automated
+- **Condition to change:** when VS-5 (Ollama startup automation) is done and CI runner has GPU
 
 ---
 

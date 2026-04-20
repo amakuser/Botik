@@ -269,3 +269,43 @@ Can a local vision model serve as "visual feedback" for UI automation — confir
 - Full pages → 9.7s (acceptable for debug/audit mode)
 - Improve question prompts: distinguish "action error banner" from "status indicators in cards"
 - `llama3.2-vision:11b` adds NO value for this task and uses more VRAM
+
+---
+
+## STEP 11 — PRODUCTION-GRADE VISION LOOP (2026-04-20)
+
+### What was integrated
+
+`tests/visual/vision_loop.helpers.ts` — production-grade vision loop for `interaction.spec.ts`:
+- JSON schema validation with confidence (0.0–1.0 = fraction of keys matching expected enums)
+- Retry on empty `{}` or unparseable JSON (max 2 attempts, `bypassCache=true` on retry)
+- In-memory region cache keyed by FNV-32 hash of first 512 image bytes + question
+- DOM cross-check: `buildCrossCheck(visionValue, domValue)` → confirmed/conflict/uncertain
+- Confidence gating: vision assertions skipped when `confidence < 0.5` (model uncertain)
+- Structured logging: `logVisionResult(scenario, analysis, decision, confidence?, crossCheck?)`
+- Activation: `OLLAMA_VISION=1` — CI-safe by default
+
+### Three vision scenarios in interaction tests
+
+| Scenario | Element | Classifier | Result |
+|---|---|---|---|
+| Telegram check result | `telegram.check.result` | `detectPanelVisibility` | ✅ panel_visible=true, label=healthy |
+| Jobs start fail banner | `jobs.action-error` | `detectActionBanner` | ⚠️ confidence=0.00 (model uncertain) → gated |
+| Runtime start → RUNNING | `runtime.card.spot` | `classifyElementState` | ✅ OFFLINE→RUNNING confirmed |
+
+**Known limitation:** gemma3:4b returns `{}` for the jobs error element (raw JSON text in UI confuses model). Gated by confidence threshold.
+
+### Exploratory agent mode
+
+`tests/vision/agent_audit.spec.ts` — activated by `OLLAMA_AGENT=1`:
+- Scans 5 regions of a page, produces `AgentAuditReport`
+- Risk levels: `likely_ok | suspicious | likely_broken | uncertain`
+- Report written to `.artifacts/local/latest/vision/agent-audit.json`
+- Never calls `test.fail()` — report-only
+- First run result: all runtime cards classified `likely_broken` (sees OFFLINE state from fixture — expected behavior)
+
+### Key architectural decisions
+
+- `analyzeRegion()` now has `bypassCache = false` parameter — classifiers use `true` on retry instead of calling `clearRegionCache()` (which was too aggressive — cleared all entries)
+- `analyzeRegion()` retries on `Object.keys(result.raw).length === 0` (empty `{}`) in addition to `_unparseable`
+- `detectActionBanner` and `classifyElementState` are strictly separate — OFFLINE badge must not be detected as an error banner
