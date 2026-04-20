@@ -199,12 +199,24 @@ Each failed `ollama pull` creates:
 These look like complete downloads but contain no actual data. SHA256 mismatch on them is expected.
 Delete all with: `rm /c/Users/farik/.ollama/models/blobs/sha256-9999d473*-partial*`
 
-### STEP 9 — FINAL VERDICT
+### STEP 9 — FINAL VERDICT (updated after successful download via NekoBox VPN proxy)
 
 | Model | Loads | Vision Works | Stable | Latency | Memory Fit | Better than 4B | Verdict |
 |---|---|---|---|---|---|---|---|
-| llama3.2-vision:11b | NO | N/A | N/A | N/A | Unknown (~7-8 GB) | Unknown | **DOWNLOAD BLOCKED** — Cloudflare R2 SSL failure |
+| llama3.2-vision:11b | **YES** | **PARTIAL** (JSON 33%) | YES | 21-118s avg ~76s | **YES** 5.53 GB | **NO** | **NOT PRACTICAL** — 10-50× slower than gemma3:4b, JSON unreliable |
 | llava-llama3:8b | SKIPPED | N/A | N/A | N/A | Unknown (~5-6 GB) | Unknown | **SKIPPED** — CLIP arch = same hang as llava:7b |
+
+**gemma3:4b comparison:**
+
+| Model | Latency (warm) | JSON valid | VRAM | Verdict |
+|---|---|---|---|---|
+| gemma3:4b | 1.4-4.6s | 100% | 5.18 GB | GOOD DEFAULT TOOL |
+| llama3.2-vision:11b | 21-118s avg 76s | 33% (3-page test) | 5.53 GB | NOT PRACTICAL |
+
+**How llama3.2-vision:11b was made to work:**
+- `HTTPS_PROXY=http://127.0.0.1:2080` (NekoBox local proxy) set at Ollama serve process level
+- Without proxy: Cloudflare R2 SSL handshake fails (ISP blocking)
+- With proxy: downloaded at 30-45 MB/s in ~5 min
 
 ### Unblock paths
 

@@ -25,7 +25,13 @@
 | llama3.2-vision:11b | НЕТ | N/A | N/A | N/A | ~7-8 GB | Неизвестно | DOWNLOAD BLOCKED (R2 SSL) |
 | llava-llama3:8b | ПРОПУЩЕНО | N/A | N/A | N/A | ~5-6 GB | Неизвестно | SKIPPED (CLIP arch) |
 
-**Разблокировка:** VPN прокси через NekoBox (`HTTPS_PROXY=http://127.0.0.1:<port>`) или HF token + ручной импорт GGUF.
+**Разблокировка:** NekoBox запущен (127.0.0.1:2080) → R2 доступен → модель скачана и протестирована.
+
+**ОБНОВЛЁННЫЙ ВЕРДИКТ (после тестирования):**
+- Загружается: ДА, VRAM 5.53 GB
+- Тёплая latency на реальных скриншотах: 21-118s avg 76s (vs gemma3:4b 1.4-4.6s)
+- JSON надёжность: 33% (vs gemma3:4b 100%)
+- Итог: NOT PRACTICAL для авто-тестов. Только для разового ручного аудита.
 
 **Файлы изменены:**
 - `docs/testing/EXPERIMENTAL_VISION_TRACK.md` — секция 11B evaluation + final verdict table
