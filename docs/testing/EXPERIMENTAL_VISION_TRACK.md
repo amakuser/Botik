@@ -150,3 +150,67 @@ $p = [System.Diagnostics.Process]::Start($psi)
 | llava:7b CLIP projector incompatible with Blackwell (compute 12.0) | unproven |
 | llava:7b Q4_0 format deprecated in Ollama 0.21.0 | unproven |
 | Previous 502 errors caused by SQLite WAL (not GPU) | likely but not proven directly |
+
+---
+
+## 11B MODEL EVALUATION — 2026-04-20
+
+### Objective
+Evaluate whether a ≈11B vision model is usable as a "deep audit" supplement to gemma3:4b.
+
+### Models attempted
+
+**llama3.2-vision:11b (Meta, 7.82 GB)**
+- Architecture: Native multimodal transformer, NO separate CLIP projector
+- VRAM estimate: ~7-8 GB (marginal fit in 8 GiB VRAM without other models loaded)
+- Manifest blob: `sha256:9999d473...` (7,816,574,592 bytes)
+- Manifest fetch: SUCCESS (registry.ollama.ai accessible)
+- Blob download: FAILED — SSL handshake failure on Cloudflare R2
+
+**llava-llama3:8b (8B, ~4.92 GB)**
+- Architecture: LLaMA 3 base + CLIP projector (separate mmproj file)
+- Status: SKIPPED — CLIP architecture suspected same hang as llava:7b (ExitCode=-1)
+
+### Root cause of download failure
+
+```
+Error: max retries exceeded: Get "https://dd20bb891979d25aebc8bec07b2b3bbc.r2.cloudflarestorage.com/...": EOF
+```
+
+- `*.r2.cloudflarestorage.com` → `schannel: failed to receive handshake, SSL/TLS connection failed`
+- Cloudflare R2 (Ollama's blob CDN) is inaccessible from this network
+- Cause: likely ISP-level TLS blocking of R2 endpoints (Russia)
+- Manifest registry (`registry.ollama.ai`) is accessible — only blob CDN blocked
+
+### HuggingFace alternative
+
+- `huggingface.co` CDN: ACCESSIBLE
+- `bartowski/Llama-3.2-11B-Vision-Instruct-GGUF`: 401 Unauthorized (Meta license gating)
+- `lmstudio-community/Llama-3.2-11B-Vision-Instruct-GGUF`: 401 Unauthorized (gated)
+- `unsloth/Llama-3.2-11B-Vision-Instruct-GGUF`: 401 Unauthorized (gated)
+- All variants require HF account + Meta license acceptance
+
+### Pre-allocation artifact
+
+Each failed `ollama pull` creates:
+- `sha256-<hash>-partial`: Pre-allocated zero-filled file at FULL expected size
+- `sha256-<hash>-partial-0` … `-15`: 16 chunk tracker files (50-60 bytes, all `Completed=0`)
+
+These look like complete downloads but contain no actual data. SHA256 mismatch on them is expected.
+Delete all with: `rm /c/Users/farik/.ollama/models/blobs/sha256-9999d473*-partial*`
+
+### STEP 9 — FINAL VERDICT
+
+| Model | Loads | Vision Works | Stable | Latency | Memory Fit | Better than 4B | Verdict |
+|---|---|---|---|---|---|---|---|
+| llama3.2-vision:11b | NO | N/A | N/A | N/A | Unknown (~7-8 GB) | Unknown | **DOWNLOAD BLOCKED** — Cloudflare R2 SSL failure |
+| llava-llama3:8b | SKIPPED | N/A | N/A | N/A | Unknown (~5-6 GB) | Unknown | **SKIPPED** — CLIP arch = same hang as llava:7b |
+
+### Unblock paths
+
+1. **Local VPN proxy**: Set `HTTPS_PROXY=http://127.0.0.1:<nekobox-port>` before starting Ollama, or configure Ollama via `OLLAMA_PROXY`. NekoBox typically exposes `127.0.0.1:10808` (mixed) or `127.0.0.1:7890` (HTTP).
+2. **HF token + manual import**:
+   - Accept Meta license at huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct
+   - `huggingface-cli login` → download GGUF
+   - Create Modelfile → `ollama create llama3.2-vision:11b -f Modelfile`
+3. **Current recommendation**: GATE-1 still applies — gemma3:4b at 1.6s/request is sufficient; defer 11B until either unblock path is confirmed working.

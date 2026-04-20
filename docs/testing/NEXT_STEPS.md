@@ -41,6 +41,17 @@
   2. If it loads: test vision on GPU
   3. If it also hangs: confirms Ollama 0.21.0 + CLIP projector + Blackwell issue
 - **Decision point:** if llava-llama3 works → use it as second control model; if not → remove llava:7b from test matrix
+- **Note (2026-04-20):** llava-llama3:8b also blocked by R2 CDN issue (see VS-6). Download not attempted due to CLIP hang risk + network blocker.
+
+### VS-6: Unblock Cloudflare R2 for Ollama downloads
+- **Status:** NEW — BLOCKER for any future model pull
+- **Problem:** `*.r2.cloudflarestorage.com` returns SSL handshake failure from this network (ISP blocking suspected)
+- **Evidence:** `schannel: failed to receive handshake` when accessing R2 directly; `registry.ollama.ai` works fine
+- **Action options (choose one):**
+  1. **Proxy**: Set `HTTPS_PROXY=http://127.0.0.1:<port>` (NekoBox HTTP proxy, typically 10808 or 7890) and restart Ollama serve with that env var
+  2. **Manual HF import**: Accept Meta license on HuggingFace, download GGUF via `huggingface-cli`, import with `ollama create`
+  3. **Accept limitation**: Keep gemma3:4b as sole local model until network situation changes
+- **Prerequisite for:** VS-4 (llava-llama3), GATE-1 (11B evaluation)
 
 ### VS-5: Ollama startup automation
 - **Action:** Create `scripts/start_ollama_gpu.ps1` that:

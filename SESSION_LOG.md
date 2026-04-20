@@ -5,6 +5,35 @@
 
 ---
 
+## 2026-04-20 — 11B vision model evaluation (BLOCKED)
+
+**Задача:** Оценить llama3.2-vision:11b как "deep audit" supplement к gemma3:4b.
+
+**Итог:** BLOCKED на шаге 1 (загрузка модели).
+
+**Обнаруженные факты:**
+- `*.r2.cloudflarestorage.com` (Ollama blob CDN) → SSL handshake failure — заблокирован сетью ISP
+- `ollama pull` создаёт pre-allocated нулевой файл (Completed=0 на всех 16 чанках), затем выдаёт `EOF: max retries exceeded`
+- `registry.ollama.ai` — доступен; только blob-хранилище заблокировано
+- HuggingFace — доступен, но llama3.2-vision:11b gated (Meta license, 401 без токена)
+- llava-llama3:8b — пропущен (CLIP архитектура = тот же hang что у llava:7b)
+
+**Вердикт (STEP 9):**
+
+| Модель | Загружается | Vision | Стабильна | Задержка | VRAM | Лучше 4B | Вердикт |
+|---|---|---|---|---|---|---|---|
+| llama3.2-vision:11b | НЕТ | N/A | N/A | N/A | ~7-8 GB | Неизвестно | DOWNLOAD BLOCKED (R2 SSL) |
+| llava-llama3:8b | ПРОПУЩЕНО | N/A | N/A | N/A | ~5-6 GB | Неизвестно | SKIPPED (CLIP arch) |
+
+**Разблокировка:** VPN прокси через NekoBox (`HTTPS_PROXY=http://127.0.0.1:<port>`) или HF token + ручной импорт GGUF.
+
+**Файлы изменены:**
+- `docs/testing/EXPERIMENTAL_VISION_TRACK.md` — секция 11B evaluation + final verdict table
+- `docs/testing/NEXT_STEPS.md` — добавлен VS-6 (R2 unblock), обновлён VS-4
+- `WORKPLAN.md` — два Decision Log entry (GPU re-verification + 11B blocker)
+
+---
+
 ## 2026-04-20 — Vision root-cause investigation + documentation
 
 **Задача:** Систематическое расследование отказов vision inference + формализация док��ментации.
