@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-04-20 — Vision root-cause investigation + documentation
+
+**Задача:** Систематическое расследование отказов vision inference + формализация док��ментации.
+
+**Ключевые открытия:**
+- gemma3:4b GPU: GOOD DEFAULT TOOL — 1.4-4.6s/req, JSON 100%, schema 4/4, VRAM 5299 MiB
+- Исходный бенчмарк был НЕВЕРНЫМ: OLLAMA_LLM_LIBRARY=cpu в env → все запросы на CPU (185s+)
+- llava:7b: BLOCKED — зависает во всех режимах (GPU/CPU/text/vision), в VRAM не грузится
+- SQLite WAL/SHM corruption → crash при старте Ollama (не GPU проблема)
+
+**Файлы:**
+- `docs/testing/TESTING_BASELINE.md`, `EXPERIMENTAL_VISION_TRACK.md`, `NEXT_STEPS.md` (новые)
+- `memory/project_botik_visual_tests.md` (обновлён)
+
+---
+
 ## 2026-04-20 — Vision model benchmark завершён
 
 **Задача:** Benchmark gemma3:4b vs llava:7b через Ollama REST API на CPU.
