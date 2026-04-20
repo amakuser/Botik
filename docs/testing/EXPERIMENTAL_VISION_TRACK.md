@@ -226,3 +226,46 @@ Delete all with: `rm /c/Users/farik/.ollama/models/blobs/sha256-9999d473*-partia
    - `huggingface-cli login` → download GGUF
    - Create Modelfile → `ollama create llama3.2-vision:11b -f Modelfile`
 3. **Current recommendation**: GATE-1 still applies — gemma3:4b at 1.6s/request is sufficient; defer 11B until either unblock path is confirmed working.
+
+---
+
+## STEP 10 — "AGENT EYES" TEST RESULTS (2026-04-20)
+
+### Objective
+Can a local vision model serve as "visual feedback" for UI automation — confirming button clicks, state changes, error banners?
+
+### Test methodology
+- Used existing baseline screenshots (25 PNGs from `tests/visual/baselines/`)
+- Both models: JSON-constrained responses (`format: "json"`)
+- Region crops (400×500px cards) vs full screenshots (~900×700px)
+- Tasks: status badge detection, error banner detection
+
+### Results
+
+| Task | gemma3:4b | llama3.2-vision:11b |
+|---|---|---|
+| RUNNING badge (region crop) | ✅ 1.5s | ✅ 19.5s |
+| OFFLINE badge (region crop) | ✅ 1.4s | ❌ 11.1s (said RUNNING) |
+| Error banner — error page | ✅ 9.7s | ✅ 19.3s |
+| Error banner — normal page | ❌ false positive | ❌ false positive |
+| Telegram error banner | ✅ 1.4s | ✅ 11.1s |
+| JSON correctness | ✅ all valid | ❌ schema template leaked |
+
+**False positive on "normal" page:** Both models see red `OFFLINE` status badges on `runtime.png` as errors — question wording issue, not model capability issue.
+
+**llama3.2-vision:11b JSON leakage:** With strict JSON schema, model outputs literal `"string or null"` instead of actual values — prompt template leaks into response.
+
+### Verdict: gemma3:4b WINS for "Agent Eyes"
+
+| Metric | gemma3:4b | llama3.2-vision:11b |
+|---|---|---|
+| Accuracy | better | worse (fails OFFLINE) |
+| Speed warm (region) | **1.4s** | 11-19s |
+| JSON reliability | **100%** | ~50% (template leakage) |
+| VRAM | 5.18 GB | 5.53 GB |
+
+**Recommendation:** Use `gemma3:4b` for agent eyes integration.
+- Region crops → 1.4s per check (fast enough for automated testing)
+- Full pages → 9.7s (acceptable for debug/audit mode)
+- Improve question prompts: distinguish "action error banner" from "status indicators in cards"
+- `llama3.2-vision:11b` adds NO value for this task and uses more VRAM

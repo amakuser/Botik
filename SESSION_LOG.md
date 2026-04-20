@@ -380,3 +380,43 @@
 **e2e:** 18 failed — all same cause: English heading strings ("Botik Foundation", "Spot Read Surface", "PnL / Analytics") — UI translated to Russian, tests not updated
 **Python gui tests:** 25 collection errors — src.botik.gui deleted in Tauri migration, pre-existing
 **Data endpoints /spot /runtime-status:** Internal Server Error — legacy_adapter.py imports src.botik.gui.api_helpers (deleted)
+
+---
+
+## 2026-04-20 — Vision loop: интеграция gemma3:4b в interaction тесты
+
+**Задача:** Интегрировать vision слой (gemma3:4b) в interaction.spec.ts как "глаза агента".
+
+**Что сделано:**
+- Создан `tests/visual/vision_loop.helpers.ts` — новый модуль Ollama-based vision loop:
+  - `isOllamaVisionEnabled()` — guard через `OLLAMA_VISION=1`
+  - `captureRegion(locator)` → PNG Buffer (region, не full-page)
+  - `analyzeRegion(imageBytes, region, system, question)` → RegionAnalysis
+  - `classifyElementState(imageBytes, region)` → badge RUNNING/OFFLINE/UNKNOWN + color
+  - `detectActionBanner(imageBytes, region)` → has_action_banner + banner_type + text
+  - `detectPanelVisibility(imageBytes, region)` → panel_visible + primary_label
+  - `compareStates(before, after, expected)` → StateComparison (pure function)
+  - `logVisionResult(scenario, analysis, decision)` → структурированный лог
+  - Transport: `node:http` (прямой loopback, bypass proxy)
+
+- Расширен `tests/visual/interaction.spec.ts` — vision loop добавлен в 3 теста:
+  - **Telegram:** detectPanelVisibility → panel_visible=true, label="healthy" ✅
+  - **Jobs error:** detectActionBanner → has_banner=true, type=error, text="Test: ..." ✅
+  - **Runtime start:** classifyElementState before/after + compareStates → OFFLINE→RUNNING transition_confirmed ✅
+  - **Sidebar:** vision не нужен (DOM-check достаточен)
+
+**Разграничение status badge vs action banner:**
+- `classifyElementState` → только status badge (RUNNING/OFFLINE) в карточке
+- `detectActionBanner` → только standalone notification после действия
+- Исключает false-positive паттерн: OFFLINE badge ≠ error banner
+
+**Результаты тестов:**
+- Без vision: `4 passed (6.1s)`
+- С vision (`OLLAMA_VISION=1`): `4 passed (18s)` — 3x (cold load); warm: ~12s (1.95x — в пределах 2x)
+- Все vision-assertions прошли с первого раза без дополнительной отладки
+
+**Файлы изменены:**
+- `tests/visual/vision_loop.helpers.ts` — новый файл
+- `tests/visual/interaction.spec.ts` — vision loop в 3 тестах
+- `WORKPLAN.md` — Decision Log entry
+- version 0.0.76 → 0.0.77

@@ -8,10 +8,24 @@
  *   regions.spec    — no actions, component-level pixel diff
  *   states.spec     — no actions, mocked fixture state on page load
  *   interaction.spec (this file) — button click → verify visible result
+ *
+ * Vision loop (OLLAMA_VISION=1):
+ *   Extends DOM-level assertions with gemma3:4b region analysis.
+ *   ACTION → SNAPSHOT (region) → ANALYSIS → DECISION
+ *   Disabled by default; enabling adds ~1.5s per vision check.
  */
 
 import { expect, test } from "@playwright/test";
 import { injectBackendError, injectMockResponse, waitForStableUI } from "./helpers";
+import {
+  captureRegion,
+  classifyElementState,
+  compareStates,
+  detectActionBanner,
+  detectPanelVisibility,
+  isOllamaVisionEnabled,
+  logVisionResult,
+} from "./vision_loop.helpers";
 
 const BASE = "http://127.0.0.1:4173";
 
@@ -83,6 +97,29 @@ test("interaction: telegram check → result panel appears with state label", as
   await expect(result).toHaveScreenshot("telegram-check-result.png", {
     mask: [page.locator(".telegram-check-result__meta")],
   });
+
+  // ── Vision loop: confirm result panel is visually present and shows "healthy" ──
+  if (isOllamaVisionEnabled()) {
+    const panelImg = await captureRegion(result);
+    const { result: vision, analysis } = await detectPanelVisibility(panelImg, "telegram.check.result@after");
+
+    logVisionResult(
+      "telegram-check@after",
+      analysis,
+      vision.panel_visible
+        ? `panel_visible=true label=${vision.primary_label ?? "?"}`
+        : "panel_visible=false",
+    );
+
+    expect(vision.panel_visible, "[vision] result panel should be visible after check").toBe(true);
+
+    if (vision.primary_label !== null) {
+      expect(
+        vision.primary_label.toLowerCase(),
+        "[vision] primary label should contain 'healthy'",
+      ).toContain("healthy");
+    }
+  }
 });
 
 // ── Jobs: start job fails → action error banner ───────────────────────────────
@@ -116,6 +153,23 @@ test("interaction: jobs start fails → action error banner appears", async ({ p
   // Region snapshot of the error section
   const errorSection = page.locator(".jobs-main .panel").last();
   await expect(errorSection).toHaveScreenshot("jobs-action-error-banner.png");
+
+  // ── Vision loop: confirm the error banner is visually present ──────────────
+  if (isOllamaVisionEnabled()) {
+    const errorEl = page.getByTestId("jobs.action-error");
+    const bannerImg = await captureRegion(errorEl);
+    const { result: vision, analysis } = await detectActionBanner(bannerImg, "jobs.action-error@after");
+
+    logVisionResult(
+      "jobs-start-fail@after",
+      analysis,
+      vision.has_action_banner
+        ? `has_banner=true type=${vision.banner_type ?? "?"} text=${(vision.text ?? "").slice(0, 60)}`
+        : "has_banner=false",
+    );
+
+    expect(vision.has_action_banner, "[vision] action error banner should be visible after failed start").toBe(true);
+  }
 });
 
 // ── Runtime: start → state transitions to running (mocked) ───────────────────
@@ -180,6 +234,22 @@ test("interaction: runtime start → card shows RUNNING state after action", asy
   await expect(page.getByTestId("runtime.start.spot")).toBeEnabled();
   await expect(page.getByTestId("runtime.stop.spot")).toBeDisabled();
 
+  const spotCard = page.getByTestId("runtime.card.spot");
+
+  // ── Vision loop: capture BEFORE state ─────────────────────────────────────
+  let stateBefore: import("./vision_loop.helpers").StateClassification | null = null;
+
+  if (isOllamaVisionEnabled()) {
+    const cardBeforeImg = await captureRegion(spotCard);
+    const { result, analysis } = await classifyElementState(cardBeforeImg, "runtime.card.spot@before");
+    stateBefore = result;
+    logVisionResult(
+      "runtime-start@before",
+      analysis,
+      `badge=${result.badge} color=${result.color}`,
+    );
+  }
+
   // Action
   await page.getByTestId("runtime.start.spot").click();
 
@@ -188,14 +258,44 @@ test("interaction: runtime start → card shows RUNNING state after action", asy
   await expect(page.getByTestId("runtime.stop.spot")).toBeEnabled();
 
   // Region snapshot of the spot card in running state — mask dynamic timestamp/PID fields
-  const card = page.getByTestId("runtime.card.spot");
-  await expect(card).toHaveScreenshot("runtime-card-running-state.png", {
+  await expect(spotCard).toHaveScreenshot("runtime-card-running-state.png", {
     mask: [
       page.getByTestId("runtime.heartbeat.spot"),
       page.getByTestId("runtime.pids.spot"),
-      card.locator("dl dd"),  // timestamps in details
+      spotCard.locator("dl dd"),  // timestamps in details
     ],
   });
+
+  // ── Vision loop: capture AFTER state and confirm transition ──────────────
+  if (isOllamaVisionEnabled()) {
+    const cardAfterImg = await captureRegion(spotCard);
+    const { result: stateAfter, analysis } = await classifyElementState(cardAfterImg, "runtime.card.spot@after");
+
+    logVisionResult(
+      "runtime-start@after",
+      analysis,
+      `badge=${stateAfter.badge} color=${stateAfter.color}`,
+    );
+
+    if (stateBefore !== null) {
+      const comparison = compareStates(stateBefore, stateAfter, { from: "OFFLINE", to: "RUNNING" });
+      logVisionResult(
+        "runtime-start@compare",
+        analysis,
+        `transition=${comparison.decision} from=${comparison.from_badge} to=${comparison.to_badge}`,
+      );
+      expect(
+        comparison.decision,
+        `[vision] expected OFFLINE→RUNNING transition, got ${comparison.from_badge}→${comparison.to_badge}`,
+      ).toBe("transition_confirmed");
+    } else {
+      // stateBefore was not captured — only assert after state
+      expect(
+        stateAfter.badge,
+        "[vision] card should show RUNNING after start action",
+      ).toBe("RUNNING");
+    }
+  }
 });
 
 // ── Navigation: sidebar active state after route change ───────────────────────
