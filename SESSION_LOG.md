@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-04-20 — Vision model benchmark завершён
+
+**Задача:** Benchmark gemma3:4b vs llava:7b через Ollama REST API на CPU.
+
+**Итог:**
+- Оба: NOT PRACTICAL ON THIS MACHINE
+- RTX 5060 Blackwell (compute 12.0) не поддерживается Ollama 0.21.0 cuda_v13 → HTTP 502 при GPU
+- CPU режим (OLLAMA_LLM_LIBRARY=cpu): 256.8с на 50 токенов + 409KB изображение (gemma3:4b)
+- Python urllib на Windows использует системный прокси → 502; фикс: ProxyHandler({})
+- Результаты: `.artifacts/local/latest/vision/benchmark/benchmark_results.json`
+- Рекомендация: использовать Claude API для vision (уже есть в tests/vision/)
+
+**Файлы изменены:**
+- `scripts/benchmark_vision_models.py` — фикс прокси + llava:7b вместо llama3.2-vision
+- `WORKPLAN.md` — Decision Log обновлён
+- `.artifacts/local/latest/vision/benchmark/benchmark_results.json` — результаты
+
+---
+
 ## 2026-04-19 — Visual layer stabilization (45/45 → baseline hardening)
 
 **Задача:** Финализация и стабилизация visual testing layer — устранить нестабильные baselines.
