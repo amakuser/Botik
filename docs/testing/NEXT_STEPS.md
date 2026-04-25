@@ -1,10 +1,56 @@
 # Next Steps — Testing & Vision
 
-> Decision roadmap as of 2026-04-20. Each item is either a concrete action or a gate decision.
+> Decision roadmap as of 2026-04-25. Each item is either a concrete action or a gate decision.
+
+---
+
+## WHAT IS PRODUCTION-GRADE RIGHT NOW
+
+- `tests/visual/interaction.spec.ts` — all 4 scenarios pass with `OLLAMA_VISION=1`, no confidence-gate shortcuts.
+- `tests/visual/live-backend.spec.ts` — **6 live scenarios** (health, runtime, jobs, start-spot, stop-spot, start-futures). Live interactions are **multi-region** as of 2026-04-23: every transition is corroborated by header.badge + actions.row + callouts with a structured `composeDecision` (confirmed/conflicted/skipped per region) plus a post-action `checkRegionLayoutSanity` DOM check. As of 2026-04-23 the three runtime interaction scenarios also carry a `captureSemanticSnapshot` + `compareSemanticSnapshots` pair that asserts `state_changed`/`action_availability_changed`/`callout_changed`/`region_added/removed` from data-ui-* attributes — independent of badge text. All 3-way confirmed with the extended `RUNNING|OFFLINE|DEGRADED|UNKNOWN` state schema.
+- `tests/visual/semantic.spec.ts` + `tests/visual/semantic.helpers.ts` — 2026-04-25: semantic auto-region system covers `/runtime` AND `/jobs`. Live `/jobs` scenario auto-discovers 15 regions through `data-ui-*`, asserts `jobs-history` canonical bucket matches `backendJobCount`, requires both preset cards + their start actions, and refuses vision recommendation on layout-only roles.
+- **Canonical state layer (2026-04-25):** every region carries `canonical_state` derived from `(role, raw)` via a single `CANONICAL_MAP` table. Three canonical enums: `RUNTIME_STATE.{INACTIVE,ACTIVE,DEGRADED}`, `JOBS_STATE.{EMPTY,NON_EMPTY}`, `ACTION_STATE.{ENABLED,DISABLED}`. Tests assert against the enum, the diff compares canonical first. A new spec proves a synthetic UI rename (`offline → idle`) yields `canonical_state===null` instead of silently passing.
+- Classifiers `classifyElementState`, `detectErrorText`, `detectPanelVisibility` — 100% reliable on 3/3 probes, guarded by `VISION_REGION_MIN`.
+- `tests/visual/region-guardrail.spec.ts` — proves too-small regions are refused without a model call.
+
+## WHAT IS PARTIAL
+
+- `tests/vision/agent_audit.spec.ts` — report-only triage tool, expected-state aware but still a 4B-model heuristic. Never a gate. Graduate findings into deterministic specs before trusting them.
+
+## REGION GUARDRAIL (VS-8)
+
+Every classifier returns `ClassifierResult<T>` with `_too_small: boolean`, `size: RegionSize`, and (when skipped) `reason: string`. Scenarios must check `_too_small` before trusting the result — the jobs bare-`<p>` pattern (where a 300x20px crop yielded confident garbage) is no longer silently possible.
+
+## WHAT IS STILL FIXTURE-ONLY / MOCKED
+
+- `tests/visual/regression.spec.ts`, `regions.spec.ts`, `states.spec.ts` — intentional (pixel reproducibility).
+- `tests/visual/interaction.spec.ts` — intentional for the action-path scenarios (need deterministic failure modes).
+- `tests/vision/vision.spec.ts` (Claude API path) — intentional fixtures.
+
+## WHAT IS EXPLICITLY NOT RELIABLE
+
+- `active_nav_styling` on sidebar links (gemma3:4b: 0/3 probe iter, confidently wrong). DOM-only for nav state.
+- Any region below `VISION_REGION_MIN` in `tests/visual/helpers.ts` (120×60 px, 12 px font).
+- llava:7b and llama3.2-vision:11b (verdict unchanged since 2026-04-20).
 
 ---
 
 ## IMMEDIATE (can be done now)
+
+### VS-7: More live backend scenarios (read-only)
+- **Status:** ✅ DONE (2026-04-22)
+- **What was done:** added `live: jobs page renders real /jobs` in `tests/visual/live-backend.spec.ts`. Backend GET /jobs returns `[]` on dev → DOM shows `jobs.history.empty` with "Задач ещё не было" + both preset cards visible; vision `detectPanelVisibility` on `.jobs-history-panel` confirmed panel_visible=true, primary_label="не было", confidence=1.00, cross-check confirmed. No POSTs, read-only.
+- **Verified 2026-04-22:** 8/8 vision tests pass — 4 interaction + 3 live-backend (health, runtime, jobs) + 1 region-guardrail.
+- **Non-goal kept:** live telegram scenario — requires a real token and sends external traffic; remains fixture-only.
+
+### VS-8: Region-size guardrails in the vision helpers
+- **Status:** ✅ DONE (2026-04-21)
+- **What was done:**
+  - All 4 classifiers (`classifyElementState`, `detectActionBanner`, `detectErrorText`, `detectPanelVisibility`) now accept a `Locator` and measure it via `measureRegion()` before any model call.
+  - Below-minimum regions return `{ _too_small: true, confidence: 0, attempt: 0, latency_ms: 0, reason: "region too small for reliable vision analysis (got WxH, font=Npx; require >=120x60 with font>=12px)" }` and are never sent to Ollama.
+  - Sentinel result values (e.g. `badge="UNKNOWN"`, `has_error=false`) keep the return shape stable so callers do not crash, but every scenario callsite additionally asserts `_too_small === false` as a hard gate.
+  - New spec `tests/visual/region-guardrail.spec.ts` — proves: tiny nav link (254x48) → all 3 classifiers skip with `latency=0ms, confidence=0, attempt=0`; full body → classifier DOES call model (guardrail does not over-block).
+- **Verified 2026-04-21:** 7/7 vision tests pass (interaction + live-backend + guardrail) with the new gate in place; 1/1 agent_audit unchanged.
 
 ### VS-1: Update benchmark script for GPU mode
 - **Status:** blocked by stale OLLAMA_LLM_LIBRARY=cpu env var (now removed)

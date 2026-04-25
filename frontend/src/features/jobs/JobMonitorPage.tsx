@@ -175,9 +175,11 @@ export function JobMonitorPage() {
     }
   }
 
+  const historyState = jobs.length === 0 ? "empty" : "populated";
+
   return (
     <AppShell>
-      <div className="app-route jobs-page">
+      <div className="app-route jobs-page" data-ui-role="page" data-ui-scope="jobs">
         <PageIntro
           eyebrow="Операции"
           title="Мониторинг задач"
@@ -206,16 +208,30 @@ export function JobMonitorPage() {
               <DataIntegrityJobCard disabled={Boolean(activeJob)} onStart={handleStartDataIntegrity} />
             </div>
 
-            <section className="panel jobs-history-panel">
+            <section
+              className="panel jobs-history-panel"
+              data-ui-role="jobs-history"
+              data-ui-state={historyState}
+            >
               <SectionHeading title="История задач" description="Последние выполненные задачи." />
               {jobs.length === 0 ? (
-                <p className="panel-muted" data-testid="jobs.history.empty">
+                <p
+                  className="panel-muted"
+                  data-testid="jobs.history.empty"
+                  data-ui-role="empty-state"
+                  data-ui-scope="jobs-history"
+                >
                   Задач ещё не было.
                 </p>
               ) : (
-                <ol className="jobs-list">
+                <ol className="jobs-list" data-ui-role="jobs-list" data-ui-state="populated">
                   {jobs.map((job) => (
-                    <li key={job.job_id}>
+                    <li
+                      key={job.job_id}
+                      data-ui-role="jobs-list-item"
+                      data-ui-scope={job.job_id}
+                      data-ui-state={job.state}
+                    >
                       <button
                         type="button"
                         className={job.job_id === selectedJobId ? "jobs-list__button is-selected" : "jobs-list__button"}
@@ -244,7 +260,12 @@ export function JobMonitorPage() {
             <JobStatusCard job={selectedJob} />
             <JobLogPanel logs={logs} />
             {actionError ? (
-              <section className="panel">
+              <section
+                className="panel"
+                data-ui-role="status-callout"
+                data-ui-scope="jobs-action"
+                data-ui-kind="error"
+              >
                 <h2>Ошибка действия</h2>
                 <p className="inline-error" data-testid="jobs.action-error">
                   {actionError}

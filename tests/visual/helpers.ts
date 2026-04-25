@@ -151,6 +151,101 @@ export function getRuntimeCardDynamicMasks(page: Page, runtimeId: string): Locat
   ];
 }
 
+// ── Region size / readability ─────────────────────────────────────────────────
+
+export interface RegionSize {
+  width: number;
+  height: number;
+  font_size_px: number | null;
+}
+
+/**
+ * Returns the pixel size of a locator and its computed font-size (if any text).
+ *
+ * Use before a vision call on small regions: gemma3:4b becomes unreliable below
+ * ~80×40 px (active_nav_styling signal probe: 0/3 on a compact sidebar link).
+ * Known-reliable signals (status badge, error text, panel visibility) all use
+ * regions ≥ 300×100 px.
+ *
+ * This is a DOM helper — no vision call, no network.
+ */
+export async function measureRegion(locator: Locator): Promise<RegionSize> {
+  const box = await locator.boundingBox();
+  if (!box) return { width: 0, height: 0, font_size_px: null };
+  const fontSize = await locator.evaluate((el) => {
+    const fs = getComputedStyle(el as HTMLElement).fontSize;
+    const m = fs.match(/([\d.]+)px/);
+    return m ? parseFloat(m[1]) : null;
+  }).catch(() => null);
+  return { width: Math.round(box.width), height: Math.round(box.height), font_size_px: fontSize };
+}
+
+/**
+ * Minimum region dimensions for reliable gemma3:4b vision analysis.
+ *
+ * Empirical thresholds from scripts/probe_vision_signals.mjs (2026-04-21):
+ *  - runtime card (≈360×220 px, badge font 12-13 px)         → 100% reliable
+ *  - jobs error panel (≈520×360 px, body font 14 px)         → 100% reliable
+ *  - telegram check result (≈520×72 px, state font 16 px)    → 100% reliable
+ *  - sidebar nav link (≈220×36 px, font 14 px, subtle bg)    → 0% reliable
+ *
+ * Rule of thumb:
+ *  - width  ≥ 120 px
+ *  - height ≥ 60 px
+ *  - font   ≥ 12 px
+ *  - the region must have visible chrome (border, badge, icon, color block).
+ *    Subtle CSS states like .is-active on nav links are NOT reliably readable.
+ */
+export const VISION_REGION_MIN = { width: 120, height: 60, font_size_px: 12 } as const;
+
+/**
+ * Returns true if a region is large enough + has big-enough text for gemma3:4b
+ * to analyse reliably. When false, the caller should either enlarge the crop
+ * (capture a parent panel) or rely on DOM assertions only.
+ */
+export function isRegionVisionReady(size: RegionSize): boolean {
+  return (
+    size.width >= VISION_REGION_MIN.width &&
+    size.height >= VISION_REGION_MIN.height &&
+    (size.font_size_px === null || size.font_size_px >= VISION_REGION_MIN.font_size_px)
+  );
+}
+
+// ── Region layout sanity (post-action DOM check, no pixels involved) ─────────
+
+export interface RegionLayoutCheck {
+  /** Whether the element is in the DOM + offsetParent non-null + box > 0x0. */
+  visible: boolean;
+  /** Whether the box fits the minimum useful region (VISION_REGION_MIN). */
+  sane_dimensions: boolean;
+  /** Whether the element (or its descendants) has any rendered text. */
+  has_content: boolean;
+  size: RegionSize;
+  text_length: number;
+}
+
+/**
+ * DOM-only sanity check that a region remains usable AFTER a user action:
+ *   - still visible (not collapsed / not hidden)
+ *   - dimensions remain within VISION_REGION_MIN
+ *   - contains non-empty text (so it is not a blank stub)
+ * Use after fillField/clickByRole to confirm the UI did not silently
+ * deflate the target area. No vision call.
+ */
+export async function checkRegionLayoutSanity(locator: Locator): Promise<RegionLayoutCheck> {
+  const size = await measureRegion(locator);
+  const visible = await locator.isVisible().catch(() => false);
+  const text = await locator.textContent().catch(() => null);
+  const textLen = (text ?? "").replace(/\s+/g, " ").trim().length;
+  return {
+    visible,
+    sane_dimensions: isRegionVisionReady(size),
+    has_content: textLen > 0,
+    size,
+    text_length: textLen,
+  };
+}
+
 // ── Network interception ───────────────────────────────────────────────────────
 
 /**

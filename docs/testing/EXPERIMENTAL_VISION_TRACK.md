@@ -1,7 +1,31 @@
 # Experimental Vision Track — Botik
 
-> Local Ollama vision model research. Status as of 2026-04-20.
-> None of this is integrated into the main test pipeline yet.
+> Local Ollama vision model research. Status as of 2026-04-25.
+> Vision is now used as confirmation, not source of truth — see "Semantic auto-region system" below.
+
+## STEP 13 — SEMANTIC AUTO-REGION SYSTEM (2026-04-23 → 2026-04-25)
+
+**Motivation.** Vision-only and DOM-text-only checks are both fragile under UI evolution. Pixel/text break on language flips, copy edits, or layout shifts; vision breaks on subtle styling or marginal regions.
+
+**Solution.** Two-layer contract:
+1. Frontend tags meaningful elements with `data-ui-*` attributes (parallel to `data-testid`):
+   - `data-ui-role` (e.g. `runtime-card`, `status-badge`, `job-preset`, `jobs-history`, `empty-state`, `runtime-action`, `job-action`, `status-callout`)
+   - `data-ui-scope` (e.g. `spot`, `futures`, `data-backfill`, `data-integrity`, `selected-job`)
+   - `data-ui-state`, `data-ui-action`, `data-ui-kind`
+2. `tests/visual/semantic.helpers.ts` provides `collectSemanticRegions`, `captureSemanticSnapshot`, `compareSemanticSnapshots`, `recommendedCheck`. Tests don't list selectors — discovery walks `[data-ui-role]`.
+
+**Where it lives now:**
+- `RuntimeStatusCard` (2026-04-23) — runtime cards, badges, action buttons, callouts on `/runtime`.
+- `JobMonitorPage`, `JobToolbar`, `DataBackfillJobCard`, `DataIntegrityJobCard`, `JobStatusCard` (2026-04-25) — jobs page root, history panel, empty-state marker, list items, preset cards, toolbar/preset action buttons, status callouts.
+
+**Vision posture under this contract.** `recommendedCheck(role, bbox)` decides per region whether vision is even worth calling. Containers (`page`, `action-row`, `jobs-list`, `job-toolbar`) and buttons (`runtime-action`, `job-action`) are always `dom`. Card-like panels (`runtime-card`, `job-preset`, `job-status`, `jobs-history`) are `hybrid` if vision-ready. Badges/callouts are `vision` if vision-ready, else `dom`. Vision below `VISION_REGION_MIN` is skipped honestly — never fake-confirmed.
+
+**Verified at runtime (2026-04-25):**
+- `semantic.spec.ts` 4/4 — runtime + jobs contract, state-flip diff, action-availability flip.
+- `live-backend.spec.ts` 6/6 — including jobs scenario: `backend jobs=0 dom_empty_panel=true vision_panel_visible=true semantic_history_state=empty semantic_regions=15`.
+- runtime interactions emit `state_changed[runtime-card:spot]: offline → degraded` and `region_added[status-callout:spot|error]` etc. from real start/stop transitions.
+
+---
 
 ---
 
@@ -269,6 +293,67 @@ Can a local vision model serve as "visual feedback" for UI automation — confir
 - Full pages → 9.7s (acceptable for debug/audit mode)
 - Improve question prompts: distinguish "action error banner" from "status indicators in cards"
 - `llama3.2-vision:11b` adds NO value for this task and uses more VRAM
+
+---
+
+## STEP 12 — HONEST VERDICT + LIVE BACKEND + SIGNAL QUALITY PROBE (2026-04-21)
+
+### Motivation
+
+Previous iteration had two silent weaknesses:
+1. **Jobs vision was fake-green.** The interaction test captured the bare `<p data-testid="jobs.action-error">` element, which renders the raw server JSON (no icon, no red border, no banner chrome). gemma3:4b returned `{}` on this crop. A `confidence >= 0.5` gate suppressed the failure and the test passed without any actual visual validation.
+2. **No vision layer exercised a real backend.** Every vision scenario used `page.route()` mocks, so the confidence that "the frontend renders the real backend response correctly" was zero.
+
+### What changed
+
+**Jobs vision — real fix.** Probed 3 crops × 4 prompts × 3 iterations (`scripts/probe_jobs_vision.mjs`). The bare `<p>` returns `{}` regardless of prompt — no visual chrome to read. The parent `.jobs-main .panel` crop with a simple "is there error text here" prompt returns `has_error=true, text_visible=true` on 3/3 iterations.
+
+- Added `detectErrorText` to `tests/visual/vision_loop.helpers.ts` (strict JSON, 2 retries on empty `{}`, confidence from schema match).
+- `interaction.spec.ts` jobs scenario now captures the panel crop, calls `detectErrorText`, and asserts without a confidence gate. If the model fails, the test fails — no more hidden green.
+
+**Live backend vision — new spec.** `tests/visual/live-backend.spec.ts` — two read-only scenarios with NO `page.route` mocks:
+
+| Scenario       | Backend check                              | DOM check                          | Vision check                   |
+|----------------|---------------------------------------------|-------------------------------------|---------------------------------|
+| `live-health`  | GET `/health` 200, status=ok, service OK    | `health.status/service/version`     | `detectPanelVisibility` on intro|
+| `live-runtime` | GET `/runtime-status` 200, runtimes parsed  | `runtime.state.spot/futures` text   | `classifyElementState` on cards |
+
+Both scenarios require the real uvicorn app-service (`scripts/dev-app-service.ps1`) + Vite frontend (`scripts/dev-frontend.ps1`) + Ollama + gemma3:4b. All three signals must agree or the test fails. First verified run: 2/2 passed, vision/DOM/backend all `confirmed`.
+
+**Signal quality probe — `scripts/probe_vision_signals.mjs`.** Runs each classifier 3× on fresh captures, reports reliability:
+
+| Signal                  | Reliability      | Verdict                                      |
+|-------------------------|------------------|----------------------------------------------|
+| `status_badge`          | 3/3 (100%)       | reliable — use for RUNNING/OFFLINE gating    |
+| `error_text`            | 3/3 (100%)       | reliable — use for panel-body error gating   |
+| `panel_visibility`      | 3/3 (100%)       | reliable — use for result-panel gating       |
+| `primary_label`         | 3/3 (100%)       | reliable on known vocab (healthy/error/etc.) |
+| `active_nav_styling`    | **0/3**          | **NOT reliable** — gemma3:4b cannot read subtle `.is-active` styling; stays confident but wrong. DOM-only for nav state. |
+
+Rule of thumb derived from these measurements (recorded in `tests/visual/helpers.ts` as `VISION_REGION_MIN`): region must be ≥ 120×60 px with ≥ 12 px font and must contain visible chrome (border/badge/icon/color). Sidebar link-level regions fail this rule.
+
+**Exploratory agent mode — expected-state awareness.** `tests/vision/agent_audit.spec.ts` previously flagged OFFLINE runtime cards as `likely_broken` because the model saw "OFFLINE red badge" and had no notion that offline was the expected fixture state. Rewrote the spec so:
+
+- Each scanned region carries an explicit `expected` string.
+- The prompt asks the model to judge relative to expectation.
+- Risk buckets are now `matches_expected | unexpected | likely_broken | uncertain`.
+- Deterministic-test candidates are emitted only for `unexpected` or `likely_broken`, not for "uncertain" noise.
+- Region list trimmed: removed `[role='navigation']` (active-link unreliable) and full `<main>` (exceeds 896×896 vision canvas, model reports "empty UI"). Kept page heading, both runtime cards, start button.
+
+First honest baseline: matches=4, unexpected=0, broken=0, uncertain=0 on the runtime page.
+
+### What this did NOT do
+
+- No new ML training.
+- No new architecture. All changes live in `tests/visual/*` and `tests/vision/agent_audit.spec.ts`.
+- No changes to the frontend code, the backend code, or the build.
+- llava:7b and llama3.2-vision:11b still NOT PRACTICAL — no retest, no change in verdict.
+
+### Artifacts
+
+- `.artifacts/local/latest/vision/jobs-probe.json` — the crop/prompt matrix that drove the jobs fix
+- `.artifacts/local/latest/vision/signal-quality.json` — the reliability numbers above
+- `.artifacts/local/latest/vision/agent-audit.json` — exploratory report, rewritten with expected-state fields
 
 ---
 

@@ -15,6 +15,7 @@
 
 import type { Locator } from "@playwright/test";
 import * as http from "node:http";
+import { isRegionVisionReady, measureRegion, VISION_REGION_MIN, type RegionSize } from "./helpers";
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -243,29 +244,97 @@ export async function analyzeRegion(
   return result;
 }
 
+// ── Region guardrail (VS-8) ────────────────────────────────────────────────────
+
+/**
+ * Common shape returned by every classifier. `_too_small=true` means the
+ * region did not meet VISION_REGION_MIN (see tests/visual/helpers.ts) so the
+ * model was never called — confidence is 0 and `reason` explains why. The
+ * inner `result` is a neutral sentinel (OFFLINE/UNKNOWN/false) so tests can
+ * still read fields without crashing, but an honest scenario should check
+ * `_too_small` first and either enlarge the crop or fail explicitly.
+ */
+export interface ClassifierResult<T> {
+  result: T;
+  analysis: RegionAnalysis;
+  confidence: number;
+  attempt: number;
+  _too_small: boolean;
+  size: RegionSize;
+  reason?: string;
+}
+
+function tooSmallReason(size: RegionSize): string {
+  return (
+    `region too small for reliable vision analysis ` +
+    `(got ${size.width}x${size.height}, font=${size.font_size_px ?? "?"}px; ` +
+    `require >=${VISION_REGION_MIN.width}x${VISION_REGION_MIN.height} with font>=${VISION_REGION_MIN.font_size_px}px — ` +
+    `see tests/visual/helpers.ts VISION_REGION_MIN)`
+  );
+}
+
+function tooSmallAnalysis(region: string, size: RegionSize): RegionAnalysis {
+  return {
+    raw: { _too_small: true, size: size as unknown as Record<string, unknown> },
+    latency_ms: 0,
+    model: OLLAMA_MODEL,
+    region,
+  };
+}
+
 // ── Element state classifier ───────────────────────────────────────────────────
 
 export interface StateClassification {
-  badge: "RUNNING" | "OFFLINE" | "UNKNOWN";
-  color: "green" | "red" | "gray" | "other";
+  /**
+   * Runtime lifecycle states that the heartbeat monitor emits and the
+   * frontend labels on the card:
+   *   - RUNNING  — process alive, heartbeats fresh
+   *   - OFFLINE  — no process / no heartbeat
+   *   - DEGRADED — process alive but heartbeats stale or errors accumulating;
+   *                the frontend styles this with an orange/amber chip, which
+   *                gemma3:4b already reports natively (confirmed 2026-04-22
+   *                on the live-interaction scenario — the schema rejected a
+   *                perfectly correct answer). Added to close that gap.
+   *   - UNKNOWN  — genuine classifier abstention (off-schema or ambiguous).
+   */
+  badge: "RUNNING" | "OFFLINE" | "DEGRADED" | "UNKNOWN";
+  color: "green" | "red" | "orange" | "gray" | "other";
 }
 
 const STATE_SCHEMA: Record<string, string[]> = {
-  badge: ["RUNNING", "OFFLINE", "UNKNOWN"],
-  color: ["green", "red", "gray", "other"],
+  badge: ["RUNNING", "OFFLINE", "DEGRADED", "UNKNOWN"],
+  color: ["green", "red", "orange", "gray", "other"],
 };
 
 /**
  * Classifies the runtime status badge in a card region.
  *
- * Returns the badge value, confidence (schema match rate), and attempt count.
- * "action error banners" are NOT this function's scope — use detectActionBanner().
+ * VS-8 guardrail: measures the locator before calling the model. If the
+ * region is below VISION_REGION_MIN, returns `_too_small=true, confidence=0`
+ * without ever sending pixels to gemma3:4b — a 80x30 sidebar-link crop will
+ * no longer silently produce a confident wrong answer.
  */
 export async function classifyElementState(
-  imageBytes: Buffer,
+  locator: Locator,
   region: string,
-): Promise<{ result: StateClassification; analysis: RegionAnalysis; confidence: number; attempt: number }> {
-  const system = 'UI state inspector. JSON only: {"badge": "RUNNING|OFFLINE|UNKNOWN", "color": "green|red|gray|other"}';
+): Promise<ClassifierResult<StateClassification>> {
+  const size = await measureRegion(locator);
+  if (!isRegionVisionReady(size)) {
+    const reason = tooSmallReason(size);
+    return {
+      result: { badge: "UNKNOWN", color: "other" },
+      analysis: tooSmallAnalysis(region, size),
+      confidence: 0, attempt: 0, _too_small: true, size, reason,
+    };
+  }
+
+  const imageBytes = await captureRegion(locator);
+  // Prompt intentionally unchanged in wording — only the enum lists grew.
+  // An earlier attempt to add "if DEGRADED, return DEGRADED..." coaching
+  // caused the model to misclassify OFFLINE cards as RUNNING. gemma3:4b
+  // already emits {"badge":"DEGRADED","color":"orange"} for degraded cards
+  // without any coaching; the schema just needed to accept it.
+  const system = 'UI state inspector. JSON only: {"badge": "RUNNING|OFFLINE|DEGRADED|UNKNOWN", "color": "green|red|orange|gray|other"}';
   const question = "What is the status badge text and color in the top-right corner of this card?";
 
   let analysis = await analyzeRegion(imageBytes, region, system, question);
@@ -281,12 +350,16 @@ export async function classifyElementState(
   const rawBadge = String(analysis.raw.badge ?? "UNKNOWN").toUpperCase();
   const rawColor = String(analysis.raw.color ?? "other").toLowerCase();
 
-  const badge = (["RUNNING", "OFFLINE", "UNKNOWN"].includes(rawBadge)
+  const badge = (["RUNNING", "OFFLINE", "DEGRADED", "UNKNOWN"].includes(rawBadge)
     ? rawBadge : "UNKNOWN") as StateClassification["badge"];
-  const color = (["green", "red", "gray", "other"].includes(rawColor)
+  const color = (["green", "red", "orange", "gray", "other"].includes(rawColor)
     ? rawColor : "other") as StateClassification["color"];
 
-  return { result: { badge, color }, analysis, confidence: validation.confidence, attempt };
+  return {
+    result: { badge, color }, analysis,
+    confidence: validation.confidence, attempt,
+    _too_small: false, size,
+  };
 }
 
 // ── Action banner detector ─────────────────────────────────────────────────────
@@ -312,9 +385,20 @@ const BANNER_SCHEMA: Record<string, string[]> = {
  * where an OFFLINE status badge is misinterpreted as an error notification.
  */
 export async function detectActionBanner(
-  imageBytes: Buffer,
+  locator: Locator,
   region: string,
-): Promise<{ result: ActionBannerResult; analysis: RegionAnalysis; confidence: number; attempt: number }> {
+): Promise<ClassifierResult<ActionBannerResult>> {
+  const size = await measureRegion(locator);
+  if (!isRegionVisionReady(size)) {
+    const reason = tooSmallReason(size);
+    return {
+      result: { has_action_banner: false, banner_type: null, text: null },
+      analysis: tooSmallAnalysis(region, size),
+      confidence: 0, attempt: 0, _too_small: true, size, reason,
+    };
+  }
+
+  const imageBytes = await captureRegion(locator);
   const system = 'UI inspector. JSON only: {"has_action_banner": true|false, "banner_type": "error|success|warning|null", "text": "notification text or null"}';
   const question = "Is there a standalone notification box or alert that appeared as a result of a user action (not a card status badge)?";
 
@@ -341,6 +425,69 @@ export async function detectActionBanner(
     analysis,
     confidence: validation.confidence,
     attempt,
+    _too_small: false, size,
+  };
+}
+
+// ── Error text detector ────────────────────────────────────────────────────────
+
+export interface ErrorTextResult {
+  has_error: boolean;
+  text_visible: boolean;
+  summary: string | null;
+}
+
+const ERROR_TEXT_SCHEMA: Record<string, string[]> = {
+  has_error: ["true", "false"],
+  text_visible: ["true", "false"],
+};
+
+/**
+ * Detects failure/error text inside a panel region.
+ *
+ * Different from detectActionBanner: targets a panel whose body contains
+ * raw error text (e.g. a server detail message) rather than a styled
+ * notification with icon/color chrome. Proven reliable on small .panel crops
+ * where actionBanner returns {} (see scripts/probe_jobs_vision.mjs).
+ */
+export async function detectErrorText(
+  locator: Locator,
+  region: string,
+): Promise<ClassifierResult<ErrorTextResult>> {
+  const size = await measureRegion(locator);
+  if (!isRegionVisionReady(size)) {
+    const reason = tooSmallReason(size);
+    return {
+      result: { has_error: false, text_visible: false, summary: null },
+      analysis: tooSmallAnalysis(region, size),
+      confidence: 0, attempt: 0, _too_small: true, size, reason,
+    };
+  }
+
+  const imageBytes = await captureRegion(locator);
+  const system = 'UI inspector. JSON only: {"has_error": true|false, "text_visible": true|false, "summary": "what you see max 15 words"}';
+  const question = "Is there an error message or failure text visible in this UI region?";
+
+  let analysis = await analyzeRegion(imageBytes, region, system, question);
+  let validation = validateSchema(analysis.raw, ERROR_TEXT_SCHEMA);
+  let attempt = 1;
+
+  if (!validation.valid && attempt < 2) {
+    analysis = await analyzeRegion(imageBytes, `${region}[retry]`, system, question, true);
+    validation = validateSchema(analysis.raw, ERROR_TEXT_SCHEMA);
+    attempt = 2;
+  }
+
+  return {
+    result: {
+      has_error: Boolean(analysis.raw.has_error),
+      text_visible: Boolean(analysis.raw.text_visible),
+      summary: (analysis.raw.summary as string | undefined) ?? null,
+    },
+    analysis,
+    confidence: validation.confidence,
+    attempt,
+    _too_small: false, size,
   };
 }
 
@@ -359,9 +506,20 @@ const PANEL_SCHEMA: Record<string, string[]> = {
  * Checks whether a result panel is rendered and identifies its primary status label.
  */
 export async function detectPanelVisibility(
-  imageBytes: Buffer,
+  locator: Locator,
   region: string,
-): Promise<{ result: PanelVisibilityResult; analysis: RegionAnalysis; confidence: number; attempt: number }> {
+): Promise<ClassifierResult<PanelVisibilityResult>> {
+  const size = await measureRegion(locator);
+  if (!isRegionVisionReady(size)) {
+    const reason = tooSmallReason(size);
+    return {
+      result: { panel_visible: false, primary_label: null },
+      analysis: tooSmallAnalysis(region, size),
+      confidence: 0, attempt: 0, _too_small: true, size, reason,
+    };
+  }
+
+  const imageBytes = await captureRegion(locator);
   const system = 'UI inspector. JSON only: {"panel_visible": true|false, "primary_label": "most prominent single status word shown or null"}';
   const question = "Is a result or status panel visible in this region? What is the most prominent status word shown (e.g. healthy, error, unknown)?";
 
@@ -383,7 +541,95 @@ export async function detectPanelVisibility(
     analysis,
     confidence: validation.confidence,
     attempt,
+    _too_small: false, size,
   };
+}
+
+// ── Composite multi-region decision ────────────────────────────────────────────
+
+/**
+ * Per-region outcome for a live action. The test does not vote — it tags
+ * each region as confirmed/conflict/skipped with a short, honest reason.
+ */
+export interface RegionOutcome {
+  name: string;
+  status: "confirmed" | "conflict" | "skipped";
+  reason: string;
+  /** Optional structured payload: before/after labels, size, classifier name. */
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Aggregated decision over a set of region outcomes. `final_outcome`
+ * is a mechanical mapping — any `conflict` wins; otherwise
+ * all-confirmed > partial > no-signal. Never inflates a partial into a
+ * pass: the test still has to decide whether partial is acceptable.
+ */
+export interface CompositeDecision {
+  action: string;
+  confirmed_regions: string[];
+  conflicted_regions: string[];
+  skipped_regions: string[];
+  final_outcome: "all_confirmed" | "partial_confirmed" | "conflict" | "no_signal";
+  regions: RegionOutcome[];
+}
+
+/**
+ * Build a composite decision from per-region outcomes.
+ *   conflict  — any region tagged conflict → final "conflict"
+ *   confirmed — all tagged confirmed → "all_confirmed"
+ *   mix       — some confirmed + some skipped → "partial_confirmed"
+ *   empty     — no regions or all skipped → "no_signal"
+ *
+ * Pure — no model call, no DOM call.
+ */
+export function composeDecision(action: string, outcomes: RegionOutcome[]): CompositeDecision {
+  const confirmed = outcomes.filter((o) => o.status === "confirmed").map((o) => o.name);
+  const conflict = outcomes.filter((o) => o.status === "conflict").map((o) => o.name);
+  const skipped = outcomes.filter((o) => o.status === "skipped").map((o) => o.name);
+
+  let final: CompositeDecision["final_outcome"];
+  if (conflict.length > 0) final = "conflict";
+  else if (confirmed.length === 0) final = "no_signal";
+  else if (skipped.length === 0) final = "all_confirmed";
+  else final = "partial_confirmed";
+
+  return {
+    action,
+    confirmed_regions: confirmed,
+    conflicted_regions: conflict,
+    skipped_regions: skipped,
+    final_outcome: final,
+    regions: outcomes,
+  };
+}
+
+/**
+ * Convenience: turn a "does expected match actual" check for one region into
+ * a RegionOutcome. Keeps composeDecision callsites short and symmetric.
+ */
+export function regionOutcome(
+  name: string,
+  condition: boolean,
+  reason: string,
+  details?: Record<string, unknown>,
+): RegionOutcome {
+  return {
+    name,
+    status: condition ? "confirmed" : "conflict",
+    reason,
+    details,
+  };
+}
+
+/**
+ * Mark a region as honestly skipped (e.g. classifier returned `_too_small`
+ * or the region is not applicable in this env). Skipped ≠ passed.
+ */
+export function regionSkipped(
+  name: string, reason: string, details?: Record<string, unknown>,
+): RegionOutcome {
+  return { name, status: "skipped", reason, details };
 }
 
 // ── State comparison ───────────────────────────────────────────────────────────
@@ -403,15 +649,29 @@ export interface StateComparison {
 /**
  * Compares before/after state classifications to confirm a state transition.
  * Pure function — no model call.
+ *
+ * `expected.to` accepts either a single target badge ("RUNNING") or a set
+ * (["RUNNING", "DEGRADED"]). The set form is the honest way to express
+ * "action worked = anything but OFFLINE" when the runtime may legitimately
+ * land in any of several active states — e.g. the spot runtime in a dev
+ * env without Bybit creds that flips RUNNING → DEGRADED within one poll
+ * interval. No inflation of confidence; just the right vocabulary.
  */
 export function compareStates(
   before: StateClassification,
   after: StateClassification,
-  expected: { from: StateClassification["badge"]; to: StateClassification["badge"] },
+  expected: {
+    from: StateClassification["badge"] | Array<StateClassification["badge"]>;
+    to:   StateClassification["badge"] | Array<StateClassification["badge"]>;
+  },
 ): StateComparison {
+  const fromSet = Array.isArray(expected.from) ? expected.from : [expected.from];
+  const toSet = Array.isArray(expected.to) ? expected.to : [expected.to];
   const changed = before.badge !== after.badge;
+  const fromMatched = fromSet.includes(before.badge);
+  const toMatched = toSet.includes(after.badge);
   const decision: StateDecision =
-    after.badge === expected.to ? "transition_confirmed"
+    fromMatched && toMatched ? "transition_confirmed"
     : changed ? "unexpected_state"
     : "no_change";
   return { changed, from_badge: before.badge, to_badge: after.badge, decision };

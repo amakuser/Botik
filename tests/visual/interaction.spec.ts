@@ -19,10 +19,9 @@ import { expect, test } from "@playwright/test";
 import { injectBackendError, injectMockResponse, waitForStableUI } from "./helpers";
 import {
   buildCrossCheck,
-  captureRegion,
   classifyElementState,
   compareStates,
-  detectActionBanner,
+  detectErrorText,
   detectPanelVisibility,
   isOllamaVisionEnabled,
   logVisionResult,
@@ -101,8 +100,9 @@ test("interaction: telegram check → result panel appears with state label", as
 
   // ── Vision loop: confirm result panel is visually present and shows "healthy" ──
   if (isOllamaVisionEnabled()) {
-    const panelImg = await captureRegion(result);
-    const { result: vision, analysis, confidence } = await detectPanelVisibility(panelImg, "telegram.check.result@after");
+    const { result: vision, analysis, confidence, _too_small, reason } =
+      await detectPanelVisibility(result, "telegram.check.result@after");
+    expect(_too_small, `[vision] telegram panel region too small: ${reason ?? ""}`).toBe(false);
 
     // DOM cross-check: Playwright confirms element is visible at the locator level
     const isDomVisible = await result.isVisible();
@@ -166,38 +166,41 @@ test("interaction: jobs start fails → action error banner appears", async ({ p
   const errorSection = page.locator(".jobs-main .panel").last();
   await expect(errorSection).toHaveScreenshot("jobs-action-error-banner.png");
 
-  // ── Vision loop: confirm the error banner is visually present ──────────────
+  // ── Vision loop: confirm the error panel is visually present with error text ──
+  // NOTE: the `jobs.action-error` element is a bare <p> whose body renders the raw
+  // server JSON (no icon/color chrome). Capturing the bare <p> gives gemma3:4b no
+  // visual context and the model returns {}. Capture the parent .panel (heading +
+  // body) and use `detectErrorText` which simply asks whether error text is present.
+  // Probed 2026-04-21 via scripts/probe_jobs_vision.mjs — 3/3 iter reliable.
   if (isOllamaVisionEnabled()) {
     const errorEl = page.getByTestId("jobs.action-error");
-    const bannerImg = await captureRegion(errorEl);
-    const { result: vision, analysis, confidence } = await detectActionBanner(bannerImg, "jobs.action-error@after");
+    const errorPanel = page.locator(".jobs-main .panel").last();
+    const { result: vision, analysis, confidence, _too_small, reason } =
+      await detectErrorText(errorPanel, "jobs.error.panel@after");
+    expect(_too_small, `[vision] jobs error panel region too small: ${reason ?? ""}`).toBe(false);
 
-    // DOM cross-check: the error element is visible per Playwright locator
     const isDomBannerVisible = await errorEl.isVisible();
     const crossCheck = buildCrossCheck(
-      vision.has_action_banner ? "visible" : "hidden",
+      vision.has_error ? "visible" : "hidden",
       isDomBannerVisible ? "visible" : "hidden",
     );
 
     logVisionResult(
       "jobs-start-fail@after",
       analysis,
-      vision.has_action_banner
-        ? `has_banner=true type=${vision.banner_type ?? "?"} text=${(vision.text ?? "").slice(0, 60)}`
-        : "has_banner=false",
+      vision.has_error
+        ? `has_error=true summary=${(vision.summary ?? "").slice(0, 60)}`
+        : "has_error=false",
       confidence,
       crossCheck,
     );
 
-    if (confidence >= 0.5) {
-      expect(vision.has_action_banner, "[vision] action error banner should be visible after failed start").toBe(true);
-      expect(
-        crossCheck.outcome,
-        `[vision+DOM] jobs error banner: vision=${crossCheck.vision_value} dom=${crossCheck.dom_value}`,
-      ).not.toBe("conflict");
-    } else {
-      console.log(`[vision] jobs banner confidence=${confidence.toFixed(2)} — skipping vision assertion (model uncertain), DOM confirmed visible`);
-    }
+    expect(vision.has_error, "[vision] error text should be visible after failed start").toBe(true);
+    expect(vision.text_visible, "[vision] error text should be readable").toBe(true);
+    expect(
+      crossCheck.outcome,
+      `[vision+DOM] jobs error: vision=${crossCheck.vision_value} dom=${crossCheck.dom_value}`,
+    ).not.toBe("conflict");
   }
 });
 
@@ -269,8 +272,9 @@ test("interaction: runtime start → card shows RUNNING state after action", asy
   let stateBefore: import("./vision_loop.helpers").StateClassification | null = null;
 
   if (isOllamaVisionEnabled()) {
-    const cardBeforeImg = await captureRegion(spotCard);
-    const { result, analysis } = await classifyElementState(cardBeforeImg, "runtime.card.spot@before");
+    const { result, analysis, _too_small, reason } =
+      await classifyElementState(spotCard, "runtime.card.spot@before");
+    expect(_too_small, `[vision] spot card region too small: ${reason ?? ""}`).toBe(false);
     stateBefore = result;
     logVisionResult(
       "runtime-start@before",
@@ -297,10 +301,9 @@ test("interaction: runtime start → card shows RUNNING state after action", asy
 
   // ── Vision loop: capture AFTER state and confirm transition ──────────────
   if (isOllamaVisionEnabled()) {
-    const cardAfterImg = await captureRegion(spotCard);
-    const { result: stateAfter, analysis, confidence: confAfter } = await classifyElementState(
-      cardAfterImg, "runtime.card.spot@after",
-    );
+    const { result: stateAfter, analysis, confidence: confAfter, _too_small, reason } =
+      await classifyElementState(spotCard, "runtime.card.spot@after");
+    expect(_too_small, `[vision] spot card region too small: ${reason ?? ""}`).toBe(false);
 
     // DOM cross-check: Playwright DOM text matches vision badge
     const domText = (await page.getByTestId("runtime.state.spot").textContent() ?? "").trim().toUpperCase();

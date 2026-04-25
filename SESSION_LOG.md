@@ -5,6 +5,176 @@
 
 ---
 
+## 2026-04-21 — Native interactive automation framework (reusable, state-aware, non-intrusive)
+
+**Задача:** Построить reusable state-aware automation layer для desktop app, который можно применять к разным экранам без переписывания. Non-intrusive (не крадёт мышь/клавиатуру/фокус). Доказать одним реальным interactive flow.
+
+**Итог:** DONE — framework + 3 scenarios, все зелёные. Полный end-to-end interactive flow доказан.
+
+**Ключевые технические решения:**
+- **WebView2 CDP attach**: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223` на Tauri exe → Playwright `chromium.connectOverCDP(wsUrl)` → полный доступ к real webview без browser-процесса
+- **Silent launch fix**: добавил `#![cfg_attr(all(not(debug_assertions), target_os="windows"), windows_subsystem="windows")]` в `apps/desktop/src-tauri/src/main.rs` → пересобрал — console flash исчез
+- **Architectural separation**: `framework/` (primitives) и `scenarios/` (flow definitions) строго разделены; scenarios только импортят из `framework/index.ts`
+
+**Файлы framework:**
+- `tests/desktop-native/interactive/framework/harness.ts` — DesktopHarness.launch/detach (kill port 8765 → ensure Vite → spawn exe hidden → CDP attach → Network.enable → expose page/cdp/pid)
+- `tests/desktop-native/interactive/framework/detect.ts` — detectCurrentRoute/ActiveTab/BlockingState/ScrollContainers/Element
+- `tests/desktop-native/interactive/framework/reconcile.ts` — ensureRoute/ActiveTab/ElementVisible/waitForStableDom/recoverToRoute + ReconcileFailure
+- `tests/desktop-native/interactive/framework/actions.ts` — fillFieldByLabel/TestId/clickByRole/Text/scrollContainerTo/scrollDocumentBy
+- `tests/desktop-native/interactive/framework/verify.ts` — waitForBackendCall/waitForUiState/captureScreenshot/verifyVisibleText
+- `tests/desktop-native/interactive/framework/evidence.ts` — EvidenceRecorder (console+CDP Network tap) + captureEvidence + classifyFailure
+
+**Реальные доказанные scenarios:**
+- `settings-test-connection.spec.ts` — nav 3 вкладки, fill 2 поля, click, verified POST /settings/test-bybit request body contains `BOTIK_NATIVE_TEST_KEY`, UI badge проверен, программный drift → recoverToRoute. 8 evidence checkpoints.
+- `non-intrusive-sentinel.spec.ts` — Notepad в foreground → запускаем framework → assert steady-state foreground ≠ Botik (ни по title, ни по pid). Зелёный.
+- `scroll-architecture-audit.spec.ts` — все 14 routes, scroll-report.json: **document-level scroll только, 0 nested containers ни в одном route**. Задокументированная архитектурная проблема — не чинил косметикой.
+
+**Phase 0 audit findings:**
+- release exe до фикса: CONSOLE subsystem → console host flash. После: GUI.
+- scroll: во всех 14 routes только document-level, никаких nested containers для sidebar/main split — это означает что sidebar прокручивается вместе с main content (UX concern, задокументировано)
+- Settings page: fields без testid, но `getByLabel` работает через accessible name
+
+**Что НЕ покрыто честно:**
+- Simulated mouse drag для `data-tauri-drag-region` (framework использует CDP который не эмулирует OS-level drag; Win32 `SetWindowPos` покрывает OS-сторону в shell lane)
+- Double-click для toggle-maximize через реальные mouse events (используется API-путь)
+- Multi-monitor
+- Настоящий save (write к .env): test-bybit endpoint выбран как read-only, handleSave с настоящей записью не прогонялся
+
+**Команды:**
+- `npx playwright test --config tests/desktop-native/interactive/playwright.interactive.config.ts` — все interactive
+- `--grep "non-intrusive"` / `--grep "scroll-architecture"` — отдельные
+- Артефакты: `.artifacts/local/latest/desktop-native/interactive/`
+
+---
+
+## 2026-04-21 — Native desktop shell lane (real Tauri window, not browser)
+
+**Задача:** Построить отдельный test lane, который реально открывает настоящее окно Botik desktop и проверяет OS-level shell behavior (move / min / max / close / relaunch / sidecar-started-by-exe), а не headless Chromium против Vite.
+
+**Итог:** DONE — оба режима (automated-smoke 10 шагов, visible-review 11 шагов) проходят целиком на реальном `botik_desktop.exe`.
+
+**Ключевые изменения:**
+- Новый каталог `tests/desktop-native/` с разделением lib / steps / orchestrators:
+  - `lib/Win32Window.ps1` — Add-Type + inline C# PInvoke: FindWindow/EnumWindows/GetClassName/GetWindowRect/SetWindowPos/ShowWindow/IsIconic/IsZoomed/PostMessage, плюс PrintWindow и CopyFromScreen для скриншотов клиентской области и окна на экране
+  - `lib/Runner.ps1` — мини-runner с Invoke-Step, Assert-True/Equal/InRange, JSON-отчёт, exit code
+  - `lib/Lifecycle.ps1` — запуск `target/release/botik_desktop.exe`, ожидание HWND по PID, Ensure-ViteRunning (release exe бейкнул devUrl=http://127.0.0.1:4173), Stop-BotikDesktop с WM_CLOSE+taskkill fallback
+  - `steps/Steps.ps1` — window_visible, window_chrome (exact title "Botik" + class != ConsoleWindowClass), move, minimize_restore, maximize_restore, webview_loaded (>=5 distinct colours в window-rect screenshot), backend_reachable (GET /health сайдкара поднятого из exe), close_and_relaunch
+  - `run-automated-smoke.ps1` — быстро, exit 0/1, артефакты в `.artifacts/local/latest/desktop-native/automated-smoke/`
+  - `run-visible-review.ps1` — паузы 2s, per-step нумерованные скриншоты (full-screen + window-rect), опциональная MP4-запись через ffmpeg, окно остаётся открытым (если не `-TearDown`), финальный блок инструкций куда смотреть
+  - `README.md` — полная документация режимов, шагов, артефактов и честных ограничений
+
+**Два критичных фикса по ходу:**
+1. `Start-Process botik_desktop.exe -WindowStyle Normal` создал консольное окно-хост (exe собран с console subsystem), чей title содержит полный путь `...\botik_desktop.exe` — substring-match "Botik" случайно матчил и его. Фикс: exact title match `"Botik"` + фильтр класса `ConsoleWindowClass / PseudoConsoleWindow`. Без фикса тесты "проходили" на console window, а не на Tauri-окне. Был пойман только когда скриншот показал консольный header.
+2. `PrintWindow` на WebView2 возвращает чёрный кадр (GPU-composited surface). Фикс: заменил на `CopyFromScreen(window_rect)` — реально читает пиксели с композитора.
+
+**Что НЕ покрыто (документировано в README):** interactive drag-with-mouse через data-tauri-drag-region (делаем программный SetWindowPos, что покрывает OS-сторону drag), double-click на custom chrome для toggle maximize (делаем ShowWindow через API), multi-monitor, запуск без ffmpeg = нет MP4.
+
+**Разделение:** `tests/desktop-smoke/` (browser-based) остался — это web-layer lane. `tests/desktop-native/` — новый shell lane. Truth таблица в `docs/testing/TESTING_BASELINE.md` явно их различает.
+
+**Команды:**
+- `powershell -NoProfile -ExecutionPolicy Bypass -File tests\desktop-native\run-automated-smoke.ps1`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File tests\desktop-native\run-visible-review.ps1 [-TearDown] [-NoVideo]`
+
+---
+
+## 2026-04-23 — Multi-region live vision + composite decisions + exploratory candidates
+
+**Задача:** расширить live interaction с single-region на multi-region confirmation с composite decision моделью, добавить candidate assertions в exploratory mode.
+
+**Итог:** DONE — 11/11 vision tests зелёные.
+
+**Ключевые изменения:**
+- `tests/visual/vision_loop.helpers.ts` — added `RegionOutcome`, `CompositeDecision`, `composeDecision()`, `regionOutcome()`, `regionSkipped()`. Pure aggregation, no voting, no inflation: any `conflict` wins → `final_outcome="conflict"`; all-confirmed → `all_confirmed`; mix of confirmed+skipped → `partial_confirmed`; no regions → `no_signal`.
+- `tests/visual/helpers.ts` — added `checkRegionLayoutSanity(locator)` (DOM-only): returns `{visible, sane_dimensions, has_content, size, text_length}`. Used post-action to verify target regions still present + non-empty.
+- `tests/visual/live-backend.spec.ts` — 3 live interactions (start-spot, stop-spot, start-futures) теперь снимают **3 регионa** (header/actions/callouts) before+after, каждый через свой classifier, aggregate через `composeDecision`. Hard-assert: `final_outcome ∈ {all_confirmed, partial_confirmed}`, `conflicted_regions.length === 0`. В реальности header+callouts = confirmed, actions.row (372×46 < 120×60 guardrail) = honestly skipped. Post-action `checkRegionLayoutSanity` на всех 3 регионах.
+- `tests/vision/agent_audit.spec.ts` — extended `AgentAuditReport` на `candidate_assertions[]` и `candidate_region_targets[]`. Каждый scanned region теперь выдаёт concrete assertion (копируй в `interaction.spec`), suggested classifier, suggested locator hint. Report-only, не gate.
+- **Retry-on-click не добавлен**: попытался сначала, но `pendingAction` делает кнопку disabled после первого успешного клика, и retry видит disabled → fails misleadingly. Заменил на честный 30s single-click timeout (backend под нагрузкой в конце 3-min suite).
+
+**Что НЕ трогалось:** pixel regression, mocked interaction specs, visual baselines, 11B model, exploratory mode как gate.
+
+**Что остаётся слабым:**
+- `actions.row` 372×46 регион — всегда skipped. Фикс требует либо раздутия CSS высоты (UX-изменение), либо vision-классификатора "is-button-enabled", которого у нас нет.
+- Timing-flakiness при одновременной Ollama-load + React Query polling (пришлось увеличить DOM-wait до 30s).
+
+**Команды:**
+- `OLLAMA_VISION=1 npx playwright test tests/visual/live-backend.spec.ts --config tests/visual/playwright.visual.config.ts` — все 6 live + multi-region
+- `OLLAMA_AGENT=1 npx playwright test tests/vision/agent_audit.spec.ts --config tests/vision/playwright.vision.config.ts` — exploratory с candidates в report
+
+---
+
+## 2026-04-23 — Live interaction coverage: stop-spot + start-futures
+
+**Задача:** расширить live interaction coverage с одного сценария (start-spot) до трёх, без ломки baseline и без ML.
+
+**Итог:** DONE — 11/11 vision tests зелёные.
+
+**Ключевые изменения:**
+- `tests/visual/live-backend.spec.ts` — рефакторинг helpers: `stopRuntime(request, id)`, `startRuntime(request, id)`, `waitForBackendRuntimeState(request, id, targets)` принимают `"spot" | "futures"`. Старые обёртки оставлены для back-compat.
+- **stop-spot** scenario: seed через backend POST /start, assert DOM active, real Stop-button click, 3-way transition `active → offline`. compareStates использует `from: ["RUNNING","DEGRADED"]`. Исправлена гонка: `expect(stopBtn).toBeEnabled()` перед click — heartbeat polling на мгновение делает кнопку disabled через `pendingAction`.
+- **start-futures** scenario: symmetric с start-spot, заменены selectors на `runtime.card.futures`, `runtime.state.futures`, `runtime.start.futures`. В этом dev env futures runtime имеет ту же dynamic: offline → running → degraded (no Bybit creds → WS 404).
+- Teardown в обоих новых сценариях: `stopRuntime + waitForBackendRuntimeState(offline)` в finally.
+- Docs: `NEXT_STEPS.md` + `project_botik_visual_tests.md` обновлены (6 live scenarios вместо 4).
+
+**Что НЕ трогалось:** pixel regression, mocked interaction specs, visual baselines, 11B model, exploratory mode. Классификатор не менялся (расширенная schema из 2026-04-22 уже поддерживает DEGRADED/orange).
+
+**Честные пробелы:**
+- Tabs/refresh/idempotent-UI-control кандидаты для четвёртого live interaction либо не дают полезный vision-сигнал (маленькие регионы → guardrail skip), либо дублируют уже покрытые паттерны. Четвёртый сценарий без value — не добавлял.
+
+---
+
+## 2026-04-22 — VS-7 live-jobs + VS-8 region guardrail + state schema
+
+Из предыдущих рабочих сессий (см. NEXT_STEPS.md).
+
+---
+
+## 2026-04-21 — Vision/test honesty pass
+
+**Задача:** Довести vision/test систему до честного рабочего состояния — без фейк-зелени, без мокнутых vision-сценариев, с измеренной надёжностью.
+
+**Итог:** DONE — 6/6 vision-тестов зелёные честно (4 interaction + 2 live-backend), exploratory mode перестал шуметь (matches=4, unexpected=0).
+
+**Ключевые изменения:**
+- `tests/visual/vision_loop.helpers.ts` — добавлен `detectErrorText` (100% reliable на section crop jobs-панели; bare `<p>` давал `{}`)
+- `tests/visual/interaction.spec.ts` — jobs-сценарий перевёден на `detectErrorText` + section crop, убрана confidence-gate-заглушка (прежний "зелёный" был фейковый)
+- `tests/visual/live-backend.spec.ts` — NEW, 2 live read-only сценария (health, runtime) с реальным backend на 8765, 3-way cross-check backend↔DOM↔vision
+- `tests/visual/helpers.ts` — добавлены `measureRegion`, `isRegionVisionReady`, `VISION_REGION_MIN` (120×60 px, 12 px)
+- `tests/vision/agent_audit.spec.ts` — переписан с expected-state awareness: каждый регион несёт `expected`, модель судит относительно ожидания, не с нуля. Buckets: matches_expected|unexpected|likely_broken|uncertain. Первый честный baseline: 4/0/0/0
+- `scripts/probe_jobs_vision.mjs` — NEW, матрица crops × prompts × iters, выяснила что bare `<p>` без chrome недостижим для 4B модели
+- `scripts/probe_vision_signals.mjs` — NEW, измерил надёжность сигналов: badge 100%, error_text 100%, panel 100%, primary_label 100%, active_nav_styling 0/3 (модель уверена, но врёт)
+- Docs: TESTING_BASELINE.md + EXPERIMENTAL_VISION_TRACK.md (STEP 12) + NEXT_STEPS.md — явно отмечено что production-grade, что partial, что fixture-only, что NOT reliable
+
+**Что НЕ трогалось:** frontend/backend код, build, ML контур, модели. Только tests/* + scripts/* + docs/* + memory.
+
+**Следующий шаг:** VS-7 (ещё один live сценарий jobs если эндпоинт стабилен) и VS-8 (встроить `isRegionVisionReady` внутрь классификаторов как guardrail).
+
+---
+
+## 2026-04-20 — Production-grade vision loop + exploratory agent
+
+**Задача:** Довести vision loop до production-grade + добавить exploratory agent audit.
+
+**Итог:** DONE — 4/4 interaction tests pass с OLLAMA_VISION=1, agent_audit.spec pass с OLLAMA_AGENT=1.
+
+**Ключевые изменения:**
+- Исправлен баг retry: `clearRegionCache()` внутри классификаторов заменён на `bypassCache=true` (предыдущий вызов очищал ВСЕ кэш-записи, а не только неудачную)
+- `analyzeRegion()` теперь делает retry при пустом `{}` (не только `_unparseable`)
+- Добавлена confidence gating: jobs banner тест пропускает vision assertion при `confidence < 0.5` (gemma3:4b стабильно возвращает `{}` для raw-JSON-текста в элементе)
+- `tests/vision/agent_audit.spec.ts` — новый exploratory spec: 5 регионов runtime-страницы, JSON-отчёт в `.artifacts/`
+- Созданы baseline снапшоты для 4 interaction тестов
+
+**Файлы изменены:**
+- `tests/visual/vision_loop.helpers.ts` — bypassCache, retry на `{}`, без clearRegionCache в классификаторах
+- `tests/visual/interaction.spec.ts` — confidence gating + baseline snapshots
+- `tests/vision/agent_audit.spec.ts` — NEW
+- `docs/testing/EXPERIMENTAL_VISION_TRACK.md` — STEP 11
+- `docs/testing/TESTING_BASELINE.md` — секции 3a + 3b + команды
+- `docs/testing/NEXT_STEPS.md` — VS-3 ✅ DONE, GATE-3 обновлён
+
+**Commit:** `7747c93` — запушено на GitHub.
+
+---
+
 ## 2026-04-20 — 11B vision model evaluation (BLOCKED)
 
 **Задача:** Оценить llama3.2-vision:11b как "deep audit" supplement к gemma3:4b.
@@ -420,3 +590,113 @@
 - `tests/visual/interaction.spec.ts` — vision loop в 3 тестах
 - `WORKPLAN.md` — Decision Log entry
 - version 0.0.76 → 0.0.77
+
+---
+
+## 2026-04-25 — Semantic auto-region system
+
+**Задача:** Перевести vision/UI-тесты с hardcoded regions/text/coordinates на semantic auto-discovery.
+
+**Что сделано:**
+- `frontend/src/features/runtime/components/RuntimeStatusCard.tsx` — добавлены атрибуты `data-ui-role`, `data-ui-scope`, `data-ui-state`, `data-ui-action`, `data-ui-kind` на 7 элементах (article, status badge, callouts container, 2× callout, action-row, 2× button). Не заменяют `data-testid`, не трогают BEM/CSS.
+- `tests/visual/semantic.helpers.ts` (новый) — `collectSemanticRegions(page)` через один `page.evaluate`, `captureSemanticSnapshot`, `compareSemanticSnapshots` с 6 типами изменений (state_changed, action_availability_changed, callout_changed, visibility_changed, region_added, region_removed), `regionKey`, `recommendedCheck` (vision/dom/backend/hybrid из роли + bbox vs VISION_REGION_MIN), `findRegion`, `summariseDiff`. Тесты не хардкодят список селекторов.
+- `tests/visual/semantic.spec.ts` (новый) — 3 sanity-теста против реального backend: discovery contract на /runtime, state flip diff, action availability flip.
+- `tests/visual/live-backend.spec.ts` — semantic snapshot/diff встроен поверх старых проверок в три live interaction сценария (start spot, stop spot, start futures). Старые проверки (backend, DOM, vision composite, layout sanity) не удалены.
+
+**Verification (14/14 passed на реальном стеке):**
+- region-guardrail: 1/1 ✅
+- semantic.spec: 3/3 ✅ — auto-discovery находит все runtime-card / status-badge / runtime-action; diff корректно классифицирует
+- interaction.spec: 4/4 ✅
+- live-backend.spec: 6/6 ✅ — semantic_diff на живом backend поймал реальные переходы (`offline → degraded`, `running → offline`, `offline → degraded`), плюс `callout_changed kind info → error` и `region_added/removed` на error-callout.
+
+**Что осталось hardcoded:**
+- Контракт пока живёт только на RuntimeStatusCard. Другие страницы (/jobs, /telegram, /health) — без data-ui-* атрибутов.
+- VISION_REGION_MIN остаётся числовым порогом.
+- В asserts по-прежнему ожидаются конкретные значения state ("offline"/"running"/"degraded") — это и должно проверяться, но не текстом.
+
+
+---
+
+## 2026-04-25 — Semantic contract extended to /jobs
+
+**Задача:** распространить `data-ui-*` semantic auto-region system (introduced 2026-04-23 on RuntimeStatusCard) на вторую страницу — `/jobs`.
+
+**Frontend (5 файлов, без изменения CSS/BEM):**
+- `frontend/src/features/jobs/JobMonitorPage.tsx` — root `data-ui-role="page" scope="jobs"`; history panel `data-ui-role="jobs-history" state={empty|populated}`; empty marker `data-ui-role="empty-state" scope="jobs-history"`; list items `data-ui-role="jobs-list-item" scope={job_id} state={job.state}`; action error callout `data-ui-role="status-callout" kind="error"`.
+- `frontend/src/features/jobs/components/JobToolbar.tsx` — `data-ui-role="job-toolbar"`, две кнопки `data-ui-role="job-action"` со scope `sample-import`/`selected`, action `start`/`stop`, state `enabled`/`disabled`.
+- `frontend/src/features/jobs/components/DataBackfillJobCard.tsx` — `data-ui-role="job-preset" scope="data-backfill"`, кнопка `job-action`.
+- `frontend/src/features/jobs/components/DataIntegrityJobCard.tsx` — то же для `data-integrity`.
+- `frontend/src/features/jobs/components/JobStatusCard.tsx` — `data-ui-role="job-status" state={selected|empty|<job state>}`; status badge на selected job; info/error callouts.
+
+**Tests:**
+- `tests/visual/semantic.helpers.ts` — `recommendedCheck` расширен: общие категории (card-like panels → hybrid, chrome-rich badges/callouts → vision, actionable elements → dom, layout containers + empty-state → dom). Без special-case под jobs.
+- `tests/visual/semantic.spec.ts` — добавлен sanity-тест "jobs page exposes the data-ui-* contract" (page root, history, оба preset card + actions, toolbar actions).
+- `tests/visual/live-backend.spec.ts` — расширен существующий read-only jobs-сценарий: `captureSemanticSnapshot` после vision-блока. Asserts: `jobs-history.state == backend.length === 0 ? "empty" : "populated"`; пустой → `empty-state` marker есть, list items пусты; populated → list items count == backend.length; оба preset обнаружены; layout-only роли НЕ получают vision recommendation.
+
+**Verification (15/15 passed на реальном стеке):**
+- region-guardrail: 1/1 ✅
+- semantic.spec (4 теста): 4/4 ✅ — включая новый jobs sanity (778ms)
+- interaction.spec: 4/4 ✅
+- live-backend.spec (6 тестов): 6/6 ✅ — jobs логирует `semantic_history_state=empty semantic_regions=15`; runtime сценарии не затронуты, продолжают эмитить state_changed/action_availability_changed/callout_changed
+- frontend `tsc --noEmit`: clean
+
+**Что осталось hardcoded:**
+- Контракт ещё не на `/health`, `/telegram`, `/models`, `/spot`, `/futures`, `/analytics`, `/orderbook`, `/backtest`, `/diagnostics`, `/logs`, `/settings`, `/market` — 12 страниц.
+- Список валидных `state` значений живёт строками в asserts (`offline`/`running`/`degraded`/`empty`/`populated`/`enabled`/`disabled`). Можно вытащить в общий enum после третьей страницы.
+- `VISION_REGION_MIN` остаётся числом.
+
+
+---
+
+## 2026-04-25 — Canonical state layer
+
+**Задача:** убрать хрупкость semantic тестов к переименованию UI-строк. Тесты сравнивали raw `data-ui-state` ("offline", "running", "empty"...). Если frontend переименует — тесты молча сломаются (или, что хуже, пройдут на неправильном).
+
+**Изменено (только tests/visual, frontend не тронут):**
+- `tests/visual/semantic.helpers.ts`:
+  - 3 canonical enum'а: `RUNTIME_STATE = {INACTIVE,ACTIVE,DEGRADED}`, `JOBS_STATE = {EMPTY,NON_EMPTY}`, `ACTION_STATE = {ENABLED,DISABLED}`.
+  - `CANONICAL_MAP: Record<role, Record<raw_lower, CanonicalState>>` — единственный источник истины для маппинга.
+  - `toCanonicalState(role, raw)` — pure function; возвращает `CanonicalState | null`. `null` означает "регион имеет state но не размечен в canonical layer".
+  - `SemanticRegion` теперь содержит `canonical_state: CanonicalState | null` рядом с raw `state`.
+  - `compareSemanticSnapshots`: `state_changed` сравнивает `canonical_state` первым; raw сравнение только когда оба canonical=null (для регионов вне canonical vocabulary, например `jobs-list-item` с lifecycle states). `action_availability_changed` использует `ACTION_STATE.ENABLED/DISABLED`. `detail` теперь печатает canonical (`"INACTIVE → ACTIVE"`), не raw.
+- `tests/visual/semantic.spec.ts`:
+  - все asserts на raw строки (`.toBe("offline")`) заменены на canonical (`.toBe(RUNTIME_STATE.INACTIVE)`).
+  - Добавлен новый тест `semantic: canonical state survives a UI rename (synthetic)` — пишет в DOM `data-ui-state="idle"`, проверяет что `canonical_state === null` и diff всё равно ловит переход. Это safety-net против тихих регрессий после frontend rename.
+- `tests/visual/live-backend.spec.ts`:
+  - jobs assert: `historyRegion.state === "empty"|"populated"` → `historyRegion.canonical_state === JOBS_STATE.EMPTY|NON_EMPTY`.
+  - 3 runtime сценария (start spot, stop spot, start futures): asserts на raw "offline"/"running"/"degraded" заменены на canonical RUNTIME_STATE; asserts на состояния actions — на ACTION_STATE.
+
+**Verification (16/16 passed на реальном стеке):**
+- region-guardrail: 1/1 ✅
+- semantic.spec (5 тестов теперь): 5/5 ✅ — включая новый "canonical state survives a UI rename"
+- interaction.spec: 4/4 ✅
+- live-backend.spec (6 тестов): 6/6 ✅ — diff везде логирует canonical: `INACTIVE → DEGRADED`, `ACTIVE → INACTIVE`, `INACTIVE → ACTIVE`, `enabled true → false`, etc.
+- frontend `tsc --noEmit`: clean
+
+**Что осталось вне canonical layer:**
+- `jobs-list-item` lifecycle states (`queued`, `starting`, `running`, `stopping`, `done`, `failed`) — без mapping, `canonical_state=null`, raw сравнение сохранилось как fallback.
+- `selected-job` status badge — те же lifecycle states.
+- Можно добавить `JOB_LIFECYCLE_STATE` enum при следующем расширении. Сейчас не нужно — на /jobs нет live POST-сценария, который бы их проверял.
+- 12 страниц без `data-ui-*` (`/health`, `/telegram`, `/models`, ...) — отдельный фронт работ.
+
+
+---
+
+## 2026-04-25 — Re-verification of canonical state layer (no code changes)
+
+Пользователь повторил тот же промпт про canonical state layer уже после реализации. Без новых правок кода — только повторный runtime verification на текущем дереве:
+
+- `region-guardrail.spec.ts` — 1/1 ✅
+- `semantic.spec.ts` (5 тестов) — 5/5 ✅
+- `interaction.spec.ts` (OLLAMA_VISION=1) — 4/4 ✅
+- `live-backend.spec.ts` (OLLAMA_VISION=1) — 6/6 ✅
+- **Итого: 16/16 ✅**
+
+Diff в логах живого backend, snapshot canonical-only:
+- start-spot: `INACTIVE → DEGRADED` (runtime-card + status-badge), callout `info → error`, action_availability flips ×2
+- stop-spot: `ACTIVE → INACTIVE`, callout removed
+- start-futures: `INACTIVE → DEGRADED`
+- semantic synthetic flip: `INACTIVE → ACTIVE`
+
+Состояние стека: backend 0.0.77, Vite 4173, Ollama 11434 + gemma3:4b. Никаких регрессий.
+

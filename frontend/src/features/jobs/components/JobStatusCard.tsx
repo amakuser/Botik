@@ -23,9 +23,19 @@ function statusClassName(state: JobState | undefined) {
 export function JobStatusCard({ job }: JobStatusCardProps) {
   if (!job) {
     return (
-      <section className="panel jobs-selected-panel">
+      <section
+        className="panel jobs-selected-panel"
+        data-ui-role="job-status"
+        data-ui-scope="selected"
+        data-ui-state="empty"
+      >
         <SectionHeading title="Выбранная задача" description="Контекст выполнения и прогресс." />
-        <p className="panel-muted" data-testid="jobs.selected.empty">
+        <p
+          className="panel-muted"
+          data-testid="jobs.selected.empty"
+          data-ui-role="empty-state"
+          data-ui-scope="job-status"
+        >
           Задача ещё не запускалась.
         </p>
       </section>
@@ -35,7 +45,12 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
   const progress = Math.round((job.progress ?? 0) * 100);
 
   return (
-    <section className="panel jobs-selected-panel">
+    <section
+      className="panel jobs-selected-panel"
+      data-ui-role="job-status"
+      data-ui-scope="selected"
+      data-ui-state={job.state}
+    >
       <SectionHeading title="Выбранная задача" description="Контекст выполнения и прогресс." />
 
       <div className="jobs-selected__topline">
@@ -43,7 +58,13 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
           <p className="jobs-selected__eyebrow">Текущая задача</p>
           <h3 data-testid="jobs.selected.job-type">{job.job_type}</h3>
         </div>
-        <span className={statusClassName(job.state)} data-testid="jobs.selected.state">
+        <span
+          className={statusClassName(job.state)}
+          data-testid="jobs.selected.state"
+          data-ui-role="status-badge"
+          data-ui-scope="selected-job"
+          data-ui-state={job.state}
+        >
           {job.state}
         </span>
       </div>
@@ -69,14 +90,24 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
         <dd>{job.exit_code ?? "n/a"}</dd>
       </dl>
       {job.last_error ? (
-        <div className="jobs-selected__callout jobs-selected__callout--error">
+        <div
+          className="jobs-selected__callout jobs-selected__callout--error"
+          data-ui-role="status-callout"
+          data-ui-scope="selected-job"
+          data-ui-kind="error"
+        >
           <span className="jobs-selected__callout-label">Последняя ошибка</span>
           <p className="inline-error" data-testid="jobs.selected.error">
             {job.last_error}
           </p>
         </div>
       ) : (
-        <div className="jobs-selected__callout">
+        <div
+          className="jobs-selected__callout"
+          data-ui-role="status-callout"
+          data-ui-scope="selected-job"
+          data-ui-kind="info"
+        >
           <span className="jobs-selected__callout-label">Статус</span>
           <p className="status-caption" data-testid="jobs.selected.caption">
             Прогресс и логи передаются через SSE.

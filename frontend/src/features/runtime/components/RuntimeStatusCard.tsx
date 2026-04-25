@@ -41,13 +41,25 @@ export function RuntimeStatusCard({ runtime, startDisabled, stopDisabled, onStar
   const hasError = Boolean(runtime.last_error);
 
   return (
-    <article className="runtime-card panel" data-testid={`runtime.card.${runtime.runtime_id}`}>
+    <article
+      className="runtime-card panel"
+      data-testid={`runtime.card.${runtime.runtime_id}`}
+      data-ui-role="runtime-card"
+      data-ui-scope={runtime.runtime_id}
+      data-ui-state={runtime.state}
+    >
       <div className="runtime-card__header">
         <div className="runtime-card__title-block">
           <h2>{runtime.label}</h2>
           <p className="panel-muted">Управление с мониторингом сердцебиения и последних ошибок.</p>
         </div>
-        <span className={`runtime-state runtime-state--${runtime.state}`} data-testid={`runtime.state.${runtime.runtime_id}`}>
+        <span
+          className={`runtime-state runtime-state--${runtime.state}`}
+          data-testid={`runtime.state.${runtime.runtime_id}`}
+          data-ui-role="status-badge"
+          data-ui-scope={runtime.runtime_id}
+          data-ui-state={runtime.state}
+        >
           {runtime.state.toUpperCase()}
         </span>
       </div>
@@ -82,15 +94,25 @@ export function RuntimeStatusCard({ runtime, startDisabled, stopDisabled, onStar
         </div>
       </dl>
 
-      <div className="runtime-card__callouts">
-        <div className="runtime-card__callout">
+      <div className="runtime-card__callouts" data-ui-role="status-callouts" data-ui-scope={runtime.runtime_id}>
+        <div
+          className="runtime-card__callout"
+          data-ui-role="status-callout"
+          data-ui-scope={runtime.runtime_id}
+          data-ui-kind="info"
+        >
           <span className="runtime-card__callout-label">Причина статуса</span>
           <p className="runtime-card__reason" data-testid={`runtime.reason.${runtime.runtime_id}`}>
             {runtime.status_reason}
           </p>
         </div>
 
-        <div className={hasError ? "runtime-card__callout runtime-card__callout--error" : "runtime-card__callout"}>
+        <div
+          className={hasError ? "runtime-card__callout runtime-card__callout--error" : "runtime-card__callout"}
+          data-ui-role="status-callout"
+          data-ui-scope={runtime.runtime_id}
+          data-ui-kind={hasError ? "error" : "info"}
+        >
           <span className="runtime-card__callout-label">Последняя ошибка</span>
           <p className="runtime-card__error" data-testid={`runtime.error.${runtime.runtime_id}`}>
             {runtime.last_error ?? "нет"}
@@ -98,11 +120,15 @@ export function RuntimeStatusCard({ runtime, startDisabled, stopDisabled, onStar
         </div>
       </div>
 
-      <div className="runtime-card__actions">
+      <div className="runtime-card__actions" data-ui-role="action-row" data-ui-scope={runtime.runtime_id}>
         <button
           type="button"
           className="button-primary"
           data-testid={`runtime.start.${runtime.runtime_id}`}
+          data-ui-role="runtime-action"
+          data-ui-scope={runtime.runtime_id}
+          data-ui-action="start"
+          data-ui-state={startDisabled ? "disabled" : "enabled"}
           disabled={startDisabled}
           onClick={onStart}
         >
@@ -112,6 +138,10 @@ export function RuntimeStatusCard({ runtime, startDisabled, stopDisabled, onStar
           type="button"
           className="button-secondary"
           data-testid={`runtime.stop.${runtime.runtime_id}`}
+          data-ui-role="runtime-action"
+          data-ui-scope={runtime.runtime_id}
+          data-ui-action="stop"
+          data-ui-state={stopDisabled ? "disabled" : "enabled"}
           disabled={stopDisabled}
           onClick={onStop}
         >
