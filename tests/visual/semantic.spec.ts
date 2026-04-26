@@ -22,6 +22,7 @@ import {
   captureSemanticSnapshot,
   compareSemanticSnapshots,
   findRegion,
+  GLOBAL_STATE,
   JOBS_STATE,
   MODEL_STATE,
   regionKey,
@@ -271,9 +272,9 @@ test("semantic: diff detects action_availability flip", async ({ page }) => {
 });
 
 test("semantic: health page exposes the data-ui-* contract", async ({ page }) => {
-  await page.goto(`${BASE}/`);
+  await page.goto(`${BASE}/health`);
   await waitForStableUI(page);
-  // Wait for at least one metric card to render — the page is /
+  // Wait for at least one metric card to render — health page now lives under /health.
   await expect(page.getByTestId("home.metric.pnl-today")).toBeVisible({ timeout: 10_000 });
 
   const snap = await captureSemanticSnapshot(page);
@@ -529,4 +530,91 @@ test("semantic: spot page exposes the data-ui-* contract", async ({ page }) => {
   // 5. No actions — /spot is read-only. Sanity: no *-action role discovered.
   const anyAction = snap.regions.find((r) => r.role.endsWith("-action"));
   expect(anyAction, "/spot should have no action regions").toBeUndefined();
+});
+
+test("semantic: home page exposes the data-ui-* contract", async ({ page }) => {
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+  // Wait for hero to render — proves home composed and not blank.
+  await expect(page.locator('[data-ui-role="hero-status"]')).toBeVisible({
+    timeout: 10_000,
+  });
+
+  const snap = await captureSemanticSnapshot(page);
+
+  // 1. Page root with scope=home.
+  const pageRoot = findRegion(snap, { role: "page", scope: "home" });
+  expect(pageRoot, "home page root discovered").not.toBeNull();
+
+  // 2. Hero status card singleton.
+  const hero = findRegion(snap, { role: "hero-status", scope: "home" });
+  expect(hero, "hero-status discovered").not.toBeNull();
+  expect(["hybrid", "dom"]).toContain(hero!.recommended_check);
+
+  // 3. The 6 cards expected by the layout.
+  for (const role of [
+    "trading-card",
+    "protection-card",
+    "reconciliation-card",
+    "ml-pipeline-card",
+    "connections-card",
+    "activity-card",
+  ] as const) {
+    const card = findRegion(snap, { role, scope: "home" });
+    expect(card, `${role} discovered`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(card!.recommended_check);
+  }
+
+  // 4. Footer.
+  const footer = findRegion(snap, { role: "home-footer", scope: "home" });
+  expect(footer, "home-footer discovered").not.toBeNull();
+  expect(footer!.recommended_check).toBe("dom");
+
+  // 5. Region keys must be stable.
+  for (const r of snap.regions) {
+    const k = regionKey(r);
+    expect(k, "region key is non-empty").not.toBe("");
+  }
+});
+
+test("semantic: hero-status canonical state is GLOBAL_STATE", async ({ page }) => {
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+  await expect(page.locator('[data-ui-role="hero-status"]')).toBeVisible({
+    timeout: 10_000,
+  });
+
+  const before = await captureSemanticSnapshot(page);
+  const heroBefore = findRegion(before, { role: "hero-status", scope: "home" });
+  expect(heroBefore, "hero-status discovered").not.toBeNull();
+  expect(
+    Object.values(GLOBAL_STATE),
+    "hero canonical_state is one of GLOBAL_STATE",
+  ).toContain(heroBefore!.canonical_state);
+
+  // Synthetic state mutation: flip the hero raw state to "critical".
+  // The diff must report state_changed without spurious regions.
+  await page.evaluate(() => {
+    const hero = document.querySelector(
+      '[data-ui-role="hero-status"][data-ui-scope="home"]',
+    );
+    if (hero) hero.setAttribute("data-ui-state", "critical");
+    const ring = document.querySelector('[data-ui-role="health-ring"]');
+    if (ring) ring.setAttribute("data-ui-state", "critical");
+  });
+
+  const after = await captureSemanticSnapshot(page);
+  const diff = compareSemanticSnapshots(before, after);
+
+  console.log(`[semantic-diff home] ${summariseDiff(diff)}`);
+
+  const heroChange = diff.state_changed.find(
+    (c) => c.role === "hero-status" && c.scope === "home",
+  );
+  // Only assert when the initial state wasn't already critical (otherwise
+  // there is no transition to detect).
+  if (heroBefore!.state !== "critical") {
+    expect(heroChange, "hero-status state_changed present").toBeTruthy();
+    expect(heroChange!.after?.canonical_state).toBe(GLOBAL_STATE.CRITICAL);
+  }
 });

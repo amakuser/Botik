@@ -5,6 +5,7 @@ import { DiagnosticsRoute } from "./routes/diagnostics-route";
 import { MarketRoute } from "./routes/market-route";
 import { ModelsRoute } from "./routes/models-route";
 import { HealthRoute } from "./routes/health-route";
+import { HomeRoute } from "./routes/home-route";
 import { FuturesRoute } from "./routes/futures-route";
 import { JobsRoute } from "./routes/jobs-route";
 import { LogsRoute } from "./routes/logs-route";
@@ -18,6 +19,10 @@ import { UiLabPage } from "../features/ui-lab/UiLabPage";
 export const router = createBrowserRouter([
   {
     path: "/",
+    element: <HomeRoute />,
+  },
+  {
+    path: "/health",
     element: <HealthRoute />,
   },
   {

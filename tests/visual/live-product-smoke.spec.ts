@@ -40,7 +40,7 @@ test("live: health page renders real /health response", async ({ page, request }
   expect(apiBody.status, "backend /health.status").toBe("ok");
   expect(apiBody.service, "backend /health.service").toBe("botik-app-service");
 
-  await page.goto(`${BASE}/`);
+  await page.goto(`${BASE}/health`);
   await waitForStableUI(page);
 
   const statusEl = page.getByTestId("health.status");

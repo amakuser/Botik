@@ -10,7 +10,8 @@ import { checkLayoutIntegrity, waitForStableUI } from "./helpers";
 const BASE = "http://127.0.0.1:4173";
 
 const PAGES = [
-  { name: "health",      url: "/" },
+  { name: "home",        url: "/" },
+  { name: "health",      url: "/health" },
   { name: "jobs",        url: "/jobs" },
   { name: "logs",        url: "/logs" },
   { name: "runtime",     url: "/runtime" },

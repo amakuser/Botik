@@ -75,12 +75,34 @@ export const MODEL_STATE = {
 export type ModelState = typeof MODEL_STATE[keyof typeof MODEL_STATE];
 
 /**
+ * Global system-state vocabulary for the HomePage hero/health-ring.
+ * Decoupled from RUNTIME_STATE: a runtime is INACTIVE when its process
+ * is not running; the global state is HEALTHY when the whole system
+ * (trading + protection + reconciliation + ML + connections) is OK.
+ *
+ * The frontend writes raw `data-ui-state` ∈ {healthy, warning, critical}
+ * on hero-status and health-ring; this canonical layer is the single
+ * source of truth for tests.
+ */
+export const GLOBAL_STATE = {
+  HEALTHY: "HEALTHY",
+  WARNING: "WARNING",
+  CRITICAL: "CRITICAL",
+} as const;
+export type GlobalState = typeof GLOBAL_STATE[keyof typeof GLOBAL_STATE];
+
+/**
  * Union of every canonical bucket that the snapshot can carry. `null`
  * means the (role, raw) pair has no canonical mapping yet — the test
  * may still use the raw string for that region but should not pretend
  * it is canonical.
  */
-export type CanonicalState = RuntimeState | JobsState | ActionState | ModelState;
+export type CanonicalState =
+  | RuntimeState
+  | JobsState
+  | ActionState
+  | ModelState
+  | GlobalState;
 
 /**
  * Static mapping table — single source of truth.
@@ -164,6 +186,23 @@ const CANONICAL_MAP: Record<string, Record<string, CanonicalState>> = {
   },
   // Training start/stop actions — same enabled/disabled vocabulary as other *-action roles.
   "training-action": {
+    enabled: ACTION_STATE.ENABLED,
+    disabled: ACTION_STATE.DISABLED,
+  },
+
+  // HomePage hero + health ring — global system state.
+  "hero-status": {
+    healthy: GLOBAL_STATE.HEALTHY,
+    warning: GLOBAL_STATE.WARNING,
+    critical: GLOBAL_STATE.CRITICAL,
+  },
+  "health-ring": {
+    healthy: GLOBAL_STATE.HEALTHY,
+    warning: GLOBAL_STATE.WARNING,
+    critical: GLOBAL_STATE.CRITICAL,
+  },
+  // HomePage hero CTA — runs the same enabled/disabled vocabulary as other actions.
+  "primary-action": {
     enabled: ACTION_STATE.ENABLED,
     disabled: ACTION_STATE.DISABLED,
   },
@@ -281,11 +320,20 @@ export function recommendedCheck(role: string, bbox: RegionBBox): CheckMethod {
     case "history-panel":
     case "training-control":
     case "scope-card":
+    case "hero-status":
+    case "trading-card":
+    case "protection-card":
+    case "reconciliation-card":
+    case "ml-pipeline-card":
+    case "connections-card":
+    case "activity-card":
       return visionReady ? "hybrid" : "dom";
 
     // Small chrome-rich regions: vision is the natural reader.
     case "status-badge":
     case "status-callout":
+    case "health-ring":
+    case "protection-chip":
       return visionReady ? "vision" : "dom";
 
     // Actionable elements: button enabled/disabled is a DOM fact, not a vision one.
@@ -293,6 +341,7 @@ export function recommendedCheck(role: string, bbox: RegionBBox): CheckMethod {
     case "job-action":
     case "connectivity-action":
     case "training-action":
+    case "primary-action":
       return "dom";
 
     // Layout containers: presence + structure, not pixels.
@@ -310,6 +359,10 @@ export function recommendedCheck(role: string, bbox: RegionBBox): CheckMethod {
     case "models-intro":
     case "info-signal":
     case "spot-intro":
+    case "home-footer":
+    case "activity-entry":
+    case "status-dot":
+    case "skeleton":
       return "dom";
 
     // Empty-state markers: the fact that they exist is the signal.

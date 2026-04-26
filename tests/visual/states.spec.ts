@@ -103,7 +103,7 @@ test("state: health pipeline shows running state when runtime is active", async 
   };
 
   await injectMockResponse(page, "**/runtime-status", runningRuntimeFixture);
-  await page.goto(`${BASE}/`);
+  await page.goto(`${BASE}/health`);
   await waitForStableUI(page);
 
   // Pipeline step 3 should show "Активно"
@@ -129,7 +129,125 @@ test("state: health page shows loading text before data arrives", async ({ page 
     await route.continue();
   });
 
-  await page.goto(`${BASE}/`);
+  await page.goto(`${BASE}/health`);
   // Check for loading text BEFORE waitForStableUI (data not yet arrived)
   await expect(page.getByTestId("health.status")).toHaveText(/загрузка/, { timeout: 1_500 });
+});
+
+// ── HomePage: loading skeleton visible while data is in flight ───────────────
+
+test("state: home loading skeleton visible", async ({ page }) => {
+  // Delay every endpoint the home page reads. Slow but bounded — the page
+  // must show skeletons before the data arrives.
+  const ENDPOINTS = [
+    /127\.0\.0\.1:8765\/health$/,
+    /127\.0\.0\.1:8765\/runtime-status$/,
+    /127\.0\.0\.1:8765\/spot$/,
+    /127\.0\.0\.1:8765\/futures$/,
+    /127\.0\.0\.1:8765\/models$/,
+    /127\.0\.0\.1:8765\/telegram$/,
+    /127\.0\.0\.1:8765\/diagnostics$/,
+    /127\.0\.0\.1:8765\/jobs$/,
+  ];
+  for (const pattern of ENDPOINTS) {
+    await page.route(pattern, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      await route.continue();
+    });
+  }
+
+  await page.goto(`${BASE}/`);
+  // A skeleton element must render BEFORE the data settles.
+  await expect(
+    page.locator('[data-ui-role="skeleton"]').first(),
+  ).toBeVisible({ timeout: 1_500 });
+});
+
+// ── HomePage: CRITICAL state shows the primary-action CTA ────────────────────
+
+test("state: home critical state shows CTA", async ({ page }) => {
+  // Mock /futures so it returns one unprotected position — derived state
+  // must classify the system as CRITICAL and surface the primary CTA.
+  const futuresFixture = {
+    generated_at: "2026-01-01T00:00:00Z",
+    source_mode: "fixture",
+    summary: {
+      account_type: "UNIFIED",
+      positions_count: 1,
+      protected_positions_count: 0,
+      attention_positions_count: 0,
+      recovered_positions_count: 0,
+      open_orders_count: 0,
+      recent_fills_count: 0,
+      unrealized_pnl_total: 0,
+    },
+    positions: [
+      {
+        account_type: "UNIFIED",
+        symbol: "BTCUSDT",
+        side: "Buy",
+        position_idx: 0,
+        margin_mode: "REGULAR_MARGIN",
+        leverage: 5,
+        qty: 0.01,
+        entry_price: 60000,
+        mark_price: 60000,
+        liq_price: 50000,
+        unrealized_pnl: 0,
+        take_profit: null,
+        stop_loss: null,
+        protection_status: "unprotected",
+        source_of_truth: "exchange",
+        recovered_from_exchange: false,
+        strategy_owner: null,
+        updated_at_utc: "2026-01-01T00:00:00Z",
+      },
+    ],
+    active_orders: [],
+    recent_fills: [],
+  };
+
+  await injectMockResponse(page, /127\.0\.0\.1:8765\/futures$/, futuresFixture);
+
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+
+  const hero = page.locator('[data-ui-role="hero-status"]');
+  await expect(hero).toBeVisible({ timeout: 10_000 });
+  await expect(hero).toHaveAttribute("data-ui-state", "critical", { timeout: 10_000 });
+
+  const cta = page.locator('[data-ui-role="primary-action"][data-ui-action="open-futures"]');
+  await expect(cta).toBeVisible({ timeout: 10_000 });
+  await expect(cta).toHaveAttribute("data-ui-state", "enabled");
+});
+
+// ── HomePage: complete backend failure surfaces error hero with retry ────────
+
+test("state: home error — endpoint 500", async ({ page }) => {
+  // Inject a 500 on every endpoint the home page reads. With every query
+  // failing, the hero must switch to the error state and expose a retry CTA.
+  const ENDPOINTS = [
+    /127\.0\.0\.1:8765\/health$/,
+    /127\.0\.0\.1:8765\/runtime-status$/,
+    /127\.0\.0\.1:8765\/spot$/,
+    /127\.0\.0\.1:8765\/futures$/,
+    /127\.0\.0\.1:8765\/models$/,
+    /127\.0\.0\.1:8765\/telegram$/,
+    /127\.0\.0\.1:8765\/diagnostics$/,
+    /127\.0\.0\.1:8765\/jobs$/,
+  ];
+  for (const pattern of ENDPOINTS) {
+    await injectBackendError(page, pattern);
+  }
+
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+
+  const hero = page.locator('[data-ui-role="hero-status"]');
+  await expect(hero).toBeVisible({ timeout: 10_000 });
+  // The error hero is rendered with state "critical" and contains the retry button.
+  await expect(hero).toHaveAttribute("data-ui-state", "critical", { timeout: 10_000 });
+
+  const retry = page.locator('[data-ui-role="primary-action"][data-ui-action="retry"]');
+  await expect(retry).toBeVisible({ timeout: 10_000 });
 });

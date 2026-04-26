@@ -107,7 +107,7 @@ test("region: job integrity preset card", async ({ page }) => {
 // ── Health page metric grid (mask live values, preserve card structure) ────────
 
 test("region: health metric cards grid", async ({ page }) => {
-  await page.goto(`${BASE}/`);
+  await page.goto(`${BASE}/health`);
   await waitForStableUI(page);
 
   const grid = page.locator(".home-metrics-grid");
@@ -123,7 +123,7 @@ test("region: health metric cards grid", async ({ page }) => {
 // ── Health page pipeline section (mask runtime-dependent state labels) ─────────
 
 test("region: health pipeline section", async ({ page }) => {
-  await page.goto(`${BASE}/`);
+  await page.goto(`${BASE}/health`);
   await waitForStableUI(page);
 
   const pipeline = page.locator(".pipeline-grid");
