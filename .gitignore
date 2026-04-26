@@ -55,6 +55,7 @@ app-service/src/botik_app_service/logs/**/*.py[cod]
 # IDE and OS files
 .idea/
 .vscode/
+.claude/settings.json
 *.swp
 *.swo
 .DS_Store
