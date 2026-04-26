@@ -1,3 +1,9 @@
+// Silent launch: avoid a flashing console host on double-click / Start-Process.
+// Without this attribute the exe is built as console subsystem and Windows
+// spawns a visible console window for ~100ms before WebView2 paints over it.
+// With this attribute the OS does not allocate a console at all.
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+
 mod app_service;
 mod host_api;
 
