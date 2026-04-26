@@ -6,6 +6,7 @@ import {
   DiagnosticsSnapshot,
   BootstrapPayload,
   HealthResponse,
+  HomeSummary,
   JobDetails,
   JobEvent,
   LogChannel,
@@ -57,6 +58,11 @@ async function parseJsonOrThrow<T>(response: Response): Promise<T> {
 export async function getHealth(): Promise<HealthResponse> {
   const response = await authenticatedFetch("/health");
   return parseJsonOrThrow<HealthResponse>(response);
+}
+
+export async function getHomeSummary(): Promise<HomeSummary> {
+  const response = await authenticatedFetch("/home/summary");
+  return parseJsonOrThrow<HomeSummary>(response);
 }
 
 export async function getBootstrap(): Promise<BootstrapPayload> {

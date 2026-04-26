@@ -104,6 +104,133 @@ export interface LogStreamEvent {
   entry: LogEntry;
 }
 
+// ── Home summary contract (mirrors backend home_summary.py 1:1) ──────────────
+// Backend uses `Field(alias="global")` so the JSON key is `global`.
+// All fields that cannot be sourced from in-process data are explicitly null.
+// bybit and telegram connections are deferred — always null in this slice.
+
+export type GlobalState = "healthy" | "warning" | "critical";
+
+export interface PrimaryAction {
+  label: string;
+  kind: "pause-trading" | "open-diagnostics";
+}
+
+export interface GlobalBlock {
+  state: GlobalState;
+  health_score: number;
+  critical_reason: string | null;
+  primary_action: PrimaryAction | null;
+}
+
+export type HomeRuntimeState = "running" | "degraded" | "offline" | "unknown";
+
+export interface TradingRuntimeBlock {
+  state: HomeRuntimeState;
+  lag_seconds: number | null;
+}
+
+export interface TodayPnL {
+  value: number;
+  currency: string;
+  trend: "up" | "down" | "flat";
+}
+
+export interface TradingBlock {
+  spot: TradingRuntimeBlock;
+  futures: TradingRuntimeBlock;
+  today_pnl: TodayPnL | null;
+  today_pnl_series: null;
+}
+
+export interface PositionEntry {
+  id: string;
+  symbol: string;
+  side: string;
+  protection_state: string;
+}
+
+export interface RiskByState {
+  protected: number;
+  pending: number;
+  unprotected: number;
+  repairing: number;
+  failed: number;
+}
+
+export interface RiskBlock {
+  positions_total: number;
+  by_state: RiskByState;
+  positions: PositionEntry[];
+}
+
+export type ReconciliationState =
+  | "healthy"
+  | "degraded"
+  | "stale"
+  | "failed"
+  | "unsupported";
+
+export interface ReconciliationBlock {
+  state: ReconciliationState;
+  last_run_at: string | null;
+  last_run_age_seconds: number | null;
+  next_run_in_seconds: number | null;
+  drift_count: number;
+}
+
+export interface ActiveModel {
+  version: string;
+  accuracy: number | null;
+  trained_at: string | null;
+}
+
+export interface LastTrainingRun {
+  scope: string;
+  ended_at: string | null;
+  status: string;
+}
+
+export type PipelineState =
+  | "idle"
+  | "training"
+  | "serving"
+  | "error"
+  | "unknown";
+
+export interface MLBlock {
+  pipeline_state: PipelineState;
+  active_model: ActiveModel | null;
+  last_training_run: LastTrainingRun | null;
+}
+
+export type DbHealthState = "ok" | "degraded" | "unavailable";
+
+export interface ConnectionsBlock {
+  bybit: null;
+  telegram: null;
+  database: DbHealthState;
+}
+
+export type ActivitySeverity = "info" | "warn" | "err" | "critical";
+
+export interface ActivityEntry {
+  ts: string;
+  summary: string;
+  severity: ActivitySeverity;
+}
+
+export interface HomeSummary {
+  generated_at: string;
+  global: GlobalBlock;
+  trading: TradingBlock;
+  risk: RiskBlock;
+  reconciliation: ReconciliationBlock;
+  ml: MLBlock;
+  connections: ConnectionsBlock;
+  activity: ActivityEntry[];
+}
+
 export const contractSchemaNames = [
   "HealthResponse",
   "AppSessionInfo",

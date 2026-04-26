@@ -1,28 +1,28 @@
 import { Button } from "../../../shared/ui/primitives/Button";
 import { cn } from "../../../shared/lib/utils";
-import type { HomeDerivedState } from "../hooks/useHomeDerivedState";
+import type { RiskBlock } from "../../../shared/contracts";
 import { ProtectionChip } from "./ProtectionChip";
 import { SkeletonBox } from "./SkeletonBox";
 
 export interface ProtectionCardProps {
-  derived: HomeDerivedState;
+  risk: RiskBlock;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
 }
 
 export function ProtectionCard({
-  derived,
+  risk,
   isLoading,
   isError,
   onRetry,
 }: ProtectionCardProps) {
-  const { protection } = derived;
+  const by = risk.by_state;
 
   const state =
-    protection.unprotected > 0 || protection.failed > 0
+    by.unprotected > 0 || by.failed > 0
       ? "critical"
-      : protection.attention > 0 || protection.pending > 0
+      : by.repairing > 0 || by.pending > 0
         ? "warning"
         : "ok";
 
@@ -62,7 +62,7 @@ export function ProtectionCard({
     );
   }
 
-  if (protection.total === 0) {
+  if (risk.positions_total === 0) {
     return (
       <article
         data-ui-role="protection-card"
@@ -98,43 +98,43 @@ export function ProtectionCard({
           Защита позиций
         </h3>
         <span className="text-[0.7rem] uppercase tracking-wide text-[rgb(var(--token-text-muted))] tabular-nums">
-          {protection.protected}/{protection.total} защищены
+          {by.protected}/{risk.positions_total} защищены
         </span>
       </header>
 
       <div className="flex flex-wrap gap-2">
-        {protection.protected > 0 ? (
+        {by.protected > 0 ? (
           <ProtectionChip
             state="protected"
-            count={protection.protected}
+            count={by.protected}
             label="OK"
           />
         ) : null}
-        {protection.attention > 0 ? (
+        {by.repairing > 0 ? (
           <ProtectionChip
             state="attention"
-            count={protection.attention}
+            count={by.repairing}
             label="ATT"
           />
         ) : null}
-        {protection.pending > 0 ? (
+        {by.pending > 0 ? (
           <ProtectionChip
             state="pending"
-            count={protection.pending}
+            count={by.pending}
             label="WAIT"
           />
         ) : null}
-        {protection.unprotected > 0 ? (
+        {by.unprotected > 0 ? (
           <ProtectionChip
             state="unprotected"
-            count={protection.unprotected}
+            count={by.unprotected}
             label="OPEN"
           />
         ) : null}
-        {protection.failed > 0 ? (
+        {by.failed > 0 ? (
           <ProtectionChip
             state="failed"
-            count={protection.failed}
+            count={by.failed}
             label="FAIL"
           />
         ) : null}

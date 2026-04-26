@@ -1,39 +1,58 @@
 import { Button } from "../../../shared/ui/primitives/Button";
 import { cn } from "../../../shared/lib/utils";
-import type { HomeDerivedState } from "../hooks/useHomeDerivedState";
+import type {
+  HomeRuntimeState,
+  TradingBlock,
+} from "../../../shared/contracts";
 import { SkeletonBox } from "./SkeletonBox";
+import { StatusDot } from "./StatusDot";
 
 export interface TradingCardProps {
-  derived: HomeDerivedState;
+  trading: TradingBlock;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
 }
+
+const RUNTIME_DOT: Record<HomeRuntimeState, "ok" | "warning" | "critical" | "unknown"> = {
+  running: "ok",
+  degraded: "warning",
+  offline: "critical",
+  unknown: "unknown",
+};
+
+const RUNTIME_LABEL: Record<HomeRuntimeState, string> = {
+  running: "running",
+  degraded: "degraded",
+  offline: "offline",
+  unknown: "unknown",
+};
 
 function formatPnl(value: number): string {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}`;
 }
 
-function pnlClass(value: number): string {
-  if (value > 0) return "text-[rgb(var(--token-green))]";
-  if (value < 0) return "text-[rgb(var(--token-red))]";
+function pnlClass(trend: "up" | "down" | "flat"): string {
+  if (trend === "up") return "text-[rgb(var(--token-green))]";
+  if (trend === "down") return "text-[rgb(var(--token-red))]";
   return "text-[rgb(var(--token-text-primary))]";
 }
 
+function cardStateFromTrading(t: TradingBlock): "ok" | "idle" | "unknown" {
+  const states: HomeRuntimeState[] = [t.spot.state, t.futures.state];
+  if (states.includes("running")) return "ok";
+  if (states.some((s) => s === "degraded" || s === "offline")) return "idle";
+  return "unknown";
+}
+
 export function TradingCard({
-  derived,
+  trading,
   isLoading,
   isError,
   onRetry,
 }: TradingCardProps) {
-  const { trading } = derived;
-  const cardState =
-    trading.runtimesRunning > 0
-      ? "ok"
-      : trading.runtimesTotal > 0
-        ? "idle"
-        : "unknown";
+  const cardState = cardStateFromTrading(trading);
 
   if (isError) {
     return (
@@ -78,6 +97,8 @@ export function TradingCard({
     );
   }
 
+  const pnl = trading.today_pnl;
+
   return (
     <article
       data-ui-role="trading-card"
@@ -93,46 +114,62 @@ export function TradingCard({
           Торговля
         </h3>
         <span className="text-[0.7rem] uppercase tracking-wide text-[rgb(var(--token-text-muted))]">
-          {trading.runtimesRunning}/{trading.runtimesTotal} активны
+          PnL за сегодня
         </span>
       </header>
 
       <div className="flex items-baseline gap-2">
-        <span
-          className={cn(
-            "text-2xl font-semibold tabular-nums",
-            pnlClass(trading.futuresUnrealizedPnl),
-          )}
-          data-testid="home.trading.pnl"
-        >
-          {formatPnl(trading.futuresUnrealizedPnl)}
-        </span>
-        <span className="text-xs text-[rgb(var(--token-text-muted))]">USDT</span>
-        <span className="text-[0.7rem] text-[rgb(var(--token-text-muted))]">
-          unrealized
-        </span>
+        {pnl ? (
+          <>
+            <span
+              className={cn(
+                "text-2xl font-semibold tabular-nums",
+                pnlClass(pnl.trend),
+              )}
+              data-testid="home.trading.pnl"
+            >
+              {formatPnl(pnl.value)}
+            </span>
+            <span className="text-xs text-[rgb(var(--token-text-muted))]">
+              {pnl.currency}
+            </span>
+          </>
+        ) : (
+          <span
+            className="text-base text-[rgb(var(--token-text-muted))]"
+            data-testid="home.trading.pnl"
+          >
+            Недоступно
+          </span>
+        )}
       </div>
 
-      <dl className="grid grid-cols-2 gap-y-1 text-xs text-[rgb(var(--token-text-secondary))]">
-        <dt>Спот холдинги</dt>
-        <dd
-          className="text-right tabular-nums text-[rgb(var(--token-text-primary))]"
-          data-testid="home.trading.spot-holdings"
-        >
-          {trading.spotHoldings}
-        </dd>
-        <dt>Фьючерсы поз.</dt>
-        <dd
-          className="text-right tabular-nums text-[rgb(var(--token-text-primary))]"
-          data-testid="home.trading.futures-positions"
-        >
-          {trading.futuresPositions}
-        </dd>
-        <dt>Активных ордеров</dt>
-        <dd className="text-right tabular-nums text-[rgb(var(--token-text-primary))]">
-          {trading.spotOpenOrders + trading.futuresOpenOrders}
-        </dd>
-      </dl>
+      <ul className="flex flex-col gap-1 text-xs text-[rgb(var(--token-text-secondary))]">
+        <li className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <StatusDot state={RUNTIME_DOT[trading.spot.state]} size="sm" />
+            <span>Spot</span>
+          </span>
+          <span
+            className="text-right tabular-nums text-[rgb(var(--token-text-primary))]"
+            data-testid="home.trading.spot-state"
+          >
+            {RUNTIME_LABEL[trading.spot.state]}
+          </span>
+        </li>
+        <li className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <StatusDot state={RUNTIME_DOT[trading.futures.state]} size="sm" />
+            <span>Futures</span>
+          </span>
+          <span
+            className="text-right tabular-nums text-[rgb(var(--token-text-primary))]"
+            data-testid="home.trading.futures-state"
+          >
+            {RUNTIME_LABEL[trading.futures.state]}
+          </span>
+        </li>
+      </ul>
     </article>
   );
 }

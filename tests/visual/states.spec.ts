@@ -135,29 +135,16 @@ test("state: health page shows loading text before data arrives", async ({ page 
 });
 
 // ── HomePage: loading skeleton visible while data is in flight ───────────────
+// HomePage now reads exclusively from /home/summary — single source of truth.
 
 test("state: home loading skeleton visible", async ({ page }) => {
-  // Delay every endpoint the home page reads. Slow but bounded — the page
-  // must show skeletons before the data arrives.
-  const ENDPOINTS = [
-    /127\.0\.0\.1:8765\/health$/,
-    /127\.0\.0\.1:8765\/runtime-status$/,
-    /127\.0\.0\.1:8765\/spot$/,
-    /127\.0\.0\.1:8765\/futures$/,
-    /127\.0\.0\.1:8765\/models$/,
-    /127\.0\.0\.1:8765\/telegram$/,
-    /127\.0\.0\.1:8765\/diagnostics$/,
-    /127\.0\.0\.1:8765\/jobs$/,
-  ];
-  for (const pattern of ENDPOINTS) {
-    await page.route(pattern, async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-      await route.continue();
-    });
-  }
+  // Delay /home/summary so the page renders skeletons before data arrives.
+  await page.route(/127\.0\.0\.1:8765\/home\/summary$/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    await route.continue();
+  });
 
   await page.goto(`${BASE}/`);
-  // A skeleton element must render BEFORE the data settles.
   await expect(
     page.locator('[data-ui-role="skeleton"]').first(),
   ).toBeVisible({ timeout: 1_500 });
@@ -166,48 +153,55 @@ test("state: home loading skeleton visible", async ({ page }) => {
 // ── HomePage: CRITICAL state shows the primary-action CTA ────────────────────
 
 test("state: home critical state shows CTA", async ({ page }) => {
-  // Mock /futures so it returns one unprotected position — derived state
-  // must classify the system as CRITICAL and surface the primary CTA.
-  const futuresFixture = {
+  const summaryFixture = {
     generated_at: "2026-01-01T00:00:00Z",
-    source_mode: "fixture",
-    summary: {
-      account_type: "UNIFIED",
-      positions_count: 1,
-      protected_positions_count: 0,
-      attention_positions_count: 0,
-      recovered_positions_count: 0,
-      open_orders_count: 0,
-      recent_fills_count: 0,
-      unrealized_pnl_total: 0,
+    global: {
+      state: "critical",
+      health_score: 30,
+      critical_reason: "1 незащищённая позиция",
+      primary_action: { label: "Открыть диагностику", kind: "open-diagnostics" },
     },
-    positions: [
-      {
-        account_type: "UNIFIED",
-        symbol: "BTCUSDT",
-        side: "Buy",
-        position_idx: 0,
-        margin_mode: "REGULAR_MARGIN",
-        leverage: 5,
-        qty: 0.01,
-        entry_price: 60000,
-        mark_price: 60000,
-        liq_price: 50000,
-        unrealized_pnl: 0,
-        take_profit: null,
-        stop_loss: null,
-        protection_status: "unprotected",
-        source_of_truth: "exchange",
-        recovered_from_exchange: false,
-        strategy_owner: null,
-        updated_at_utc: "2026-01-01T00:00:00Z",
+    trading: {
+      spot: { state: "running", lag_seconds: 1.0 },
+      futures: { state: "running", lag_seconds: 1.0 },
+      today_pnl: { value: 0, currency: "USDT", trend: "flat" },
+      today_pnl_series: null,
+    },
+    risk: {
+      positions_total: 1,
+      by_state: {
+        protected: 0,
+        pending: 0,
+        unprotected: 1,
+        repairing: 0,
+        failed: 0,
       },
-    ],
-    active_orders: [],
-    recent_fills: [],
+      positions: [
+        {
+          id: "BTCUSDT-Buy",
+          symbol: "BTCUSDT",
+          side: "Buy",
+          protection_state: "unprotected",
+        },
+      ],
+    },
+    reconciliation: {
+      state: "healthy",
+      last_run_at: "2026-01-01T00:00:00Z",
+      last_run_age_seconds: 5,
+      next_run_in_seconds: 55,
+      drift_count: 0,
+    },
+    ml: {
+      pipeline_state: "serving",
+      active_model: { version: "v1", accuracy: 0.7, trained_at: "2026-01-01T00:00:00Z" },
+      last_training_run: { scope: "spot", ended_at: "2026-01-01T00:00:00Z", status: "completed" },
+    },
+    connections: { bybit: null, telegram: null, database: "ok" },
+    activity: [],
   };
 
-  await injectMockResponse(page, /127\.0\.0\.1:8765\/futures$/, futuresFixture);
+  await injectMockResponse(page, /127\.0\.0\.1:8765\/home\/summary$/, summaryFixture);
 
   await page.goto(`${BASE}/`);
   await waitForStableUI(page);
@@ -216,7 +210,7 @@ test("state: home critical state shows CTA", async ({ page }) => {
   await expect(hero).toBeVisible({ timeout: 10_000 });
   await expect(hero).toHaveAttribute("data-ui-state", "critical", { timeout: 10_000 });
 
-  const cta = page.locator('[data-ui-role="primary-action"][data-ui-action="open-futures"]');
+  const cta = page.locator('[data-ui-role="primary-action"][data-ui-action="open-diagnostics"]');
   await expect(cta).toBeVisible({ timeout: 10_000 });
   await expect(cta).toHaveAttribute("data-ui-state", "enabled");
 });
@@ -224,30 +218,85 @@ test("state: home critical state shows CTA", async ({ page }) => {
 // ── HomePage: complete backend failure surfaces error hero with retry ────────
 
 test("state: home error — endpoint 500", async ({ page }) => {
-  // Inject a 500 on every endpoint the home page reads. With every query
-  // failing, the hero must switch to the error state and expose a retry CTA.
-  const ENDPOINTS = [
-    /127\.0\.0\.1:8765\/health$/,
-    /127\.0\.0\.1:8765\/runtime-status$/,
-    /127\.0\.0\.1:8765\/spot$/,
-    /127\.0\.0\.1:8765\/futures$/,
-    /127\.0\.0\.1:8765\/models$/,
-    /127\.0\.0\.1:8765\/telegram$/,
-    /127\.0\.0\.1:8765\/diagnostics$/,
-    /127\.0\.0\.1:8765\/jobs$/,
-  ];
-  for (const pattern of ENDPOINTS) {
-    await injectBackendError(page, pattern);
-  }
+  // /home/summary returns 500 → hero must enter error state with retry CTA.
+  await injectBackendError(page, /127\.0\.0\.1:8765\/home\/summary$/);
 
   await page.goto(`${BASE}/`);
   await waitForStableUI(page);
 
   const hero = page.locator('[data-ui-role="hero-status"]');
   await expect(hero).toBeVisible({ timeout: 10_000 });
-  // The error hero is rendered with state "critical" and contains the retry button.
   await expect(hero).toHaveAttribute("data-ui-state", "critical", { timeout: 10_000 });
 
   const retry = page.locator('[data-ui-role="primary-action"][data-ui-action="retry"]');
   await expect(retry).toBeVisible({ timeout: 10_000 });
+});
+
+// ── HomePage: null bybit/telegram render literal "Недоступно" ────────────────
+
+test('state: home — null bybit/telegram render "Недоступно"', async ({ page }) => {
+  // bybit and telegram are deferred in this slice (always null from backend).
+  // The Connections card MUST surface them as the literal text "Недоступно",
+  // never inferred from any other endpoint.
+  const summaryFixture = {
+    generated_at: "2026-01-01T00:00:00Z",
+    global: {
+      state: "healthy",
+      health_score: 100,
+      critical_reason: null,
+      primary_action: null,
+    },
+    trading: {
+      spot: { state: "running", lag_seconds: 0.5 },
+      futures: { state: "running", lag_seconds: 0.5 },
+      today_pnl: { value: 12.34, currency: "USDT", trend: "up" },
+      today_pnl_series: null,
+    },
+    risk: {
+      positions_total: 0,
+      by_state: {
+        protected: 0,
+        pending: 0,
+        unprotected: 0,
+        repairing: 0,
+        failed: 0,
+      },
+      positions: [],
+    },
+    reconciliation: {
+      state: "healthy",
+      last_run_at: "2026-01-01T00:00:00Z",
+      last_run_age_seconds: 5,
+      next_run_in_seconds: 55,
+      drift_count: 0,
+    },
+    ml: {
+      pipeline_state: "idle",
+      active_model: null,
+      last_training_run: null,
+    },
+    connections: { bybit: null, telegram: null, database: "ok" },
+    activity: [],
+  };
+
+  await injectMockResponse(page, /127\.0\.0\.1:8765\/home\/summary$/, summaryFixture);
+
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+
+  const connections = page.locator('[data-ui-role="connections-card"]');
+  await expect(connections).toBeVisible({ timeout: 10_000 });
+
+  // Both Bybit and Telegram rows must render literal "Недоступно".
+  await expect(connections).toContainText("Bybit");
+  await expect(connections).toContainText("Telegram");
+  // Two rows × literal text — count occurrences of "Недоступно" inside the card.
+  const occurrences = await connections.evaluate((el) => {
+    const text = el.textContent ?? "";
+    return (text.match(/Недоступно/g) ?? []).length;
+  });
+  expect(
+    occurrences,
+    'connections card has at least 2 literal "Недоступно" entries (bybit + telegram)',
+  ).toBeGreaterThanOrEqual(2);
 });

@@ -161,6 +161,147 @@ test("live: spot page renders real /spot response", async ({ page, request }) =>
   ).toBeGreaterThan(0);
 });
 
+// ── /home/summary vs real /home/summary (read-only render) ─────────────────
+//
+// The home page is now a pure renderer over /home/summary. Probe the live
+// backend; if the running instance pre-dates the endpoint (returns HTML SPA
+// fallback or 404), skip rather than fail — backend redeploys are not in
+// scope for this frontend cutover.
+
+test("live: home page renders real /home/summary response", async ({ page, request }) => {
+  const apiRes = await request.get(`${BACKEND}/home/summary`, { headers: HEADERS });
+  const contentType = apiRes.headers()["content-type"] ?? "";
+  test.skip(
+    !apiRes.ok() || !contentType.includes("application/json"),
+    `backend /home/summary not available (status=${apiRes.status()}, content-type=${contentType}); the running app-service likely pre-dates the endpoint.`,
+  );
+
+  const apiBody = (await apiRes.json()) as {
+    generated_at?: string;
+    global?: { state?: string; health_score?: number };
+    connections?: { bybit: unknown; telegram: unknown; database?: string };
+  };
+  expect(apiBody, "backend /home/summary must return a JSON object").toBeTruthy();
+  expect(typeof apiBody.global?.state, "global.state is a string").toBe("string");
+
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+
+  const hero = page.locator('[data-ui-role="hero-status"]');
+  await expect(hero).toBeVisible({ timeout: 10_000 });
+  // hero data-ui-state must reflect the live global.state.
+  if (apiBody.global?.state) {
+    await expect(hero).toHaveAttribute(
+      "data-ui-state",
+      apiBody.global.state,
+      { timeout: 10_000 },
+    );
+  }
+});
+
+// ── No fan-out: home page reads ONLY /home/summary ──────────────────────────
+//
+// Hard guarantee that the cutover is real: when /home/summary is mocked,
+// the home page MUST NOT call any of the legacy endpoints it used to fan
+// out to. This is the contract test that catches accidental regressions
+// where someone adds back a useQuery on /futures or /telegram.
+
+test("live: home page calls ONLY /home/summary (no legacy fan-out)", async ({ page }) => {
+  const HEALTHY_FIXTURE = {
+    generated_at: "2026-01-01T00:00:00Z",
+    global: {
+      state: "healthy",
+      health_score: 100,
+      critical_reason: null,
+      primary_action: null,
+    },
+    trading: {
+      spot: { state: "running", lag_seconds: 0.5 },
+      futures: { state: "running", lag_seconds: 0.5 },
+      today_pnl: { value: 0, currency: "USDT", trend: "flat" },
+      today_pnl_series: null,
+    },
+    risk: {
+      positions_total: 0,
+      by_state: {
+        protected: 0,
+        pending: 0,
+        unprotected: 0,
+        repairing: 0,
+        failed: 0,
+      },
+      positions: [],
+    },
+    reconciliation: {
+      state: "healthy",
+      last_run_at: "2026-01-01T00:00:00Z",
+      last_run_age_seconds: 5,
+      next_run_in_seconds: 55,
+      drift_count: 0,
+    },
+    ml: {
+      pipeline_state: "idle",
+      active_model: null,
+      last_training_run: null,
+    },
+    connections: { bybit: null, telegram: null, database: "ok" },
+    activity: [],
+  };
+
+  await page.route(/127\.0\.0\.1:8765\/home\/summary$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(HEALTHY_FIXTURE),
+    });
+  });
+
+  // Endpoints the OLD home page used to fan out to. If any of these get a
+  // request from the home page, the cutover regressed.
+  //
+  // /runtime-status is INTENTIONALLY excluded: DesktopFrame (an AppShell-
+  // level chrome component, not part of the home feature) polls it every
+  // 3s to drive the bot-active indicator on every page. Including it here
+  // would conflate AppShell behaviour with the home-feature contract this
+  // test guards.
+  const FORBIDDEN: RegExp[] = [
+    /127\.0\.0\.1:8765\/futures$/,
+    /127\.0\.0\.1:8765\/spot$/,
+    /127\.0\.0\.1:8765\/models$/,
+    /127\.0\.0\.1:8765\/telegram$/,
+    /127\.0\.0\.1:8765\/diagnostics$/,
+    /127\.0\.0\.1:8765\/jobs$/,
+  ];
+
+  // Record requests BEFORE goto so we don't miss anything fired during
+  // initial render.
+  const seenForbidden: string[] = [];
+  page.on("request", (req) => {
+    const url = req.url();
+    for (const pat of FORBIDDEN) {
+      if (pat.test(url)) {
+        seenForbidden.push(url);
+        return;
+      }
+    }
+  });
+
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+
+  // The hero must render — proves the page actually mounted from the mocked summary.
+  await expect(page.locator('[data-ui-role="hero-status"]')).toBeVisible({
+    timeout: 10_000,
+  });
+  // Wait a small grace window so any stray async fan-out lands before assertions.
+  await page.waitForTimeout(500);
+
+  expect(
+    seenForbidden,
+    `home page must not fan out to legacy endpoints; saw: ${seenForbidden.join(", ")}`,
+  ).toHaveLength(0);
+});
+
 // ── /models vs real /models (read-only render) ──────────────────────────────
 
 test("live: models page renders real /models response", async ({ page, request }) => {

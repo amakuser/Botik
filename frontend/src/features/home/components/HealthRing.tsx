@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "../../../shared/lib/utils";
-import type { GlobalState } from "../hooks/useHomeDerivedState";
+import type { GlobalState } from "../../../shared/contracts";
 
 export interface HealthRingProps {
   score: number;
@@ -11,21 +11,21 @@ export interface HealthRingProps {
 }
 
 const STROKE_COLOR: Record<GlobalState, string> = {
-  HEALTHY: "rgb(var(--token-green))",
-  WARNING: "rgb(var(--token-amber))",
-  CRITICAL: "rgb(var(--token-red))",
+  healthy: "rgb(var(--token-green))",
+  warning: "rgb(var(--token-amber))",
+  critical: "rgb(var(--token-red))",
 };
 
 const TEXT_COLOR: Record<GlobalState, string> = {
-  HEALTHY: "rgb(var(--token-green))",
-  WARNING: "rgb(var(--token-amber))",
-  CRITICAL: "rgb(var(--token-red))",
+  healthy: "rgb(var(--token-green))",
+  warning: "rgb(var(--token-amber))",
+  critical: "rgb(var(--token-red))",
 };
 
 function pickStateForScore(score: number): GlobalState {
-  if (score < 50) return "CRITICAL";
-  if (score < 80) return "WARNING";
-  return "HEALTHY";
+  if (score < 50) return "critical";
+  if (score < 80) return "warning";
+  return "healthy";
 }
 
 export function HealthRing({
@@ -42,18 +42,17 @@ export function HealthRing({
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
   const ratio = clamped / 100;
-  const lowercaseState = ringState.toLowerCase();
 
   return (
     <div
       data-ui-role="health-ring"
-      data-ui-state={lowercaseState}
+      data-ui-state={ringState}
       data-ui-score={clamped}
       role="img"
-      aria-label={ariaLabel ?? `Health score ${clamped}, state ${lowercaseState}`}
+      aria-label={ariaLabel ?? `Health score ${clamped}, state ${ringState}`}
       className={cn(
         "relative inline-flex items-center justify-center",
-        ringState === "CRITICAL"
+        ringState === "critical"
           ? "motion-safe:animate-[pulse_1s_ease-in-out_infinite]"
           : null,
         className,

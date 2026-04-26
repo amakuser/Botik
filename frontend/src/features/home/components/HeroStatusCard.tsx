@@ -1,15 +1,12 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../../shared/lib/utils";
 import { Button } from "../../../shared/ui/primitives/Button";
-import type {
-  GlobalSummary,
-  GlobalState,
-} from "../hooks/useHomeDerivedState";
+import type { GlobalBlock, GlobalState } from "../../../shared/contracts";
 import { HealthRing } from "./HealthRing";
 import { SkeletonBox } from "./SkeletonBox";
 
 export interface HeroStatusCardProps {
-  summary: GlobalSummary;
+  summary: GlobalBlock;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -17,21 +14,21 @@ export interface HeroStatusCardProps {
 }
 
 const TITLE: Record<GlobalState, string> = {
-  HEALTHY: "Система работает штатно",
-  WARNING: "Есть предупреждения",
-  CRITICAL: "Требуется внимание",
+  healthy: "Система работает штатно",
+  warning: "Есть предупреждения",
+  critical: "Требуется внимание",
 };
 
 const SUBTITLE: Record<GlobalState, string> = {
-  HEALTHY: "Подсистемы в норме, защита позиций активна.",
-  WARNING: "Часть подсистем работает с ограничениями.",
-  CRITICAL: "Обнаружены критические условия.",
+  healthy: "Подсистемы в норме, защита позиций активна.",
+  warning: "Часть подсистем работает с ограничениями.",
+  critical: "Обнаружены критические условия.",
 };
 
 const BORDER: Record<GlobalState, string> = {
-  HEALTHY: "border-[rgb(var(--token-green)/0.32)]",
-  WARNING: "border-[rgb(var(--token-amber)/0.36)]",
-  CRITICAL: "border-[rgb(var(--token-red)/0.45)]",
+  healthy: "border-[rgb(var(--token-green)/0.32)]",
+  warning: "border-[rgb(var(--token-amber)/0.36)]",
+  critical: "border-[rgb(var(--token-red)/0.45)]",
 };
 
 export function HeroStatusCard({
@@ -41,8 +38,6 @@ export function HeroStatusCard({
   onRetry,
   onPrimaryAction,
 }: HeroStatusCardProps) {
-  const stateLower = summary.state.toLowerCase();
-
   if (isError) {
     return (
       <section
@@ -111,7 +106,7 @@ export function HeroStatusCard({
       )}
       data-ui-role="hero-status"
       data-ui-scope="home"
-      data-ui-state={stateLower}
+      data-ui-state={summary.state}
       data-testid="home.hero"
     >
       <HealthRing
@@ -146,7 +141,7 @@ export function HeroStatusCard({
         </AnimatePresence>
       </div>
 
-      {summary.state === "CRITICAL" && summary.primary_action ? (
+      {summary.state === "critical" && summary.primary_action ? (
         <Button
           onClick={() => onPrimaryAction(summary.primary_action!.kind)}
           data-testid="home.hero.primary-action"

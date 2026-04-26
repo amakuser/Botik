@@ -2,6 +2,14 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { AppShell } from "../../shared/ui/AppShell";
 import { fadeIn, staggerContainer, staggerItem } from "../../styles/motion";
+import type {
+  GlobalBlock,
+  TradingBlock,
+  RiskBlock,
+  ReconciliationBlock,
+  MLBlock,
+  ConnectionsBlock,
+} from "../../shared/contracts";
 import { ActivityCard } from "./components/ActivityCard";
 import { ConnectionsCard } from "./components/ConnectionsCard";
 import { HeroStatusCard } from "./components/HeroStatusCard";
@@ -10,24 +18,86 @@ import { MLPipelineCard } from "./components/MLPipelineCard";
 import { ProtectionCard } from "./components/ProtectionCard";
 import { ReconciliationCard } from "./components/ReconciliationCard";
 import { TradingCard } from "./components/TradingCard";
-import { useHomeData } from "./hooks/useHomeData";
-import { useHomeDerivedState } from "./hooks/useHomeDerivedState";
+import { useHomeSummary } from "./hooks/useHomeSummary";
+
+const FALLBACK_GLOBAL: GlobalBlock = {
+  state: "healthy",
+  health_score: 0,
+  critical_reason: null,
+  primary_action: null,
+};
+
+const FALLBACK_TRADING: TradingBlock = {
+  spot: { state: "unknown", lag_seconds: null },
+  futures: { state: "unknown", lag_seconds: null },
+  today_pnl: null,
+  today_pnl_series: null,
+};
+
+const FALLBACK_RISK: RiskBlock = {
+  positions_total: 0,
+  by_state: {
+    protected: 0,
+    pending: 0,
+    unprotected: 0,
+    repairing: 0,
+    failed: 0,
+  },
+  positions: [],
+};
+
+const FALLBACK_RECONCILIATION: ReconciliationBlock = {
+  state: "unsupported",
+  last_run_at: null,
+  last_run_age_seconds: null,
+  next_run_in_seconds: null,
+  drift_count: 0,
+};
+
+const FALLBACK_ML: MLBlock = {
+  pipeline_state: "unknown",
+  active_model: null,
+  last_training_run: null,
+};
+
+const FALLBACK_CONNECTIONS: ConnectionsBlock = {
+  bybit: null,
+  telegram: null,
+  database: "unavailable",
+};
 
 export function HomePage() {
   const navigate = useNavigate();
-  const home = useHomeData();
-  const derived = useHomeDerivedState(home.data, home.errors);
+  const { data, isLoading, isError, refetch } = useHomeSummary();
 
-  const handlePrimaryAction = (kind: string) => {
-    if (derived.global.primary_action?.href) {
-      navigate(derived.global.primary_action.href);
-    } else if (kind === "open-futures") navigate("/futures");
-    else if (kind === "open-runtime") navigate("/runtime");
-    else if (kind === "open-diagnostics") navigate("/diagnostics");
+  const handleRetry = (): void => {
+    void refetch();
   };
 
-  const heroIsLoading = home.isLoading && !derived.hasAnyData;
-  const heroIsError = home.isAllError;
+  const handlePrimaryAction = (kind: string): void => {
+    if (kind === "open-diagnostics") navigate("/diagnostics");
+    else if (kind === "pause-trading") navigate("/runtime");
+  };
+
+  const summary = data;
+
+  // Hero is in loading state only on the very first render before data arrives.
+  // Once data is present, polling refetches keep `isLoading` false (React Query).
+  const heroIsLoading = isLoading && summary === undefined;
+  const heroIsError = isError && summary === undefined;
+
+  // When summary is undefined, all per-card skeletons should also be visible.
+  const cardIsLoading = summary === undefined && !isError;
+  const cardIsError = summary === undefined && isError;
+
+  const global = summary?.global ?? FALLBACK_GLOBAL;
+  const trading = summary?.trading ?? FALLBACK_TRADING;
+  const risk = summary?.risk ?? FALLBACK_RISK;
+  const reconciliation = summary?.reconciliation ?? FALLBACK_RECONCILIATION;
+  const ml = summary?.ml ?? FALLBACK_ML;
+  const connections = summary?.connections ?? FALLBACK_CONNECTIONS;
+  const activity = summary?.activity ?? [];
+  const generatedAt = summary?.generated_at ?? null;
 
   return (
     <AppShell>
@@ -39,10 +109,10 @@ export function HomePage() {
         data-testid="home.page"
       >
         <HeroStatusCard
-          summary={derived.global}
+          summary={global}
           isLoading={heroIsLoading}
           isError={heroIsError}
-          onRetry={home.refetch.all}
+          onRetry={handleRetry}
           onPrimaryAction={handlePrimaryAction}
         />
 
@@ -54,83 +124,56 @@ export function HomePage() {
         >
           <motion.div variants={staggerItem}>
             <TradingCard
-              derived={derived}
-              isLoading={
-                (home.data.spot === undefined || home.data.futures === undefined) &&
-                home.errors.spot === null &&
-                home.errors.futures === null
-              }
-              isError={home.errors.spot !== null && home.errors.futures !== null}
-              onRetry={() => {
-                home.refetch.spot();
-                home.refetch.futures();
-                home.refetch.runtime();
-              }}
+              trading={trading}
+              isLoading={cardIsLoading}
+              isError={cardIsError}
+              onRetry={handleRetry}
             />
           </motion.div>
           <motion.div variants={staggerItem}>
             <ProtectionCard
-              derived={derived}
-              isLoading={home.data.futures === undefined && home.errors.futures === null}
-              isError={home.errors.futures !== null}
-              onRetry={home.refetch.futures}
+              risk={risk}
+              isLoading={cardIsLoading}
+              isError={cardIsError}
+              onRetry={handleRetry}
             />
           </motion.div>
           <motion.div variants={staggerItem}>
             <ReconciliationCard
-              derived={derived}
-              generatedAt={home.generatedAt}
-              isLoading={
-                home.data.diagnostics === undefined && home.errors.diagnostics === null
-              }
-              isError={home.errors.diagnostics !== null}
-              onRetry={home.refetch.diagnostics}
+              reconciliation={reconciliation}
+              generatedAt={generatedAt}
+              isLoading={cardIsLoading}
+              isError={cardIsError}
+              onRetry={handleRetry}
             />
           </motion.div>
           <motion.div variants={staggerItem}>
             <MLPipelineCard
-              derived={derived}
-              isLoading={home.data.models === undefined && home.errors.models === null}
-              isError={home.errors.models !== null}
-              onRetry={home.refetch.models}
+              ml={ml}
+              isLoading={cardIsLoading}
+              isError={cardIsError}
+              onRetry={handleRetry}
             />
           </motion.div>
           <motion.div variants={staggerItem}>
             <ConnectionsCard
-              derived={derived}
-              isLoading={
-                home.data.runtime === undefined &&
-                home.data.telegram === undefined &&
-                home.errors.runtime === null &&
-                home.errors.telegram === null
-              }
-              isError={
-                home.errors.runtime !== null &&
-                home.errors.telegram !== null &&
-                home.errors.diagnostics !== null
-              }
-              onRetry={() => {
-                home.refetch.runtime();
-                home.refetch.telegram();
-                home.refetch.diagnostics();
-              }}
+              connections={connections}
+              isLoading={cardIsLoading}
+              isError={cardIsError}
+              onRetry={handleRetry}
             />
           </motion.div>
           <motion.div variants={staggerItem}>
             <ActivityCard
-              jobs={home.data.jobs}
-              isLoading={home.data.jobs === undefined && home.errors.jobs === null}
-              isError={home.errors.jobs !== null}
-              onRetry={home.refetch.jobs}
+              activity={activity}
+              isLoading={cardIsLoading}
+              isError={cardIsError}
+              onRetry={handleRetry}
             />
           </motion.div>
         </motion.div>
 
-        <HomeFooter
-          generatedAt={home.generatedAt}
-          version={home.data.health?.version ?? null}
-          service={home.data.health?.service ?? null}
-        />
+        <HomeFooter generatedAt={generatedAt} />
       </motion.div>
     </AppShell>
   );

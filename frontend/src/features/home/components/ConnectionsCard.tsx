@@ -1,76 +1,69 @@
 import { Button } from "../../../shared/ui/primitives/Button";
 import { cn } from "../../../shared/lib/utils";
 import type {
-  HomeDerivedState,
-  SubsystemState,
-} from "../hooks/useHomeDerivedState";
+  ConnectionsBlock,
+  DbHealthState,
+} from "../../../shared/contracts";
 import { SkeletonBox } from "./SkeletonBox";
 import { StatusDot } from "./StatusDot";
 
 export interface ConnectionsCardProps {
-  derived: HomeDerivedState;
+  connections: ConnectionsBlock;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
 }
 
-const DOT_STATE: Record<SubsystemState, "ok" | "warning" | "critical" | "unknown"> = {
+type DotState = "ok" | "warning" | "critical" | "unknown";
+
+const DB_DOT: Record<DbHealthState, DotState> = {
   ok: "ok",
-  warning: "warning",
-  critical: "critical",
-  unknown: "unknown",
+  degraded: "warning",
+  unavailable: "critical",
 };
 
-const STATE_LABEL: Record<SubsystemState, string> = {
+const DB_LABEL: Record<DbHealthState, string> = {
   ok: "OK",
-  warning: "Внимание",
-  critical: "Сбой",
-  unknown: "—",
+  degraded: "Деградация",
+  unavailable: "Недоступно",
 };
 
 interface RowProps {
   label: string;
-  state: SubsystemState;
-  detail: string | null;
+  state: DotState;
+  text: string;
 }
 
-function Row({ label, state, detail }: RowProps) {
+function Row({ label, state, text }: RowProps) {
   return (
     <li className="flex items-center justify-between text-sm">
       <div className="flex items-center gap-2">
-        <StatusDot state={DOT_STATE[state]} size="sm" />
+        <StatusDot state={state} size="sm" />
         <span className="text-[rgb(var(--token-text-primary))]">{label}</span>
       </div>
       <div className="flex flex-col items-end text-right">
         <span className="text-xs text-[rgb(var(--token-text-secondary))]">
-          {STATE_LABEL[state]}
+          {text}
         </span>
-        {detail ? (
-          <span className="text-[0.7rem] text-[rgb(var(--token-text-muted))]">
-            {detail}
-          </span>
-        ) : null}
       </div>
     </li>
   );
 }
 
-function worstState(states: SubsystemState[]): SubsystemState {
-  if (states.includes("critical")) return "critical";
-  if (states.includes("warning")) return "warning";
-  if (states.includes("unknown") && !states.includes("ok")) return "unknown";
+function overallState(db: DbHealthState): DotState {
+  // bybit and telegram are always null → unknown — they never push the
+  // overall card past the database signal in this slice.
+  if (db === "unavailable") return "critical";
+  if (db === "degraded") return "warning";
   return "ok";
 }
 
 export function ConnectionsCard({
-  derived,
+  connections,
   isLoading,
   isError,
   onRetry,
 }: ConnectionsCardProps) {
-  const c = derived.connections;
-  const overall = worstState([c.bybit, c.telegram, c.db]);
-
   if (isError) {
     return (
       <article
@@ -106,6 +99,8 @@ export function ConnectionsCard({
     );
   }
 
+  const overall = overallState(connections.database);
+
   return (
     <article
       data-ui-role="connections-card"
@@ -122,9 +117,13 @@ export function ConnectionsCard({
         </h3>
       </header>
       <ul className="flex flex-col gap-2">
-        <Row label="Bybit" state={c.bybit} detail={c.bybitDetail} />
-        <Row label="Telegram" state={c.telegram} detail={c.telegramDetail} />
-        <Row label="База данных" state={c.db} detail={c.dbDetail} />
+        <Row label="Bybit" state="unknown" text="Недоступно" />
+        <Row label="Telegram" state="unknown" text="Недоступно" />
+        <Row
+          label="База данных"
+          state={DB_DOT[connections.database]}
+          text={DB_LABEL[connections.database]}
+        />
       </ul>
     </article>
   );

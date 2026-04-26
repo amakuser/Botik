@@ -2,24 +2,17 @@ import { cn } from "../../../shared/lib/utils";
 
 export interface HomeFooterProps {
   generatedAt: string | null;
-  version: string | null;
-  service: string | null;
   className?: string;
 }
 
 function formatGeneratedAt(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "Недоступно";
   const parsed = Date.parse(iso);
-  if (Number.isNaN(parsed)) return "—";
+  if (Number.isNaN(parsed)) return "Недоступно";
   return new Date(parsed).toISOString().slice(0, 19).replace("T", " ") + "Z";
 }
 
-export function HomeFooter({
-  generatedAt,
-  version,
-  service,
-  className,
-}: HomeFooterProps) {
+export function HomeFooter({ generatedAt, className }: HomeFooterProps) {
   return (
     <footer
       data-ui-role="home-footer"
@@ -33,9 +26,7 @@ export function HomeFooter({
       <span data-testid="home.footer.sync" className="tabular-nums">
         Синхронизация: {formatGeneratedAt(generatedAt)}
       </span>
-      <span data-testid="home.footer.version">
-        {service ?? "app-service"} · v{version ?? "—"}
-      </span>
+      <span data-testid="home.footer.version">/home/summary</span>
     </footer>
   );
 }

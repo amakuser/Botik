@@ -16,7 +16,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { waitForStableUI } from "./helpers";
+import { injectMockResponse, waitForStableUI } from "./helpers";
 import {
   ACTION_STATE,
   captureSemanticSnapshot,
@@ -31,6 +31,50 @@ import {
 } from "./semantic.helpers";
 
 const BASE = "http://127.0.0.1:4173";
+
+// Healthy /home/summary fixture used by home semantic tests. Defined once
+// so multiple tests share the canonical shape and stay in lock-step with
+// the backend contract.
+const HEALTHY_HOME_SUMMARY = {
+  generated_at: "2026-01-01T00:00:00Z",
+  global: {
+    state: "healthy",
+    health_score: 100,
+    critical_reason: null,
+    primary_action: null,
+  },
+  trading: {
+    spot: { state: "running", lag_seconds: 0.5 },
+    futures: { state: "running", lag_seconds: 0.5 },
+    today_pnl: { value: 0, currency: "USDT", trend: "flat" },
+    today_pnl_series: null,
+  },
+  risk: {
+    positions_total: 0,
+    by_state: {
+      protected: 0,
+      pending: 0,
+      unprotected: 0,
+      repairing: 0,
+      failed: 0,
+    },
+    positions: [],
+  },
+  reconciliation: {
+    state: "healthy",
+    last_run_at: "2026-01-01T00:00:00Z",
+    last_run_age_seconds: 5,
+    next_run_in_seconds: 55,
+    drift_count: 0,
+  },
+  ml: {
+    pipeline_state: "idle",
+    active_model: null,
+    last_training_run: null,
+  },
+  connections: { bybit: null, telegram: null, database: "ok" },
+  activity: [],
+};
 
 test("semantic: runtime page exposes the data-ui-* contract", async ({ page }) => {
   await page.goto(`${BASE}/runtime`);
@@ -533,6 +577,12 @@ test("semantic: spot page exposes the data-ui-* contract", async ({ page }) => {
 });
 
 test("semantic: home page exposes the data-ui-* contract", async ({ page }) => {
+  await injectMockResponse(
+    page,
+    /127\.0\.0\.1:8765\/home\/summary$/,
+    HEALTHY_HOME_SUMMARY,
+  );
+
   await page.goto(`${BASE}/`);
   await waitForStableUI(page);
   // Wait for hero to render — proves home composed and not blank.
@@ -578,6 +628,12 @@ test("semantic: home page exposes the data-ui-* contract", async ({ page }) => {
 });
 
 test("semantic: hero-status canonical state is GLOBAL_STATE", async ({ page }) => {
+  await injectMockResponse(
+    page,
+    /127\.0\.0\.1:8765\/home\/summary$/,
+    HEALTHY_HOME_SUMMARY,
+  );
+
   await page.goto(`${BASE}/`);
   await waitForStableUI(page);
   await expect(page.locator('[data-ui-role="hero-status"]')).toBeVisible({
