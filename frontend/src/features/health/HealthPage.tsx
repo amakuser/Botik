@@ -12,15 +12,17 @@ function MetricCard({
   sub,
   color,
   testId,
+  uiScope,
 }: {
   label: string;
   value: string;
   sub?: string;
   color?: string;
   testId?: string;
+  uiScope: string;
 }) {
   return (
-    <article className="home-metric-card panel" data-testid={testId}>
+    <article className="home-metric-card panel" data-testid={testId} data-ui-role="metric-card" data-ui-scope={uiScope}>
       <p className="home-metric-card__label">{label}</p>
       <strong className="home-metric-card__value" style={{ color: color ?? "var(--text-primary)" }}>
         {value}
@@ -48,11 +50,13 @@ function PipelineStep({
   title,
   description,
   state,
+  uiScope,
 }: {
   step: number;
   title: string;
   description: string;
   state: PipelineState;
+  uiScope: string;
 }) {
   const colors: Record<PipelineState, string> = {
     running: "#86efac",
@@ -71,7 +75,7 @@ function PipelineStep({
   };
 
   return (
-    <div className="pipeline-step panel">
+    <div className="pipeline-step panel" data-ui-role="pipeline-step" data-ui-scope={uiScope} data-ui-state={state}>
       <div className="pipeline-step__header">
         <span className="pipeline-step__num">{step}</span>
         <span
@@ -139,19 +143,21 @@ export function HealthPage() {
 
   return (
     <AppShell>
-      <motion.div className="app-route home-layout" {...fadeIn}>
-        <PageIntro
-          eyebrow="Обзор"
-          title="Состояние системы"
-          description="Здоровье стека, метрики торговли в реальном времени и статус пайплайна."
-          meta={
-            <>
-              <p data-testid="health.status">Статус: {health.isLoading ? "загрузка" : (health.data?.status ?? "недоступен")}</p>
-              <p data-testid="health.service">Сервис: {health.data?.service ?? "n/a"}</p>
-              <p data-testid="health.version">Версия: {health.data?.version ?? "n/a"}</p>
-            </>
-          }
-        />
+      <motion.div className="app-route home-layout" {...fadeIn} data-ui-role="page" data-ui-scope="health">
+        <div data-ui-role="health-intro">
+          <PageIntro
+            eyebrow="Обзор"
+            title="Состояние системы"
+            description="Здоровье стека, метрики торговли в реальном времени и статус пайплайна."
+            meta={
+              <>
+                <p data-testid="health.status">Статус: {health.isLoading ? "загрузка" : (health.data?.status ?? "недоступен")}</p>
+                <p data-testid="health.service">Сервис: {health.data?.service ?? "n/a"}</p>
+                <p data-testid="health.version">Версия: {health.data?.version ?? "n/a"}</p>
+              </>
+            }
+          />
+        </div>
 
         {/* Metric cards */}
         <motion.div
@@ -167,6 +173,7 @@ export function HealthPage() {
               sub={`Всего: ${fmt(totalPnl, "+")} USDT`}
               color={pnlColor(todayPnl)}
               testId="home.metric.pnl-today"
+              uiScope="pnl-today"
             />
           </motion.div>
           <motion.div variants={staggerItem}>
@@ -175,6 +182,7 @@ export function HealthPage() {
               value={usdtBalance !== undefined ? fmt(usdtBalance) + " USDT" : "—"}
               sub="Спот аккаунт"
               testId="home.metric.balance"
+              uiScope="balance"
             />
           </motion.div>
           <motion.div variants={staggerItem}>
@@ -183,6 +191,7 @@ export function HealthPage() {
               value={String(tradeCount)}
               sub={winRate !== undefined ? `Винрейт: ${fmt(winRate)}%` : undefined}
               testId="home.metric.trades"
+              uiScope="trades"
             />
           </motion.div>
           <motion.div variants={staggerItem}>
@@ -191,12 +200,13 @@ export function HealthPage() {
               value={String(openPositions)}
               sub={`Спот ${spotHoldings} · Фьючерсы ${futuresPosCount}`}
               testId="home.metric.positions"
+              uiScope="positions"
             />
           </motion.div>
         </motion.div>
 
         {/* Pipeline */}
-        <section className="panel">
+        <section className="panel" data-ui-role="pipeline" data-ui-scope="health">
           <SectionHeading
             title="Пайплайн"
             description="Данные → Модели → Торговля — текущий статус каждого этапа."
@@ -207,24 +217,27 @@ export function HealthPage() {
               title="Исторические данные"
               description="OHLCV свечи для обучения и бэктеста."
               state="unknown"
+              uiScope="historical-data"
             />
             <PipelineStep
               step={2}
               title="ML Модели"
               description={`${readyScopes} из 2 скоупов готово (Spot / Futures).`}
               state={modelsState}
+              uiScope="ml-models"
             />
             <PipelineStep
               step={3}
               title="Торговля"
               description={anyRunning ? `${runtimeList.filter((r) => r.state === "running").length} рантайм(ов) активно.` : "Все рантаймы остановлены."}
               state={tradingState}
+              uiScope="trading"
             />
           </div>
         </section>
 
         {/* Bootstrap (collapsed) */}
-        <section className="panel" aria-labelledby="foundation-bootstrap-title">
+        <section className="panel" aria-labelledby="foundation-bootstrap-title" data-ui-role="bootstrap" data-ui-scope="session">
           <SectionHeading
             title="Bootstrap"
             description="Детали сессии сервиса и зарегистрированные маршруты."

@@ -10,9 +10,9 @@
  *   4. mutate one attribute via page.evaluate and assert
  *      compareSemanticSnapshots reports the right change shape
  *
- * The interaction-level checks live in live-backend.spec.ts where the
- * real start/stop transitions happen — this file just protects the
- * helpers themselves from silent regressions.
+ * Interaction-level checks (start/stop transitions) live elsewhere or
+ * are exercised through manual smoke against the real Tauri shell — this
+ * file just protects the helpers themselves from silent regressions.
  */
 
 import { expect, test } from "@playwright/test";
@@ -23,6 +23,7 @@ import {
   compareSemanticSnapshots,
   findRegion,
   JOBS_STATE,
+  MODEL_STATE,
   regionKey,
   RUNTIME_STATE,
   summariseDiff,
@@ -267,4 +268,265 @@ test("semantic: diff detects action_availability flip", async ({ page }) => {
   // Canonical: must have crossed from ENABLED → DISABLED.
   expect(change.before?.canonical_state).toBe(ACTION_STATE.ENABLED);
   expect(change.after?.canonical_state).toBe(ACTION_STATE.DISABLED);
+});
+
+test("semantic: health page exposes the data-ui-* contract", async ({ page }) => {
+  await page.goto(`${BASE}/`);
+  await waitForStableUI(page);
+  // Wait for at least one metric card to render — the page is /
+  await expect(page.getByTestId("home.metric.pnl-today")).toBeVisible({ timeout: 10_000 });
+
+  const snap = await captureSemanticSnapshot(page);
+
+  // 1. Page root with scope=health
+  const pageRoot = findRegion(snap, { role: "page", scope: "health" });
+  expect(pageRoot, "health page root discovered").not.toBeNull();
+
+  // 2. Intro singleton
+  const intro = findRegion(snap, { role: "health-intro" });
+  expect(intro, "health-intro discovered").not.toBeNull();
+
+  // 3. All 4 metric cards by scope (auto-discovered, no selector list).
+  for (const scope of ["pnl-today", "balance", "trades", "positions"] as const) {
+    const card = findRegion(snap, { role: "metric-card", scope });
+    expect(card, `metric-card[${scope}] discovered`).not.toBeNull();
+    // Card-like recommendedCheck: hybrid (vision-ready) or dom.
+    expect(["hybrid", "dom"]).toContain(card!.recommended_check);
+    // Metric cards do not carry state — canonical_state must be null.
+    expect(card!.canonical_state, `metric-card[${scope}] is unmapped (no state)`).toBeNull();
+  }
+
+  // 4. Pipeline container — layout-only, dom-checked.
+  const pipeline = findRegion(snap, { role: "pipeline", scope: "health" });
+  expect(pipeline, "pipeline container discovered").not.toBeNull();
+  expect(pipeline!.recommended_check).toBe("dom");
+
+  // 5. All 3 pipeline steps + canonical state contract:
+  //    "unknown" raw → canonical_state===null (intentional unmapped)
+  //    "running"/"idle" raw → one of RUNTIME_STATE
+  for (const scope of ["historical-data", "ml-models", "trading"] as const) {
+    const step = findRegion(snap, { role: "pipeline-step", scope });
+    expect(step, `pipeline-step[${scope}] discovered`).not.toBeNull();
+    if (step!.state === "unknown") {
+      expect(step!.canonical_state, `unknown raw must yield null canonical`).toBeNull();
+    } else {
+      expect(
+        Object.values(RUNTIME_STATE),
+        `pipeline-step[${scope}] canonical (raw=${step!.state}) is one of RUNTIME_STATE`,
+      ).toContain(step!.canonical_state);
+    }
+    // pipeline-step is card-like.
+    expect(["hybrid", "dom"]).toContain(step!.recommended_check);
+  }
+
+  // 6. Bootstrap layout section.
+  const bootstrap = findRegion(snap, { role: "bootstrap", scope: "session" });
+  expect(bootstrap, "bootstrap section discovered").not.toBeNull();
+  expect(bootstrap!.recommended_check).toBe("dom");
+});
+
+test("semantic: telegram page exposes the data-ui-* contract", async ({ page }) => {
+  await page.goto(`${BASE}/telegram`);
+  await waitForStableUI(page);
+  // Wait until summary cards render — that proves the page settled.
+  await expect(page.getByTestId("telegram.summary.connectivity")).toBeVisible({ timeout: 10_000 });
+
+  const snap = await captureSemanticSnapshot(page);
+
+  // 1. Page root with scope=telegram.
+  const pageRoot = findRegion(snap, { role: "page", scope: "telegram" });
+  expect(pageRoot, "telegram page root discovered").not.toBeNull();
+
+  // 2. Intro singleton.
+  const intro = findRegion(snap, { role: "telegram-intro" });
+  expect(intro, "telegram-intro discovered").not.toBeNull();
+  expect(intro!.recommended_check).toBe("dom");
+
+  // 3. Summary panel + 4 summary cards.
+  const summaryPanel = findRegion(snap, { role: "summary-panel", scope: "telegram" });
+  expect(summaryPanel, "summary panel").not.toBeNull();
+  expect(["hybrid", "dom"]).toContain(summaryPanel!.recommended_check);
+
+  for (const scope of ["connectivity", "allowed-chats", "alerts", "errors"] as const) {
+    const card = findRegion(snap, { role: "summary-card", scope });
+    expect(card, `summary-card[${scope}] discovered`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(card!.recommended_check);
+    // Summary cards carry no state — canonical_state must be null (matches metric-card pattern).
+    expect(card!.canonical_state).toBeNull();
+  }
+
+  // 4. Connectivity panel + 3 signals.
+  const connectivityPanel = findRegion(snap, { role: "connectivity-panel", scope: "telegram" });
+  expect(connectivityPanel, "connectivity-panel").not.toBeNull();
+  expect(["hybrid", "dom"]).toContain(connectivityPanel!.recommended_check);
+
+  for (const scope of ["bot", "token", "chats"] as const) {
+    const signal = findRegion(snap, { role: "connectivity-signal", scope });
+    expect(signal, `connectivity-signal[${scope}] discovered`).not.toBeNull();
+    expect(signal!.recommended_check).toBe("dom");
+  }
+
+  // 5. Connectivity check action — DOM only, canonical ACTION_STATE.
+  const checkAction = findRegion(snap, { role: "connectivity-action", scope: "check", action: "run" });
+  expect(checkAction, "connectivity-action[check]").not.toBeNull();
+  expect(checkAction!.recommended_check).toBe("dom");
+  expect(Object.values(ACTION_STATE)).toContain(checkAction!.canonical_state);
+
+  // 6. History panels — 3 with canonical JOBS_STATE.
+  for (const scope of ["commands", "alerts", "errors"] as const) {
+    const history = findRegion(snap, { role: "history-panel", scope });
+    expect(history, `history-panel[${scope}]`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(history!.recommended_check);
+    expect(Object.values(JOBS_STATE)).toContain(history!.canonical_state);
+  }
+
+  // 7. Initial result callouts MUST be absent — they only render after the check.
+  const resultCallouts = snap.regions.filter(
+    (r) => r.role === "status-callout" && r.scope === "connectivity-result",
+  );
+  expect(resultCallouts.length, "result callouts initially absent").toBe(0);
+});
+
+test("semantic: models page exposes the data-ui-* contract", async ({ page }) => {
+  // Live backend — frontend talks to real /models at 127.0.0.1:8765. No
+  // page.route. Backend returns 2 scopes (spot, futures) with ready=false
+  // and "not available" lifecycle status in dev environment; both scope
+  // cards render from real data.
+  await page.goto(`${BASE}/models`);
+  await waitForStableUI(page);
+  await expect(page.getByTestId("models.summary.total-models")).toBeVisible({ timeout: 10_000 });
+  // Wait for scope cards to render from live data — the scopes array always
+  // returns spot+futures even when registry/training are empty.
+  await expect(page.locator('[data-ui-role="scope-card"][data-ui-scope="spot"]')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-ui-role="scope-card"][data-ui-scope="futures"]')).toBeVisible({ timeout: 10_000 });
+
+  const snap = await captureSemanticSnapshot(page);
+
+  // 1. Page root with scope=models.
+  const pageRoot = findRegion(snap, { role: "page", scope: "models" });
+  expect(pageRoot, "models page root discovered").not.toBeNull();
+
+  // 2. Intro singleton.
+  const intro = findRegion(snap, { role: "models-intro" });
+  expect(intro, "models-intro discovered").not.toBeNull();
+  expect(intro!.recommended_check).toBe("dom");
+
+  // 3. Summary panel + 4 summary cards.
+  const summaryPanel = findRegion(snap, { role: "summary-panel", scope: "models" });
+  expect(summaryPanel, "summary panel models").not.toBeNull();
+
+  for (const scope of ["total-models", "active-declared", "ready-scopes", "recent-runs"] as const) {
+    const card = findRegion(snap, { role: "summary-card", scope });
+    expect(card, `summary-card[${scope}]`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(card!.recommended_check);
+    // Summary cards carry no state — canonical_state must be null (matches metric-card pattern).
+    expect(card!.canonical_state).toBeNull();
+  }
+
+  // 4. Training control card.
+  const trainingControl = findRegion(snap, { role: "training-control", scope: "models" });
+  expect(trainingControl, "training-control card").not.toBeNull();
+  expect(["hybrid", "dom"]).toContain(trainingControl!.recommended_check);
+  // training-control state is raw job lifecycle — canonical_state must be null
+  // (job lifecycle is not yet in any canonical bucket — same honest gap as
+  // jobs-list-item).
+  expect(trainingControl!.canonical_state).toBeNull();
+
+  // 5. 3 info-signals inside training-control.
+  for (const scope of ["scope", "interval", "state"] as const) {
+    const sig = findRegion(snap, { role: "info-signal", scope });
+    expect(sig, `training info-signal[${scope}]`).not.toBeNull();
+    expect(sig!.recommended_check).toBe("dom");
+  }
+
+  // 6. Training start/stop actions — DOM only with canonical ACTION_STATE.
+  const startAction = findRegion(snap, { role: "training-action", scope: "training", action: "start" });
+  const stopAction = findRegion(snap, { role: "training-action", scope: "training", action: "stop" });
+  expect(startAction, "training start action").not.toBeNull();
+  expect(stopAction, "training stop action").not.toBeNull();
+  expect(startAction!.recommended_check).toBe("dom");
+  expect(stopAction!.recommended_check).toBe("dom");
+  expect(Object.values(ACTION_STATE)).toContain(startAction!.canonical_state);
+  expect(Object.values(ACTION_STATE)).toContain(stopAction!.canonical_state);
+
+  // 7. Scope panel + 2 scope cards (spot, futures) with MODEL_STATE canonical.
+  const scopesPanel = findRegion(snap, { role: "summary-panel", scope: "scopes" });
+  expect(scopesPanel, "scopes panel").not.toBeNull();
+
+  for (const scope of ["spot", "futures"] as const) {
+    const scopeCard = findRegion(snap, { role: "scope-card", scope });
+    expect(scopeCard, `scope-card[${scope}]`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(scopeCard!.recommended_check);
+    // scope-card canonical_state ∈ MODEL_STATE (not RUNTIME_STATE — semantically distinct).
+    expect(Object.values(MODEL_STATE)).toContain(scopeCard!.canonical_state);
+
+    // Status badge ГОТОВО/В ОЖИДАНИИ inside scope card — same MODEL_STATE.
+    const readyBadge = findRegion(snap, { role: "status-badge", scope });
+    expect(readyBadge, `status-badge[${scope}] readiness`).not.toBeNull();
+    expect(Object.values(MODEL_STATE)).toContain(readyBadge!.canonical_state);
+
+    // Reason callout — kind=info present.
+    const callout = findRegion(snap, { role: "status-callout", scope, kind: "info" });
+    expect(callout, `status-callout[${scope}, info]`).not.toBeNull();
+  }
+
+  // 8. Surface badges (registry/training) — present, but canonical_state=null
+  //    because raw lifecycle ("not available", "completed", "failed", ...) is
+  //    not in any canonical bucket. This is the honest gap.
+  const registryBadge = findRegion(snap, { role: "status-badge", scope: "spot-registry" });
+  expect(registryBadge, "spot-registry status-badge").not.toBeNull();
+  expect(registryBadge!.canonical_state, "raw lifecycle stays unmapped").toBeNull();
+
+  // 9. 2 history panels — JOBS_STATE empty/populated.
+  for (const scope of ["registry-entries", "training-runs"] as const) {
+    const history = findRegion(snap, { role: "history-panel", scope });
+    expect(history, `history-panel[${scope}]`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(history!.recommended_check);
+    expect(Object.values(JOBS_STATE)).toContain(history!.canonical_state);
+  }
+});
+
+test("semantic: spot page exposes the data-ui-* contract", async ({ page }) => {
+  // Live backend — same pattern as /models test. /spot is read-only;
+  // backend in dev returns empty collections (balances/holdings/etc.) but the
+  // page renders all 4 history panels and 5 summary cards regardless.
+  await page.goto(`${BASE}/spot`);
+  await waitForStableUI(page);
+  await expect(page.getByTestId("spot.summary.balance-assets")).toBeVisible({ timeout: 10_000 });
+
+  const snap = await captureSemanticSnapshot(page);
+
+  // 1. Page root.
+  const pageRoot = findRegion(snap, { role: "page", scope: "spot" });
+  expect(pageRoot, "spot page root").not.toBeNull();
+
+  // 2. Intro singleton.
+  const intro = findRegion(snap, { role: "spot-intro" });
+  expect(intro, "spot-intro").not.toBeNull();
+  expect(intro!.recommended_check).toBe("dom");
+
+  // 3. Summary panel + 5 summary cards.
+  const summaryPanel = findRegion(snap, { role: "summary-panel", scope: "spot" });
+  expect(summaryPanel, "summary panel spot").not.toBeNull();
+
+  for (const scope of ["balance-assets", "holdings", "orders", "fills", "intents"] as const) {
+    const card = findRegion(snap, { role: "summary-card", scope });
+    expect(card, `summary-card[${scope}]`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(card!.recommended_check);
+    // Summary cards carry no state — canonical_state must be null.
+    expect(card!.canonical_state).toBeNull();
+  }
+
+  // 4. 4 history panels — JOBS_STATE empty/populated by row counts.
+  //    In dev backend all collections are empty, so all four should be `empty`.
+  for (const scope of ["balances", "holdings", "active-orders", "recent-fills"] as const) {
+    const history = findRegion(snap, { role: "history-panel", scope });
+    expect(history, `history-panel[${scope}]`).not.toBeNull();
+    expect(["hybrid", "dom"]).toContain(history!.recommended_check);
+    expect(Object.values(JOBS_STATE)).toContain(history!.canonical_state);
+  }
+
+  // 5. No actions — /spot is read-only. Sanity: no *-action role discovered.
+  const anyAction = snap.regions.find((r) => r.role.endsWith("-action"));
+  expect(anyAction, "/spot should have no action regions").toBeUndefined();
 });

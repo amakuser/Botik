@@ -70,27 +70,34 @@ export function ModelsPage() {
 
   return (
     <AppShell>
-      <div className="app-route models-layout">
-        <PageIntro
-          eyebrow="Данные"
-          title="Реестр моделей / Обучение"
-          description="Реестр ML моделей, состояние обучения и последние запуски."
-          meta={
-            <>
-              <p className="status-caption" data-testid="models.source-mode">
-                Режим: {snapshot?.source_mode ?? "загрузка"}
-              </p>
-              <p className="status-caption">Манифест: {summary?.manifest_status ?? "загрузка"}</p>
-              <p className="status-caption">Реестр DB: {summary ? (summary.db_available ? "доступен" : "отсутствует") : "загрузка"}</p>
-              <p className="status-caption">
-                Последний запуск: {summary?.latest_run_scope ?? "загрузка"} / {summary?.latest_run_status ?? "загрузка"}
-              </p>
-            </>
-          }
-        />
+      <div className="app-route models-layout" data-ui-role="page" data-ui-scope="models">
+        <div data-ui-role="models-intro">
+          <PageIntro
+            eyebrow="Данные"
+            title="Реестр моделей / Обучение"
+            description="Реестр ML моделей, состояние обучения и последние запуски."
+            meta={
+              <>
+                <p className="status-caption" data-testid="models.source-mode">
+                  Режим: {snapshot?.source_mode ?? "загрузка"}
+                </p>
+                <p className="status-caption">Манифест: {summary?.manifest_status ?? "загрузка"}</p>
+                <p className="status-caption">Реестр DB: {summary ? (summary.db_available ? "доступен" : "отсутствует") : "загрузка"}</p>
+                <p className="status-caption">
+                  Последний запуск: {summary?.latest_run_scope ?? "загрузка"} / {summary?.latest_run_status ?? "загрузка"}
+                </p>
+              </>
+            }
+          />
+        </div>
 
         {modelsQuery.isError ? (
-          <section className="panel">
+          <section
+            className="panel"
+            data-ui-role="status-callout"
+            data-ui-scope="models"
+            data-ui-kind="error"
+          >
             <h2>Ошибка загрузки моделей</h2>
             <p className="inline-error" data-testid="models.error">
               Не удалось загрузить данные моделей.
@@ -99,7 +106,12 @@ export function ModelsPage() {
         ) : null}
 
         {actionError ? (
-          <section className="panel">
+          <section
+            className="panel"
+            data-ui-role="status-callout"
+            data-ui-scope="training-control"
+            data-ui-kind="error"
+          >
             <h2>Ошибка управления обучением</h2>
             <p className="inline-error" data-testid="models.training-control.error">
               {actionError}
@@ -107,7 +119,11 @@ export function ModelsPage() {
           </section>
         ) : null}
 
-        <section className="panel models-summary-panel">
+        <section
+          className="panel models-summary-panel"
+          data-ui-role="summary-panel"
+          data-ui-scope="models"
+        >
           <SectionHeading
             title="Обзор"
             description="Готовность, состояние реестра и свежесть обучения."
@@ -119,6 +135,7 @@ export function ModelsPage() {
               value={summary?.total_models ?? "..."}
               note="Инвентарь реестра."
               testId="models.summary.total-models"
+              uiScope="total-models"
             />
             <ModelsSummaryCard
               eyebrow="Манифест"
@@ -126,6 +143,7 @@ export function ModelsPage() {
               value={summary?.active_declared_count ?? "..."}
               note={`Манифест: ${summary?.manifest_status ?? "загрузка"}`}
               testId="models.summary.active-declared"
+              uiScope="active-declared"
             />
             <ModelsSummaryCard
               eyebrow="Готовность"
@@ -133,6 +151,7 @@ export function ModelsPage() {
               value={summary?.ready_scopes ?? "..."}
               note="Снепшот готовности Spot + Futures."
               testId="models.summary.ready-scopes"
+              uiScope="ready-scopes"
             />
             <ModelsSummaryCard
               eyebrow="Свежесть"
@@ -140,6 +159,7 @@ export function ModelsPage() {
               value={summary?.recent_training_runs_count ?? "..."}
               note={`Последний: ${summary?.latest_run_scope ?? "загрузка"} / ${summary?.latest_run_status ?? "загрузка"}`}
               testId="models.summary.recent-runs"
+              uiScope="recent-runs"
             />
           </div>
         </section>
@@ -152,7 +172,11 @@ export function ModelsPage() {
           onStop={() => void handleStopTraining()}
         />
 
-        <section className="panel models-scope-panel">
+        <section
+          className="panel models-scope-panel"
+          data-ui-role="summary-panel"
+          data-ui-scope="scopes"
+        >
           <SectionHeading
             title="Состояние моделей"
             description="Готовность объявленных моделей, последний сигнал реестра и обучения по каждому скоупу."
@@ -164,12 +188,22 @@ export function ModelsPage() {
           </div>
         </section>
 
-        <section className="panel models-history-panel">
+        <section
+          className="panel models-history-panel"
+          data-ui-role="history-panel"
+          data-ui-scope="registry-entries"
+          data-ui-state={(snapshot?.registry_entries?.length ?? 0) > 0 ? "populated" : "empty"}
+        >
           <SectionHeading title="Записи реестра" description={truncatedLabel(truncated?.registry_entries ?? false)} />
           <ModelsRegistryTable entries={snapshot?.registry_entries ?? []} />
         </section>
 
-        <section className="panel models-history-panel">
+        <section
+          className="panel models-history-panel"
+          data-ui-role="history-panel"
+          data-ui-scope="training-runs"
+          data-ui-state={(snapshot?.recent_training_runs?.length ?? 0) > 0 ? "populated" : "empty"}
+        >
           <SectionHeading title="Последние запуски обучения" description={truncatedLabel(truncated?.recent_training_runs ?? false)} />
           <TrainingRunsTable runs={snapshot?.recent_training_runs ?? []} />
         </section>

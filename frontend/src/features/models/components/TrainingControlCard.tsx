@@ -36,7 +36,13 @@ export function TrainingControlCard({
   onStop,
 }: TrainingControlCardProps) {
   return (
-    <section className="panel models-training-card" data-testid="models.training-control">
+    <section
+      className="panel models-training-card"
+      data-testid="models.training-control"
+      data-ui-role="training-control"
+      data-ui-scope="models"
+      data-ui-state={formatState(job)}
+    >
       <div className="surface-panel__header models-training-card__header">
         <div className="models-training-card__title-block">
           <p className="models-training-card__eyebrow">Управление</p>
@@ -45,21 +51,28 @@ export function TrainingControlCard({
             Запуск обучения фьючерсных моделей через Job Manager. Логи доступны в Мониторинге задач.
           </p>
         </div>
-        <span className={stateClass(job)}>{formatState(job)}</span>
+        <span
+          className={stateClass(job)}
+          data-ui-role="status-badge"
+          data-ui-scope="training"
+          data-ui-state={formatState(job)}
+        >
+          {formatState(job)}
+        </span>
       </div>
 
       <div className="models-training-card__signals">
-        <div className="runtime-card__signal">
+        <div className="runtime-card__signal" data-ui-role="info-signal" data-ui-scope="scope">
           <span className="runtime-card__signal-label">Скоуп</span>
           <strong data-testid="models.training-control.scope">futures</strong>
           <span className="panel-muted">Единственный путь обучения в текущей фазе.</span>
         </div>
-        <div className="runtime-card__signal">
+        <div className="runtime-card__signal" data-ui-role="info-signal" data-ui-scope="interval">
           <span className="runtime-card__signal-label">Интервал</span>
           <strong data-testid="models.training-control.interval">1m</strong>
           <span className="panel-muted">Фиксированный интервал для детерминированного контроля.</span>
         </div>
-        <div className="runtime-card__signal">
+        <div className="runtime-card__signal" data-ui-role="info-signal" data-ui-scope="state">
           <span className="runtime-card__signal-label">Текущая задача</span>
           <strong data-testid="models.training-control.state">{formatState(job)}</strong>
           <span className="panel-muted">Обновляется через Job Manager.</span>
@@ -74,10 +87,28 @@ export function TrainingControlCard({
       </dl>
 
       <div className="toolbar-actions">
-        <button type="button" className="button-primary" onClick={onStart} disabled={startDisabled}>
+        <button
+          type="button"
+          className="button-primary"
+          onClick={onStart}
+          disabled={startDisabled}
+          data-ui-role="training-action"
+          data-ui-scope="training"
+          data-ui-action="start"
+          data-ui-state={startDisabled ? "disabled" : "enabled"}
+        >
           Запустить обучение
         </button>
-        <button type="button" className="button-secondary" onClick={onStop} disabled={stopDisabled}>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={onStop}
+          disabled={stopDisabled}
+          data-ui-role="training-action"
+          data-ui-scope="training"
+          data-ui-action="stop"
+          data-ui-state={stopDisabled ? "disabled" : "enabled"}
+        >
           Остановить обучение
         </button>
       </div>

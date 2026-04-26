@@ -5,6 +5,7 @@ interface TelegramSummaryCardProps {
   note: string;
   tone?: "neutral" | "positive" | "negative";
   testId: string;
+  uiScope: string;
 }
 
 function valueClass(tone: TelegramSummaryCardProps["tone"]) {
@@ -17,9 +18,9 @@ function valueClass(tone: TelegramSummaryCardProps["tone"]) {
   return "telegram-summary-card__value";
 }
 
-export function TelegramSummaryCard({ eyebrow, label, value, note, tone = "neutral", testId }: TelegramSummaryCardProps) {
+export function TelegramSummaryCard({ eyebrow, label, value, note, tone = "neutral", testId, uiScope }: TelegramSummaryCardProps) {
   return (
-    <section className="panel telegram-summary-card">
+    <section className="panel telegram-summary-card" data-ui-role="summary-card" data-ui-scope={uiScope}>
       <p className="telegram-summary-card__eyebrow">{eyebrow}</p>
       <p className="telegram-summary-card__label">{label}</p>
       <p className={valueClass(tone)} data-testid={testId}>

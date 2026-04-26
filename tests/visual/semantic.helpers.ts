@@ -56,12 +56,31 @@ export const ACTION_STATE = {
 export type ActionState = typeof ACTION_STATE[keyof typeof ACTION_STATE];
 
 /**
+ * Model readiness vocabulary, decoupled from RUNTIME_STATE because the
+ * semantics differ: a runtime is "ACTIVE" when its process is running;
+ * a model is "READY" when its checkpoint is usable. Mapping ready→ACTIVE
+ * would conflate process activity with artefact readiness — kept separate.
+ *
+ * Initial buckets:
+ *   READY — model checkpoint is usable (scope.ready === true)
+ *   IDLE  — model is not ready (scope.ready === false; awaiting training/registration)
+ *
+ * If error/missing/unknown surfaces become first-class on the page later,
+ * extend this enum — do NOT recycle RUNTIME_STATE.DEGRADED for them.
+ */
+export const MODEL_STATE = {
+  READY: "READY",
+  IDLE: "IDLE",
+} as const;
+export type ModelState = typeof MODEL_STATE[keyof typeof MODEL_STATE];
+
+/**
  * Union of every canonical bucket that the snapshot can carry. `null`
  * means the (role, raw) pair has no canonical mapping yet — the test
  * may still use the raw string for that region but should not pretend
  * it is canonical.
  */
-export type CanonicalState = RuntimeState | JobsState | ActionState;
+export type CanonicalState = RuntimeState | JobsState | ActionState | ModelState;
 
 /**
  * Static mapping table — single source of truth.
@@ -90,6 +109,8 @@ const CANONICAL_MAP: Record<string, Record<string, CanonicalState>> = {
     offline: RUNTIME_STATE.INACTIVE,
     running: RUNTIME_STATE.ACTIVE,
     degraded: RUNTIME_STATE.DEGRADED,
+    ready: MODEL_STATE.READY,    // models scope card readiness badge
+    idle: MODEL_STATE.IDLE,
   },
 
   // Jobs history panel — two-bucket vocabulary.
@@ -111,6 +132,38 @@ const CANONICAL_MAP: Record<string, Record<string, CanonicalState>> = {
     disabled: ACTION_STATE.DISABLED,
   },
   "job-action": {
+    enabled: ACTION_STATE.ENABLED,
+    disabled: ACTION_STATE.DISABLED,
+  },
+
+  // Health page pipeline steps — two active lifecycle buckets.
+  // "unknown" intentionally NOT mapped — surfaces as canonical_state===null.
+  "pipeline-step": {
+    running: RUNTIME_STATE.ACTIVE,
+    idle: RUNTIME_STATE.INACTIVE,
+  },
+
+  // Telegram connectivity check action — same enabled/disabled vocabulary as runtime/job actions.
+  "connectivity-action": {
+    enabled: ACTION_STATE.ENABLED,
+    disabled: ACTION_STATE.DISABLED,
+  },
+
+  // Telegram history panels (commands/alerts/errors) — empty/populated, same vocabulary as
+  // jobs-history. JOBS_STATE is reused as a generic empty/non-empty bucket — name predates
+  // its current cross-feature role.
+  "history-panel": {
+    empty: JOBS_STATE.EMPTY,
+    populated: JOBS_STATE.NON_EMPTY,
+  },
+
+  // Models scope card readiness — fresh enum (semantically distinct from RUNTIME_STATE).
+  "scope-card": {
+    ready: MODEL_STATE.READY,
+    idle: MODEL_STATE.IDLE,
+  },
+  // Training start/stop actions — same enabled/disabled vocabulary as other *-action roles.
+  "training-action": {
     enabled: ACTION_STATE.ENABLED,
     disabled: ACTION_STATE.DISABLED,
   },
@@ -220,6 +273,14 @@ export function recommendedCheck(role: string, bbox: RegionBBox): CheckMethod {
     case "job-preset":
     case "job-status":
     case "jobs-history":
+    case "metric-card":
+    case "pipeline-step":
+    case "summary-card":
+    case "summary-panel":
+    case "connectivity-panel":
+    case "history-panel":
+    case "training-control":
+    case "scope-card":
       return visionReady ? "hybrid" : "dom";
 
     // Small chrome-rich regions: vision is the natural reader.
@@ -230,6 +291,8 @@ export function recommendedCheck(role: string, bbox: RegionBBox): CheckMethod {
     // Actionable elements: button enabled/disabled is a DOM fact, not a vision one.
     case "runtime-action":
     case "job-action":
+    case "connectivity-action":
+    case "training-action":
       return "dom";
 
     // Layout containers: presence + structure, not pixels.
@@ -239,6 +302,14 @@ export function recommendedCheck(role: string, bbox: RegionBBox): CheckMethod {
     case "jobs-list-item":
     case "job-toolbar":
     case "page":
+    case "health-intro":
+    case "pipeline":
+    case "bootstrap":
+    case "telegram-intro":
+    case "connectivity-signal":
+    case "models-intro":
+    case "info-signal":
+    case "spot-intro":
       return "dom";
 
     // Empty-state markers: the fact that they exist is the signal.
