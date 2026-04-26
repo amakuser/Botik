@@ -27,6 +27,7 @@ from botik_app_service.api.routes_analytics import router as analytics_router
 from botik_app_service.api.routes_admin import router as admin_router
 from botik_app_service.api.routes_bootstrap import router as bootstrap_router
 from botik_app_service.api.routes_db_health import router as db_health_router
+from botik_app_service.api.routes_home_summary import router as home_summary_router
 from botik_app_service.api.routes_diagnostics import router as diagnostics_router
 from botik_app_service.api.routes_events import router as events_router
 from botik_app_service.api.routes_futures import router as futures_router
@@ -49,6 +50,7 @@ from botik_app_service.futures_read.service import FuturesReadService
 from botik_app_service.backtest_run.service import BacktestRunService
 from botik_app_service.market_read.service import MarketReadService
 from botik_app_service.orderbook_read.service import OrderbookReadService
+from botik_app_service.home.manager import build_home_summary_service
 from botik_app_service.reconciliation_read.manager import ReconciliationReadService
 from botik_app_service.settings_read.service import SettingsReadService
 from botik_app_service.infra.config import Settings
@@ -162,6 +164,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db_health_service = DbHealthService(
             repo_root=_REPO_ROOT,
         )
+        home_summary_service = build_home_summary_service(
+            runtime_status_service=runtime_status_service,
+            futures_read_service=futures_read_service,
+            models_read_service=models_read_service,
+            reconciliation_read_service=reconciliation_read_service,
+            db_health_service=db_health_service,
+            job_manager=manager,
+        )
         await logs_manager.start(publisher)
 
         app.state.settings = resolved_settings
@@ -182,6 +192,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.backtest_run_service = backtest_run_service
         app.state.reconciliation_read_service = reconciliation_read_service
         app.state.db_health_service = db_health_service
+        app.state.home_summary_service = home_summary_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -237,6 +248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(backtest_router)
     app.include_router(reconciliation_router)
     app.include_router(db_health_router)
+    app.include_router(home_summary_router)
     app.include_router(admin_router)
 
     # Serve compiled frontend (production/exe mode)
