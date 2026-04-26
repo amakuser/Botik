@@ -5,6 +5,436 @@
 
 ---
 
+## 2026-04-26 — M1 Cleanup: legacy Stack A + PyInstaller + SPA manifests retired (Windows/Tauri-first)
+
+**Задача:** перевести репозиторий на single Windows/Tauri product path. Убрать legacy stacks из активного дерева во внешний backup.
+
+**User decisions:**
+1. PyInstaller path NOT active product path — retire.
+2. Stack A (root main.py + /core + /strategies) legacy — retire.
+3. Linux/server headless mode NOT current priority — deprioritize docs (не удалять src/botik runtime).
+
+**Strategy:** PHASE 1 (external backup) → PHASE 2 (verify imports) → PHASE 3 (cleanup) → PHASE 4 (verification).
+
+**Phase 1 — External backup:** `C:/ai/aiBotik_legacy_backup_2026-04-26/` (24 файла, 17 MB) с MOVED_FILES.md (per-file evidence + rollback instructions).
+
+**Phase 2 — Verification:**
+- `/core` imports — internal only (между core файлами + из `/strategies`).
+- `/strategies` — внешний reference только в `tests/test_strategy.py`.
+- root `main.py` — нет live references (упоминания в docs/tests касаются `src/botik/main.py`).
+- `botik.spec` + `build-exe.ps1` — связаны с `package.json:12 "build:exe"`, `scripts/build_botik.bat:13`.
+- `dashboard_release_manifest.yaml` + `dashboard_workspace_manifest.yaml` — НЕ читаются app-service / frontend / src/botik (только в README.md text).
+
+**Phase 3 — Cleanup (executed):**
+
+`git rm -f` (19 tracked files):
+- root: `main.py`, `botik.spec`, `botik.exe`, `botik_desktop.exe`, `dashboard_release_manifest.yaml`, `dashboard_workspace_manifest.yaml`
+- `core/` (7 files): `__init__.py`, `bybit_client.py`, `executor.py`, `executor_async.py`, `executor_sync.py`, `order_manager.py`, `registry.py`
+- `strategies/` (3 files): `__init__.py`, `base.py`, `ma_strategy.py`
+- `scripts/`: `build-exe.ps1`, `build_botik.bat`
+- `tests/test_strategy.py`
+
+Untracked: removed root `NULL` (0-byte debug).
+
+Updates:
+- `package.json` — removed `"build:exe"` script entry.
+- `progress.md` — Tauri-first stack section, primary launch = `run-primary-desktop.ps1`, headless как dev sidecar.
+- `README.md` — Windows-first Tauri desktop workstation формулировка, headless paths помечены как advanced/not primary, dashboard manifest sections удалены/сокращены.
+- `docs/migration/legacy-retirement.md` — добавлена секция "M1 Cleanup — 2026-04-26" с per-category breakdown.
+- `.gitignore` — добавлены `botik_desktop.exe`, `*.spec`.
+- `WORKPLAN.md` Decision Log — запись 2026-04-26 architecture.
+
+**Backup integrity:**
+- root_files: 3 (main.py, botik.spec, NULL)
+- core: 7
+- strategies: 3 + __pycache__
+- scripts: 2 (build-exe.ps1, build_botik.bat)
+- tests: 1 (test_strategy.py)
+- manifests: 2
+- exes: 2
+
+**Phase 4 — Verification:** см. следующую секцию (frontend tsc + pytest subset + smoke launches).
+
+**Single Source of Truth для запуска Botik (post-cleanup):**
+- Dev: `pwsh ./scripts/run-primary-desktop.ps1` (Tauri shell + sidecar app-service)
+- Backend (sidecar или dev-only): `python -m src.botik.main --config config.yaml`
+- Frontend (browser preview): `cd frontend && pnpm dev`
+- Packaging: `corepack pnpm --dir ./apps/desktop build` (Tauri)
+
+**Файлы изменены/удалены:** 19 git rm + 5 docs/configs updated + 1 .gitignore + 1 backup MOVED_FILES.md (внешне).
+
+---
+
+## 2026-04-25 — Spot semantic contract (6-я страница, FBEP master mode applied)
+
+**Задача:** расширить data-ui-* контракт на /spot с применением Full Behavior Engineering Protocol (PRE-FLIGHT entity/distribution/metric predictions + POST-FLIGHT 6-step BRP). Первая задача под FBEP master mode.
+
+**PRE-FLIGHT:**
+- Создан pre-flight baseline через temporary probe (`spot-baseline-probe.spec.ts`, удалён после): `semantic=0 vision=16 coverage=0.00`.
+- Entity predictions: 9 vision regions transition vision_only→covered; 6 stay vision_only.
+- Distribution prediction: forbidden 3→1 collapse predicted as known matchScore tie-breaking limit.
+- Metric RANGE: coverage `[0.50, 0.60]`; semantic `0→12 exact`; vision `[14, 18]`; uncertainty: gemma3:4b run-on-run variance.
+
+**Изменено:**
+- `frontend/src/features/spot/SpotPage.tsx` — 12 элементов data-ui-*.
+- `frontend/src/features/spot/components/SpotSummaryCard.tsx` — +`uiScope: string`.
+- `tests/visual/semantic.helpers.ts` — layout branch += `spot-intro` (1 line). 0 новых enums.
+- `tests/visual/semantic.spec.ts` +1 тест + read-only invariant assert.
+- `tests/vision/agent_audit.spec.ts` +1 scenario → `agent-audit-spot.json`.
+
+**POST-FLIGHT BRP:**
+- behavior: CORRECT
+- tests: ALIGNED
+- contract: SUFFICIENT (1 new generic role, 0 new enums, JOBS_STATE reused)
+- distribution: COLLAPSED (forbidden zone hit, carry-over matchScore limit)
+- intent_quality: STRICT
+
+**Real measurement /spot:** semantic=0→12 exact, vision=15, covered=9, suggestions=0, coverage=0.00→0.60.
+
+**Cross-page baselines:** /telegram=0.67, /models=0.65, /spot=0.60. Все три collapsed одинаково.
+
+**Verification 2026-04-25:** tsc clean, 41/41 unit ✅, semantic.spec /spot 1/1 ✅, agent_audit 4/4 ✅. /telegram 0.67 + /models 0.65 preserved.
+
+**Что НЕ изменено:** data-testid, CSS/BEM, других page contracts, public signatures, canonical state layer.
+
+**Что осталось:** 8 страниц без data-ui-* (/futures, /analytics, /diagnostics, /logs, /market, /orderbook, /backtest, /settings). Distribution collapse — escalation на bbox-proximity tie-breaking fix.
+
+---
+
+## 2026-04-25 — metric → summary-card mapping fix (gap reduction)
+
+**Задача:** закрыть honest gap из ModelsAudit-DD — vision label=metric не связывался с semantic role=summary-card на /models и /telegram.
+
+**Изменено:**
+- tests/visual/semantic_gap.helpers.ts — `VISION_LABEL_TO_ROLE_KEYWORDS["metric"]` += "summary-card" (одна строка). Финал: `["metric-card", "summary-card", "metric"]`.
+- tests/visual/semantic-gap.spec.ts — existing test переименован под specificity-by-length rule, ассерт обновлён на summary-card win (length 12 > 11), +1 новый тест direct gap fix.
+
+**Verification 2026-04-25:** tsc clean, 9/9 unit ✅, 3/3 agent_audit ✅.
+
+**Real ДО vs ПОСЛЕ:**
+- /models: covered 8→11, vision_only 9→6, suggestions 3→0, coverage 0.47→0.65 (+0.18).
+- /telegram bonus: covered 7→8, vision_only 5→4, suggestions 2→1, coverage 0.58→0.67 (+0.09).
+- /runtime: stable, no regressions.
+
+**Tie-breaking rule (deterministic + объяснён в test comment):** specificity-by-length — `summary-card` (12) > `metric-card` (11) на equal page. Acceptable: summary-card и metric-card взаимозаменяемы как metric containers. Migration path к positional tiebreak documented (metric-card already first in array).
+
+**Что НЕ изменено:** data-ui-*, UI, semantic contract, canonical states, public signatures.
+
+---
+
+## 2026-04-25 — Models agent_audit scenario (first live-backend agent_audit + first non-empty semantic baseline)
+
+**Задача:** добавить lightweight agent_audit сценарий для `/models` чтобы получить gap metrics на странице с уже задеплоенным data-ui-* контрактом.
+
+**Изменено:**
+- `tests/vision/agent_audit.spec.ts` +1 сценарий `agent: models page — vision discovery + semantic gap report` (~95 строк, после telegram сценария). Live backend (no setupPageMocks) — frontend talks to real `127.0.0.1:8765/models` без `page.route`. JSON артефакт пишется в отдельный файл `.artifacts/local/latest/vision/agent-audit-models.json` (runtime/telegram отчёты нетронуты). `test.setTimeout(90_000)`, `clearRegionCache()` в начале. Sanity asserts: `vision.regions ≥ 1` AND `semantic_regions_count ≥ 1` (НЕ assert ≥1 на suggestions — на /models контракт уже на месте).
+
+**Verification 2026-04-25:**
+- frontend tsc clean.
+- **agent_audit 3/3 ✅** (runtime + telegram + новый models) за 58.4s суммарно.
+- Runtime preserved (no regressions).
+- Telegram preserved: `coverage_ratio=0.58`.
+
+**/models gap report (FIRST measurement на странице с уже существующим контрактом):**
+- `semantic=17 vision=17 covered=8 vision_only=9 suggestions=3 coverage=0.47`
+- Vision findings breakdown: 4× card, 2× table, 2× status_badge, 1× button covered (8 матчей через fuzzy keyword mapping); 3× heading + 4× nav vision_only by design (keywords=[]); 3× metric vision_only — **honest gap** (см. ниже).
+- Honest gap: vision label `metric` не свяжется с semantic role `summary-card` через `VISION_LABEL_TO_ROLE_KEYWORDS` — для `metric` keywords `["metric-card","metric"]` не содержат `"summary-card"`. Реально на /models 3 metric region УЖЕ покрыты `summary-card` ролью на странице, fuzzy mapping просто не связал их. User explicit constraint "не менять semantic helpers если не требуется" — отсрочено. Fix дал бы +3 covered → coverage ≈ 0.65 (+0.18 absolute).
+- Suggestions 3 — все одинаковые `metric → metric-card` без scope (description="" в structured mode).
+
+**Что НЕ изменено:** /models UI, data-ui-* контракт, semantic helpers (`semantic_gap.helpers.ts`/`semantic.helpers.ts`/`vision_discover.helpers.ts`), public signatures.
+
+**Прецедент:** первый agent_audit сценарий с **non-empty semantic baseline до vision discovery** (telegram имел semantic=0 до контракта; runtime — synthetic mutation, semantic before/after одинаковый). /models — первый где semantic уже здесь и vision сравнивается с реальным существующим контрактом. **First cross-page gap baseline** для будущих pages: /telegram 0.58, /models 0.47 — differential объясним известным mapping gap.
+
+---
+
+## 2026-04-25 — Models semantic contract (5-я страница покрыта data-ui-*)
+
+**Задача:** перевести vision discovery suggestions для `/models` в стабильный generic semantic contract (5-я страница в проекте). Без page-specific хаков. Допустимо ввести один новый canonical enum, если семантика реально различная.
+
+**Изменено (компонент по компоненту):**
+- `frontend/src/features/models/ModelsPage.tsx` — корневой `motion.div` data-ui-role=page scope=models; обёртка `<div data-ui-role="models-intro">` вокруг shared PageIntro; loading error → `status-callout` (scope=models, kind=error); training action error → `status-callout` (scope=training-control, kind=error); summary panel → `summary-panel` (scope=models); `<TrainingControlCard>` секция → `training-control` (scope=models) + `status-badge` (scope=training, raw job state) + 3×`info-signal` (scope=scope/interval/state) + 2×`training-action` (scope=training, action=start/stop, state=enabled/disabled); scopes section → `summary-panel` (scope=scopes); `<ModelScopeStatusCard>` секция → `scope-card` (scope=spot/futures, state=ready/idle); внутри scope-card: readiness chip → `status-badge` (scope=spot/futures, state=ready/idle); 2×`info-signal` (scope=active-model/latest-training); 2×surface `status-badge` (scope=`<scope>-registry`/`<scope>-training`, state=raw lifecycle); Reason callout → `status-callout` (kind=info); 2×`history-panel` (scope=registry-entries/training-runs).
+- `frontend/src/features/models/ModelsSummaryCard.tsx` — добавлен required prop `uiScope: string`, корневой `<article>` получил `data-ui-role="summary-card" data-ui-scope={uiScope}`.
+- `tests/visual/semantic.helpers.ts` — новый exported `MODEL_STATE = { READY: "ready", IDLE: "idle" }` enum; `CanonicalState` union расширен `| ModelState`. `recommendedCheck` switch расширен: card-like += `training-control`/`scope-card` (visionReady ? hybrid : dom); layout += `models-intro`/`info-signal` (всегда dom); action += `training-action` (всегда dom). `CANONICAL_MAP` +`scope-card`→MODEL_STATE, +`training-action`→ACTION_STATE; existing `status-badge` mapping union'd с `{ready→READY, idle→IDLE}` (vocabularies disjoint с RUNTIME_STATE — никаких пересечений). `training-control` НЕ маpится — job lifecycle raw (canonical=null), аналог `jobs-list-item`.
+- `tests/visual/auto_test_gen.ts` — `canonicalEnumName` дополнен веткой `MODEL_STATE` + импорт.
+- `tests/visual/semantic.spec.ts` — новый тест `semantic: models page exposes the data-ui-* contract` (строка 390): auto-discovers 22 элемента, проверяет recommended_check, MODEL_STATE для scope-card + readiness status-badge, ACTION_STATE для training-action, JOBS_STATE для history-panel, raw status-badge на surface badges (canonical_state=null — honest gap). **Live backend без `page.route`** — frontend talks to real `/models` at 127.0.0.1:8765, backend в dev-mode отдаёт 2 scopes с `ready: false`, summary cards с реальными числами, live test 2.8s, read-only.
+
+**Verification 2026-04-25:**
+- frontend tsc: clean.
+- **34/34 unit specs ✅** (vision_diff×11, vision_interpret×8, semantic-gap×8, auto-test-gen×3 и др.; было 31 до models).
+- **semantic + interaction: 12/12 ✅** (8 semantic — было 7, +1 новый models test; 4 interaction).
+- **agent_audit: 2/2 ✅** (telegram coverage_ratio=0.58 preserved, runtime stable).
+- Никаких регрессий на /runtime, /jobs, /health, /telegram.
+
+**Live `/models` validation:** впервые semantic тест на странице с реальным backend без `page.route`. Backend в dev-mode отдаёт `source_mode: "compatibility"`, scopes spot/futures с `ready: false` и `latest_*_status: "not available"`. Achievable стабильно за 2.8s.
+
+**Что НЕ изменено (контракт сохранён):** existing data-ui-* контракт на /runtime/jobs/health/telegram нетронут. Public signatures `recommendedCheck`/`compareSemanticSnapshots`/`toCanonicalState` без изменений (только расширения CANONICAL_MAP и enum union). `data-testid`, CSS-классы, motion-обёртки, AppShell/PageIntro/SectionHeading НЕ тронуты. ML/trading логика бэкенда не тронута. Никаких новых LLM-вызовов. Никаких feature-specific хаков (`recommendedCheck` switch не содержит `if scope === "models"`).
+
+**Honest gaps:**
+- `training-control` raw job state без canonical (job lifecycle: queued/starting/running/stopping/completed/failed/cancelled/idle) — future `JOB_LIFECYCLE_STATE` enum как backlog.
+- `<scope>-registry`/`<scope>-training` surface badges с raw lifecycle ("not available"/"completed"/"failed"/"stale"/"error"/"running"/"candidate"/"online"/...) — vocabulary шире любого enum'а; future `MODEL_LIFECYCLE_STATE`.
+- 9 страниц без `data-ui-*` (было 10): `/analytics`, `/diagnostics`, `/logs`, `/market`, `/orderbook`, `/backtest`, `/settings`, `/spot`, `/futures`.
+- Live test — только read-only `/models` GET; нет live training start/stop scenario.
+
+---
+
+## 2026-04-25 — Type-based label normalisation (stability fix)
+
+**Задача:** gemma3:4b на synthetic mutation runtime page называла одни и те же regions то panel, то card между прогонами → buildVisionDiff видел 5+5 false new/removed. Цель: устранить через label-derived coarse bucket в matching identity.
+
+**Изменено:**
+- tests/visual/vision_diff.helpers.ts — exported `normaliseVisionLabel(region): RegionType`. card/panel/error_banner/callout → "panel" coarse; table/list → "table"; nav/badge/metric — изолированные buckets. isSameVisionRegion + pairScore + **buildVisionDiff group key** все используют normalised bucket.
+- tests/visual/vision_diff.spec.ts +4 теста (panel↔card → stable; panel↔nav, status_badge↔card, table↔panel → removed+new).
+- tests/vision/agent_audit.spec.ts runtime сценарий: test.setTimeout(60_000) — устранён flake впритык 28-30s.
+
+**Verification 2026-04-25:** 31/31 unit + 2/2 agent_audit ✅. tsc clean.
+
+**Real ДО vs ПОСЛЕ на agent_audit runtime synthetic:**
+- ДО: `[vision-diff] new=5 removed=5 changed=0 stable=10` — 10 false swap.
+- ПОСЛЕ: `[vision-diff] new=1 removed=0 changed=0 stable=13` — 1 real new, false swap устранён.
+- Длительность 28-30s flake → 22.3s.
+
+**telegram coverage preserved**: 0.58 → 0.58 (нет регрессии).
+
+**Что НЕ изменено:** public signatures, semantic.helpers.ts, auto_test_gen.ts, semantic_gap fuzzy mapping, data-ui-*. LLM не вызывается. state primary остаётся в pairScore.
+
+---
+
+## 2026-04-25 — Structured vision output (state as primary identity)
+
+**Задача:** vision descriptions слишком вариативны run-on-run; matching через description-prefix Jaccard ломался. Цель: structured enum fields как primary, description — secondary.
+
+**Изменено:**
+- vision_discover.helpers.ts — DISCOVERY_SYSTEM полностью переписан на structured-only (no prose, no "likely"). +RegionState (5 buckets) +RegionType (7 buckets) +поля state/type на DiscoveredRegion. normaliseState/Type fallbacks для backward-compat.
+- vision_diff.helpers.ts — isSameVisionRegion и pairScore: state primary (1.0/0.5), type tie-breaker (0.3), description secondary (×0.3 weight). stable/changed по state, не description-prefix.
+- vision_interpret.helpers.ts — Rule 2c (structured state_change conf 0.65). Rule 2 fallback — suppressed когда state pair уже отличается.
+- vision_diff.spec.ts +2 state-primary теста, helper makeRegion получил default state/type.
+- vision_interpret.spec.ts +1 структурный тест.
+- semantic-gap.spec.ts — helpers default state/type.
+
+**Verification 2026-04-25:** 30/30 unit + 2/2 agent_audit ✅. tsc clean.
+
+**Real ДО vs ПОСЛЕ на /telegram:** coverage 0.46→0.58 (+26% rel). covered 6→7, suggestions 3→2.
+
+**Trade-off (документировано):** description в structured mode пустой → scope_hint в suggestions показывает "?". Stability matching выше — rich suggestions ниже. Acceptable для current iteration.
+
+**Что НЕ изменено:** semantic.helpers.ts, auto_test_gen.ts, data-ui-*, fuzzy keyword mapping, public signatures.
+
+---
+
+## 2026-04-25 — Fuzzy vision↔semantic mapping (gap reduction)
+
+**Задача:** vision discovery всё ещё производил regions без mapping в semantic; gap report показывал низкий covered_by_semantic (`/telegram`: covered=3 при vision=11, coverage=0.27) даже после полного контракта. Цель: keyword-based fuzzy matching без page-specific хаков.
+
+**Изменено:**
+- `tests/visual/semantic_gap.helpers.ts` — exported `VISION_LABEL_TO_ROLE_KEYWORDS` (14 entries × 1-3 keyword), приватный `matchScore` (specificity по длине keyword + visibility +1 + scope-in-description +2), `tryMatchVisionToSemantic` переписан на multi-candidate scoring (best score wins; `match_reason: "unique_role"` если ровно один scored, иначе `"label_role_match"`). `SemanticGapReport` +`coverage_ratio: number` (0..1).
+- `tests/visual/semantic-gap.spec.ts` — existing тесты обновлены (`coverage_ratio === 0.2` валиден после fuzzy matching), +5 fuzzy unit-тестов: table→history-panel через keyword "history"; panel multi-candidate best score by scope-in-description; metric-card specificity wins over card; coverage_ratio с nav в знаменателе; nav остаётся never-covered.
+- `tests/vision/agent_audit.spec.ts` — telegram log содержит `coverage=${gap.coverage_ratio.toFixed(2)}`.
+
+**Verification 2026-04-25:** 27/27 unit + 2/2 agent_audit ✅. tsc clean. Было 19 unit до fuzzy mapping.
+
+**Real ДО vs ПОСЛЕ на /telegram:**
+- ДО: `semantic=15 vision=11 covered=3 vision_only=8 suggestions=5 coverage=0.27`
+- ПОСЛЕ: `semantic=15 vision=13 covered=6 vision_only=7 suggestions=3 coverage=0.46`
+- covered ×2, suggestions -40%, coverage_ratio +70% rel.
+- Что новое covered: vision `table` (×3) → `history-panel` через keyword "history"; vision `metric` → `summary-card`; vision `panel` (×3-4) → `summary-panel`/`connectivity-panel`/`history-panel` (best score by scope-in-description).
+
+**Что НЕ изменено:** public signatures `tryMatchVisionToSemantic`/`buildSemanticGapReport`/`crossCheckVisionSemantic`, `data-ui-*` атрибуты, UI, LLM (всё deterministic). Никаких page-specific хаков (`if scope === "telegram"` отсутствует в helpers).
+
+**Honest:** `coverage_ratio` не 1.0 by design — nav/heading/form/input/unknown в знаменателе без inflation. Runtime audit timeout 30s впритык (retry-pass) — известный timing flake, не связан с fuzzy mapping.
+
+---
+
+## 2026-04-25 — Telegram semantic contract (4-я страница покрыта data-ui-*)
+
+**Задача:** перевести vision discovery suggestions предыдущей итерации для `/telegram` в стабильный generic semantic contract. Без page-specific хаков, без новых enum'ов.
+
+**Изменено:**
+- `frontend/src/features/telegram/TelegramPage.tsx` — 18 элементов с `data-ui-*` (page/intro/error-callout/summary-panel/4×summary-card/connectivity-panel/3×signal/check-action/2×result-callout/3×history-panel).
+- `frontend/src/features/telegram/components/TelegramSummaryCard.tsx` — добавлен required prop `uiScope: string`.
+- `tests/visual/semantic.helpers.ts` — `recommendedCheck` +6 generic ролей (4 card-like: `summary-card`/`summary-panel`/`connectivity-panel`/`history-panel`; 2 layout: `telegram-intro`/`connectivity-signal`; 1 action: `connectivity-action`). `CANONICAL_MAP` +`connectivity-action`→`ACTION_STATE`, +`history-panel`→`JOBS_STATE` (переиспользование как generic empty/non_empty bucket).
+- `tests/visual/semantic.spec.ts` +1 тест `semantic: telegram page exposes the data-ui-* contract` (18 регионов через auto-discovery + recommended_check + canonical state для action и history-panels).
+- `tests/visual/interaction.spec.ts` — telegram-check тест расширен semantic before/after snapshot/diff + `[auto-test-candidate]` log. Existing screenshot+vision блок не тронут.
+
+**Verification 2026-04-25:** 11/11 visual + 2/2 agent_audit ✅. tsc clean.
+
+**Gap report ДО vs ПОСЛЕ на /telegram (тот же agent_audit прогон):**
+- ДО: `semantic=0 vision=11 covered=0 vision_only=11 suggestions=8`
+- ПОСЛЕ: `semantic=15 vision=11 covered=3 vision_only=8 suggestions=5`
+
+**Live telegram-check log:**
+```
+[semantic-diff telegram-check] region_added[status-callout:connectivity-result]: region status-callout|connectivity-result||info added
+[auto-test-candidate telegram-check] 1 candidates: 0 canonical, 1 DOM (region_added×1)
+  → await expect(page.locator('[data-ui-role="status-callout"][data-ui-scope="connectivity-result"][data-ui-kind="info"]')).toBeVisible();
+```
+
+**Что НЕ изменено:** `data-testid` (`telegram.summary.*`, `telegram.connectivity-check`, `telegram.check.result`, `telegram.check.error`), CSS/BEM, public signatures, `candidate_assertions_source` (по-прежнему `semantic_diff`), vision authority (cap 0.7).
+
+**Что осталось:** 10 страниц без `data-ui-*` (`/models`, `/analytics`, `/diagnostics`, `/logs`, `/market`, `/orderbook`, `/backtest`, `/settings`, `/spot`, `/futures`). `table` остаётся vision-only внутри `history-panel` — `*-list` роль не вводилась (history-panel сама по себе semantic-region). Live-backend сценария для /telegram нет (нужен реальный bot token); interaction.spec покрывает в mocked режиме.
+
+---
+
+## 2026-04-25 — Vision diff soft matching (status_badge OFFLINE→RUNNING как changed, не remove+add)
+
+**Задача:** vision_diff matching был жёсткий — status_badge OFFLINE→RUNNING становилось removed+added вместо changed. interpretation давала layout_change вместо state_change, cross-check выдавал лишние mismatches.
+
+**Изменено:**
+- tests/visual/vision_diff.helpers.ts — добавлены normaliseDescription/tokeniseDescription/descriptionSimilarity/isSameVisionRegion. buildVisionDiff переписан на score-based greedy pairing (label+bbox identity, Jaccard ≥0.2, score ≥0.4, strip adjacency). public signatures не тронуты.
+- tests/visual/vision_interpret.helpers.ts — enum +state_related_visual_change. Rule 2b (changed callout → action_result), Rule 4 (changed card/panel → state_related_visual_change).
+- tests/visual/vision_diff.spec.ts +5 новых тестов, существующий remove+add перевёрнут.
+- tests/visual/vision_interpret.spec.ts +2 теста.
+- tests/visual/semantic-gap.spec.ts +1 тест на confirmation.
+
+**Verification 2026-04-25:** 19/19 unit + 6/6 live-backend (1 flake retry) + 2/2 agent_audit ✅.
+- start-futures дал changed=2, 3 interpretations (action_result + layout_change + state_related_visual_change), 2 confirmations / 1 mismatch — реальное улучшение vs ранее 1 confirm / 2 mismatches.
+- start-spot/stop-spot на этом прогоне changed=0 — gemma3:4b run-on-run variance даёт радикально разные descriptions (Jaccard <0.2). honest limit, не баг.
+
+**Что НЕ изменено:** public signatures, candidate_assertions из semantic_diff, vision никогда не assertions, confidence cap 0.7.
+
+---
+
+## 2026-04-25 — Vision Behavior Layer (vision = perception + primitive reasoning about changes)
+
+**Задача:** vision из witness/discovery → primitive reasoning about UI changes. Без поломки deterministic baseline.
+
+**Создано:**
+- ✨ tests/visual/vision_diff.helpers.ts (110 строк, pure) — buildVisionDiff с identity-tolerant matching
+- ✨ tests/visual/vision_interpret.helpers.ts (130 строк, pure) — 4 правила, confidence ≤0.7
+- ✨ tests/visual/vision_diff.spec.ts (4 unit) + tests/visual/vision_interpret.spec.ts (5 unit) — synthetic, без OLLAMA
+
+**Изменено:**
+- tests/visual/semantic_gap.helpers.ts — добавлен crossCheckVisionSemantic + VisionSemanticAlignment (3 cross-check rules)
+- tests/visual/live-backend.spec.ts — 3 runtime-сценария расширены vision-discovery before+after + diff/interpret/alignment в **конце** test'а (после composite log). test.setTimeout 90→210s.
+- tests/vision/agent_audit.spec.ts — runtime сценарий получил vision_diff?/vision_interpretation?/vision_semantic_alignment? в JSON. Telegram нетронут.
+
+**Verification 2026-04-25:** 11/11 unit + 6/6 live-backend + 2/2 agent_audit ✅. tsc clean. Один flake live-health retry-pass.
+
+**Edge case (важно):** в agent_audit synthetic mutation меняет только data-ui-state атрибут → vision видит stable=13 → cross-check эмитит mismatch (semantic_only_change). Это **корректное** поведение, демонстрация что слои честно разделены: semantic читает атрибуты, vision видит пиксели.
+
+**Что НЕ нарушено:** candidate_assertions по-прежнему ИСКЛЮЧИТЕЛЬНО из semantic_diff. Vision findings — log + JSON, никогда не assertions/CI gate. Confidence ≤0.7 hard cap.
+
+**Файлы изменены:**
+- tests/visual/vision_diff.helpers.ts (новый)
+- tests/visual/vision_interpret.helpers.ts (новый)
+- tests/visual/vision_diff.spec.ts (новый)
+- tests/visual/vision_interpret.spec.ts (новый)
+- tests/visual/semantic_gap.helpers.ts (расширен)
+- tests/visual/live-backend.spec.ts (3 runtime scenarios + setTimeout 210s)
+- tests/vision/agent_audit.spec.ts (runtime JSON optional fields)
+- docs/memory: docs/testing/TESTING_BASELINE.md, docs/testing/NEXT_STEPS.md, docs/testing/EXPERIMENTAL_VISION_TRACK.md, WORKPLAN.md, C:\Users\farik\.claude\projects\C--ai\memory\project_botik_visual_tests.md, SESSION_LOG.md, AGENTS_CONTEXT.md
+
+---
+
+## 2026-04-25 — Vision discovery + semantic gap analysis (vision = eyes + part of brain)
+
+**Задача:** превратить vision (gemma3:4b) из witness/cross-check в discovery+interpretation layer без поломки deterministic baseline. Vision должна находить структуру UI на странице без `data-ui-*` контракта и предлагать какой контракт стоит ввести следующим шагом — но никогда не подменять semantic source of truth и не быть CI gate.
+
+**Создано:**
+- ✨ `tests/visual/vision_discover.helpers.ts` (~215 строк) — pure модуль. `discoverRegionsFromVision(page, {page_label, expected_features?})` сканирует viewport через 3 горизонтальные полосы (1280×267) — обходит 896×896 downsampling gemma3:4b, который превращал full main в "empty UI". Возвращает `DiscoveryResult { regions: DiscoveredRegion[], summary, uncertain, strips_analysed, total_latency_ms }`. 14 labels (`button|card|status_badge|error_banner|panel|nav|table|form|heading|input|list|metric|callout|unknown`), 9-зонный coarse `bbox_hint` (никаких пиксельных координат). Confidence capped at 0.85 (vision-only нечестно claim certainty), drop <0.3, dedupe по `(label, source_strip, bbox_hint, description-prefix-30)`. Hard guard: throws если `OLLAMA_VISION` не установлен.
+- ✨ `tests/visual/semantic_gap.helpers.ts` (~260 строк, pure, без I/O) — `buildSemanticGapReport(vision, semantic, page_label) → SemanticGapReport`. Heuristic mapping vision → semantic (`button → *-action`, `card → *-card / runtime-card / metric-card`, `status_badge → status-badge`, `callout|error_banner → status-callout`, `panel → layout роли`, `nav → никогда не covered`). `MissingContractSuggestion { suggested_role, suggested_scope_hint, suggested_state_vocabulary, rationale }` для vision_only_candidates кроме `nav|heading|input`. 14 label-кейсов прокомментированы.
+- ✨ `tests/visual/semantic-gap.spec.ts` (~130 строк, 2 unit-теста, без OLLAMA, без `goto`) — synthetic тесты на `buildSemanticGapReport` с ручными fixtures. "covered + vision_only + suggestions" + "nav vision is never covered".
+
+**Изменено:**
+- `tests/visual/vision_loop.helpers.ts` — `analyzeRegion(image, region, system, question, bypassCache?, options?: { numPredict? })` получил optional 6-й аргумент. Default 100 (backward-compat для существующих классификаторов), discovery передаёт **600** — без этого multi-region JSON обрезается → пустой ответ модели. Внутри `analyzeRegionRaw` теперь принимает `numPredict` тоже. **Это единственная правка существующего vision-кода.** Контракт классификаторов (`classifyElementState`, `detectErrorText`, `detectPanelVisibility`) не тронут.
+- `tests/vision/agent_audit.spec.ts` — `AgentAuditReport` получил optional `vision_discovery?: DiscoveryResult` и `semantic_gap_report?: SemanticGapReport` (после `candidate_assertions_source`). Существующий runtime-сценарий не тронут (поля undefined). Новый тест `agent: telegram page — vision discovery + semantic gap report` в конец файла — пишет в **отдельный** JSON `.artifacts/local/latest/vision/agent-audit-telegram.json` (runtime-отчёт `agent-audit.json` остаётся нетронутым). `clearRegionCache()` в начале (старые 100-token результаты могли залипнуть). Sanity asserts: `vision.regions ≥ 1`, `suggestions ≥ 1` (НЕ CI gate — pipeline-liveness).
+
+**Verification (2026-04-25):**
+- frontend tsc clean.
+- Visual baseline: **65/66 ✅** (1 flake `semantic: runtime page exposes the data-ui-* contract`, retry → ✅; race с rendering `runtime.card.spot` под нагрузкой OLLAMA_VISION, не связан с правками). Включает 2/2 новых semantic-gap unit-теста, 0 регрессий на existing visual specs.
+- agent_audit (OLLAMA_AGENT=1): **2/2 ✅**. Runtime сценарий — 4 candidate_assertions из semantic_diff (без регрессий). Telegram сценарий — **11 vision regions** discovered за 13.5s (3 strips × ~4.5s), **8 suggestions** на data-ui-* контракт: `telegram-panel` ×2, `telegram-list` ×3 (3 разных table-региона!), `status-badge`, `telegram-card`, `metric-card`. Semantic baseline на `/telegram` = 0 (как и ожидалось — page без `data-ui-*`).
+
+**Что сохраняется НЕ нарушенным (по требованию пользователя — критично):**
+- `candidate_assertions` по-прежнему генерятся **ТОЛЬКО** из `generateTestFromSemanticDiff` (semantic_diff source). Vision discovery никогда не предлагает Playwright-assertions напрямую — только suggestions для `data-ui-*` контракта. Это лежит в **другом** поле JSON (`missing_semantic_contract_suggestions`), не в `candidate_assertions`.
+- Vision findings — **report-only**, capped at 0.85 confidence, в отдельных полях JSON (`vision_discovery`, `semantic_gap_report`). Никогда не CI gate.
+- Semantic = single source of truth. Discovery — это _предложение что контракт стоит расширить_, а не утверждение "это уже работает".
+- bbox только coarse (9 зон), не пиксели. Vision не выдумывает точные позиции.
+
+**Honest limits:**
+- gemma3:4b даёт generic descriptions ("rectangular container", "tabular display") — by design, модель не выдумывает domain semantics.
+- Дубликаты regions (table×3 на `/telegram`) — частично обработаны (description-prefix-30), семантически-близкие могут просочиться.
+- `inferred_role` часто = label либо абстрактный — vision-guess, не контрактный role.
+- num_predict=600 даёт ~6-8 regions на strip. Можно поднимать, но это бьёт по latency.
+
+**Файлы изменены:**
+- `tests/visual/vision_discover.helpers.ts` (новый)
+- `tests/visual/semantic_gap.helpers.ts` (новый)
+- `tests/visual/semantic-gap.spec.ts` (новый)
+- `tests/visual/vision_loop.helpers.ts` (расширен `analyzeRegion`, единственная правка существующего vision-кода)
+- `tests/vision/agent_audit.spec.ts` (новый сценарий + optional поля в `AgentAuditReport`)
+- docs/memory: `docs/testing/TESTING_BASELINE.md`, `docs/testing/NEXT_STEPS.md`, `docs/testing/EXPERIMENTAL_VISION_TRACK.md`, `WORKPLAN.md`, `C:\Users\farik\.claude\projects\C--ai\memory\project_botik_visual_tests.md`, `SESSION_LOG.md`
+
+---
+
+## 2026-04-25 — Auto-test generation from semantic diff
+
+**Задача:** Добавить детерминистичный слой генерации Playwright-кандидатов из `SemanticDiff`. Заменить vision-эвристику в `agent_audit.spec.ts` на semantic-driven путь. Оставить генерацию строго dry-run — никакой записи файлов, никакого исполнения.
+
+**Изменено / создано:**
+- ✨ `tests/visual/auto_test_gen.ts` (новый, ~175 строк) — pure модуль: `generateTestFromSemanticDiff(diff): TestCandidate[]` + `summariseAutoTestCandidates(candidates): string`. Полный switch по 6 типам `SemanticChange`, classifier `"DOM" | "canonical"`, приватные helpers `selectorForChange` и `canonicalEnumName`. Никаких side effects, никакой page-зависимости.
+- ✨ `tests/visual/auto-test-gen.spec.ts` (новый, ~135 строк) — 3 synthetic теста через DOM-mutation (без OLLAMA): runtime start (≥4 кандидата — 2 canonical `RUNTIME_STATE.ACTIVE` + 2 DOM action), jobs empty→populated (1 canonical `JOBS_STATE.NON_EMPTY`), health pipeline-step `unknown → running` (1 canonical `RUNTIME_STATE.ACTIVE` через canonicalDiffer).
+- `tests/visual/live-backend.spec.ts` — после каждого `compareSemanticSnapshots(...)` добавлен `[auto-test-candidate <scenario>]` лог + per-candidate `assertion_code`. Активно в 3 runtime сценариях (`start-spot`, `stop-spot`, `start-futures`). `live-jobs` и `live-health` не используют `compareSemanticSnapshots` (нет before/after action) — логично остались без auto-gen.
+- `tests/vision/agent_audit.spec.ts` — блок `candidate_assertions` переписан полностью. Было: regex-эвристика над `region.expected` (vision-driven, нечестно). Стало: snapshot before → safe synthetic mutation на `runtime-card[spot]` (offline→running + флип disabled) через `page.evaluate` → snapshot after → diff → generate → revert mutation. JSON-отчёт получил поле `candidate_assertions_source: "semantic_diff" | "vision_heuristic"` для прозрачности происхождения.
+
+**Verification:** 20/20 visual + 1/1 agent_audit ✅ на живом стеке (backend 0.0.77 на :8765, Vite на :4173, Ollama 11434 + gemma3:4b). tsc clean. JSON `.artifacts/local/latest/vision/agent-audit.json` содержит `candidate_assertions_source: "semantic_diff"` и 4 готовых assertion-строки.
+
+**Реальные примеры live-кандидатов:**
+- `expect(toCanonicalState("runtime-card", ...)).toBe(RUNTIME_STATE.DEGRADED);` (start-spot)
+- `await expect(...[data-ui-action="start"]).toBeDisabled();` (start-spot)
+- `await expect(...[data-ui-kind="error"]).toHaveCount(0);` (stop-spot, region_removed)
+
+**Что НЕ делается (по дизайну):**
+- Кандидаты НЕ записываются в файлы тестов автоматически — dry-run, копи-паста как opt-in. Явный контракт пользователя.
+- Vision больше НЕ участвует в выборе assertions — только в наблюдении observed-state в `risk_map` agent_audit.
+- Дубликат кандидатов на callout kind-flip (info→error → `callout_changed` + `region_added` для одной сущности) известен — не critical, де-дуп → future work.
+- `unknown` raw state остаётся unmapped (`canonical_state===null`) — `unknown → running` корректно даёт `RUNTIME_STATE.ACTIVE` candidate.
+- Confidence всегда `"high"` — semantic diff детерминирован; enum зарезервирован для будущих vision-suggested кандидатов.
+
+**Файлы:**
+- `tests/visual/auto_test_gen.ts` (новый)
+- `tests/visual/auto-test-gen.spec.ts` (новый)
+- `tests/visual/live-backend.spec.ts`
+- `tests/vision/agent_audit.spec.ts`
+- `docs/testing/TESTING_BASELINE.md`
+- `docs/testing/NEXT_STEPS.md`
+- `docs/testing/EXPERIMENTAL_VISION_TRACK.md`
+- `WORKPLAN.md` (Decision log)
+- `C:\Users\farik\.claude\projects\C--ai\memory\project_botik_visual_tests.md`
+
+---
+
+## 2026-04-25 — Semantic auto-region extended to /health (third page)
+
+**Задача:** Расширить semantic auto-region `data-ui-*` контракт на третью страницу `/health`. Без page-specific хаков, без новых canonical enum'ов. Доказать что слой масштабируется.
+
+**Изменено (frontend + tests, без новых enum'ov):**
+- `frontend/src/features/health/HealthPage.tsx` — расставлены 11 `data-ui-*` атрибутов: `page/health` на корневом `motion.div`, `health-intro` на wrapper-div вокруг общего `PageIntro`, 4× `metric-card` (scope=pnl-today/balance/trades/positions), `pipeline/health` на section, 3× `pipeline-step` (scope=historical-data/ml-models/trading; state=running/idle/unknown), `bootstrap/session` на section. Локальные `MetricCard` и `PipelineStep` получили пропс `uiScope: string`. Общий `PageIntro` НЕ менялся.
+- `tests/visual/semantic.helpers.ts` — `recommendedCheck` расширен generic-кейсами: `metric-card`+`pipeline-step` → card-like (hybrid если vision-ready, иначе dom); `health-intro`+`pipeline`+`bootstrap` → layout (всегда dom). `CANONICAL_MAP` += `pipeline-step` (running→`RUNTIME_STATE.ACTIVE`, idle→`RUNTIME_STATE.INACTIVE`; `unknown` намеренно НЕ маппится → `canonical_state===null`). Никаких новых enum'ов.
+- `tests/visual/semantic.spec.ts` — новый тест `semantic: health page exposes the data-ui-* contract` (после строки 270): auto-discovery page-root + intro + 4 metric-card + pipeline + 3 pipeline-step + bootstrap; canonical-проверка для pipeline-step с branch для `unknown`→null.
+- `tests/visual/live-backend.spec.ts` — существующий live-health тест расширен: сохранена vision-проверка intro panel (`detectPanelVisibility`); добавлен semantic snapshot блок с auto-discovery всех regions и cross-check'ом `pipeline-step[trading].canonical_state` против реального `GET /runtime-status` (с branch для `state==="unknown"`).
+
+**Verification:** 17/17 ✅ на живом стеке (backend 0.0.77 на :8765, Vite на :4173, Ollama 11434 + gemma3:4b). Разбивка: region-guardrail 1, semantic 6, interaction 4, live-backend 6. tsc clean. Никаких новых page-specific хаков, никаких новых enum'ов, никаких изменений общих компонентов. Никаких регрессий на `/runtime` и `/jobs`.
+
+**Ключевой лог:** `[live-health-semantic] page+intro+4metrics+3steps+bootstrap discovered; trading raw="unknown" canonical=null` — react-query ещё не успевает зарезолвить `/runtime-status` к моменту snapshot, поэтому контракт честно возвращает `unknown→null` и cross-check корректно пропускается.
+
+**Что осталось (honest limits):**
+- 11 страниц без `data-ui-*` — отдельная очередь, не форсировать.
+- `metric-card` без state по задумке — у метрик нет lifecycle, `canonical_state` всегда null.
+- `pipeline-step` "unknown" — задумано unmapped; четвёртый bucket (`PIPELINE_LIFECYCLE_STATE`) можно ввести если появится живой scenario, который его трогает.
+- `JOB_LIFECYCLE_STATE` — также future work, не блокер.
+
+**Файлы:**
+- `frontend/src/features/health/HealthPage.tsx`
+- `tests/visual/semantic.helpers.ts`
+- `tests/visual/semantic.spec.ts`
+- `tests/visual/live-backend.spec.ts`
+- `docs/testing/TESTING_BASELINE.md`
+- `docs/testing/NEXT_STEPS.md`
+- `docs/testing/EXPERIMENTAL_VISION_TRACK.md`
+- `WORKPLAN.md` (Decision log)
+- `C:\Users\farik\.claude\projects\C--ai\memory\project_botik_visual_tests.md`
+
+---
+
 ## 2026-04-21 — Native interactive automation framework (reusable, state-aware, non-intrusive)
 
 **Задача:** Построить reusable state-aware automation layer для desktop app, который можно применять к разным экранам без переписывания. Non-intrusive (не крадёт мышь/клавиатуру/фокус). Доказать одним реальным interactive flow.

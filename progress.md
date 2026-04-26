@@ -1,16 +1,17 @@
 # Botik — Текущее состояние проекта
 
 > Обновлять перед каждым значимым шагом (правило #4 в CLAUDE.md).
-> Последнее обновление: 2026-04-25
+> Последнее обновление: 2026-04-26
 
 ---
 
 ## Стек
 
-- **Backend:** Python 3.11, pybit (Bybit API), SQLite + PostgreSQL
-- **Frontend:** React 19 + TypeScript + Vite + Tauri (мигрирован с pywebview 2026-04-18)
+- **Backend:** Python 3.11, pybit (Bybit API), SQLite (основная) + PostgreSQL (через DB_URL)
+- **Frontend:** React 19 + TypeScript + Vite + Tailwind v4 + Framer Motion
+- **Desktop shell:** Tauri 2 (Rust) — единственный поддерживаемый GUI/product path
 - **ML:** scikit-learn / PyTorch, pandas / numpy
-- **Infra:** GitHub Actions CI, pyinstaller exe, PostgreSQL 18 (windows direct)
+- **Infra:** GitHub Actions CI, Tauri desktop build, PostgreSQL 18 (windows direct)
 
 ---
 
@@ -59,16 +60,19 @@
 
 ### Tests / Visual track
 
-**Путь:** `tests/visual/`, `tests/vision/`, `docs/testing/`
-**Статус:** ✅ Production-grade — semantic auto-region + canonical state layer (2026-04-25)
+**Путь:** `tests/visual/`, `tests/vision/`, `tests/unit/`, `docs/testing/`
+**Статус:** ✅ Post-M1 cleanup (2026-04-26) — research-grade vision stack retired, focused product tests остались.
 
-- `tests/visual/semantic.helpers.ts` — `collectSemanticRegions` / `captureSemanticSnapshot` / `compareSemanticSnapshots` через `data-ui-*`. Канонические enums: `RUNTIME_STATE.{INACTIVE,ACTIVE,DEGRADED}`, `JOBS_STATE.{EMPTY,NON_EMPTY}`, `ACTION_STATE.{ENABLED,DISABLED}`. Каждый регион несёт `state` (raw) и `canonical_state` (typed enum). Diff сравнивает canonical, raw fallback только когда оба unmapped.
-- `data-ui-*` контракт размечен на `RuntimeStatusCard` и на 5 jobs-компонентах (`JobMonitorPage`, `JobToolbar`, `DataBackfillJobCard`, `DataIntegrityJobCard`, `JobStatusCard`). Не заменяет `data-testid`.
-- `tests/visual/live-backend.spec.ts` (6 сценариев): health, runtime, jobs (read-only) + 3 live-interaction (start spot / stop spot / start futures) с multi-region (header + actions + callouts), `composeDecision`, `checkRegionLayoutSanity`, и semantic snapshot/diff на canonical уровне.
-- `tests/visual/semantic.spec.ts` (5 тестов): runtime contract, jobs contract, state-flip diff, `canonical state survives a UI rename` (synthetic safety-net), action availability flip.
-- `tests/visual/region-guardrail.spec.ts` (1) — proves classifiers skip regions < `VISION_REGION_MIN` без вызова модели.
-- `tests/visual/interaction.spec.ts` (4) — vision integrated, OLLAMA_VISION=1.
-- Last runtime verification: **16/16 ✅** на живом стеке (backend 8765 v0.0.77 + Vite 4173 + Ollama 11434 + gemma3:4b).
+Active test stack:
+- **Unit tests** (`tests/unit/python/` + integration в `tests/`): 253 tests collected, 22 unit за 1.3s.
+- **Visual** (`tests/visual/`): `regression.spec` + `regions.spec` + `states.spec` (pixel diff с baselines в `baselines/`), `layout.spec` + `text-clip.spec` (JS-based, no baselines), `semantic.spec` + `semantic.helpers.ts` (`data-ui-*` контракт + canonical enums RUNTIME_STATE / JOBS_STATE / ACTION_STATE / MODEL_STATE).
+- **Vision** (`tests/vision/vision.spec.ts`): Claude API (`VISION_MODE=llm` + `ANTHROPIC_API_KEY`) или JS heuristic. `VISION_STRICT=1` — fails on `severity=high AND confidence>0.7`.
+- **Desktop-smoke** (`tests/desktop-smoke/`): browser-only headless Chromium против Vite + app-service. Не открывает Tauri window.
+
+Retired в M1 cleanup 2026-04-26 (external backup `C:/ai/aiBotik_legacy_backup_2026-04-26/`):
+- `live-backend.spec.ts`, `interaction.spec.ts`, `region-guardrail.spec.ts` — vision-anchored, скиплись без `OLLAMA_VISION=1`.
+- `agent_audit.spec.ts`, `vision_loop/diff/discover/interpret`, `semantic_gap`, `auto_test_gen` — research stack.
+- `tests/desktop-native/` — использовал удалённый PyInstaller `botik_desktop.exe`.
 
 ---
 
@@ -85,12 +89,15 @@
 ## Команды запуска
 
 ```bash
-# Backend
-pip install -r requirements.txt
-python main.py
+# Primary desktop path (Tauri shell + sidecar app-service)
+pwsh ./scripts/run-primary-desktop.ps1
 
-# Frontend (dev)
+# Frontend (dev, browser preview)
 cd frontend && pnpm dev
+
+# Backend (sidecar / dev, без shell)
+pip install -r requirements.txt
+python -m src.botik.main --config config.yaml
 
 # Tests
 pytest

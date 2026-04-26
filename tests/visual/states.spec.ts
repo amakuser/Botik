@@ -8,7 +8,6 @@
  * Distinction from other suites:
  *   regression.spec — fixture "data loaded" state, full-page
  *   regions.spec    — fixture "data loaded" state, component-level
- *   interaction.spec — user action triggers state change
  *   states.spec (this) — specific states: error, empty, running, etc.
  */
 
