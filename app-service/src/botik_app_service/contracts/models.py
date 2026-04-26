@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field
 ModelsReadSourceMode = Literal["fixture", "compatibility"]
 ModelScope = Literal["spot", "futures", "unknown"]
 
+# Normalized pipeline state derived from ml_training_runs.status + ready_scopes.
+# Kept separate from latest_run_status (raw) to allow both to coexist.
+PipelineState = Literal["idle", "training", "serving", "error", "unknown"]
+
 
 class ModelsSummary(BaseModel):
     total_models: int = 0
@@ -18,6 +22,8 @@ class ModelsSummary(BaseModel):
     latest_run_mode: str = "not available"
     manifest_status: str = "missing"
     db_available: bool = False
+    # Normalized pipeline state — additive field, default keeps backward compat.
+    pipeline_state: PipelineState = "unknown"
 
 
 class ModelsScopeStatus(BaseModel):

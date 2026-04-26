@@ -26,6 +26,7 @@ from botik_app_service.analytics_read.service import AnalyticsReadService
 from botik_app_service.api.routes_analytics import router as analytics_router
 from botik_app_service.api.routes_admin import router as admin_router
 from botik_app_service.api.routes_bootstrap import router as bootstrap_router
+from botik_app_service.api.routes_db_health import router as db_health_router
 from botik_app_service.api.routes_diagnostics import router as diagnostics_router
 from botik_app_service.api.routes_events import router as events_router
 from botik_app_service.api.routes_futures import router as futures_router
@@ -36,16 +37,19 @@ from botik_app_service.api.routes_backtest import router as backtest_router
 from botik_app_service.api.routes_market import router as market_router
 from botik_app_service.api.routes_models import router as models_router
 from botik_app_service.api.routes_orderbook import router as orderbook_router
+from botik_app_service.api.routes_reconciliation import router as reconciliation_router
 from botik_app_service.api.routes_settings import router as settings_router
 from botik_app_service.api.routes_spot import router as spot_router
 from botik_app_service.api.routes_telegram import router as telegram_router
 from botik_app_service.api.routes_runtime_control import router as runtime_control_router
 from botik_app_service.api.routes_runtime_status import router as runtime_status_router
+from botik_app_service.db_health.service import DbHealthService
 from botik_app_service.diagnostics_compat.service import DiagnosticsCompatibilityService
 from botik_app_service.futures_read.service import FuturesReadService
 from botik_app_service.backtest_run.service import BacktestRunService
 from botik_app_service.market_read.service import MarketReadService
 from botik_app_service.orderbook_read.service import OrderbookReadService
+from botik_app_service.reconciliation_read.manager import ReconciliationReadService
 from botik_app_service.settings_read.service import SettingsReadService
 from botik_app_service.infra.config import Settings
 from botik_app_service.infra.logging import configure_logging
@@ -152,6 +156,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backtest_run_service = BacktestRunService(
             repo_root=_REPO_ROOT,
         )
+        reconciliation_read_service = ReconciliationReadService(
+            repo_root=_REPO_ROOT,
+        )
+        db_health_service = DbHealthService(
+            repo_root=_REPO_ROOT,
+        )
         await logs_manager.start(publisher)
 
         app.state.settings = resolved_settings
@@ -170,6 +180,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.market_read_service = market_read_service
         app.state.orderbook_read_service = orderbook_read_service
         app.state.backtest_run_service = backtest_run_service
+        app.state.reconciliation_read_service = reconciliation_read_service
+        app.state.db_health_service = db_health_service
         app.state.job_store = store
         app.state.job_registry = registry
         app.state.job_manager = manager
@@ -223,6 +235,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(market_router)
     app.include_router(orderbook_router)
     app.include_router(backtest_router)
+    app.include_router(reconciliation_router)
+    app.include_router(db_health_router)
     app.include_router(admin_router)
 
     # Serve compiled frontend (production/exe mode)

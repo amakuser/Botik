@@ -15,6 +15,7 @@ from botik_app_service.contracts.models import (
     ModelsReadTruncation,
     ModelsScopeStatus,
     ModelsSummary,
+    PipelineState,
     TrainingRunSummary,
 )
 
@@ -22,6 +23,29 @@ REGISTRY_LIMIT = 8
 RECENT_RUNS_LIMIT = 6
 READY_STATUSES = {"active", "ready", "trained", "completed"}
 ACTIVE_SENTINELS = {"", "unknown", "none", "null"}
+
+
+def _derive_pipeline_state(latest_run_status: str, ready_scopes: int) -> PipelineState:
+    """Map raw training run status + ready_scopes to a normalized PipelineState.
+
+    Mapping:
+      'running'                              -> 'training'
+      'completed' AND ready_scopes > 0       -> 'serving'
+      'completed' AND ready_scopes == 0      -> 'idle'
+      'failed'                               -> 'error'
+      'not available' (sentinel: no runs)    -> 'idle'  (system at rest)
+      anything else / null                   -> 'unknown'
+    """
+    status = (latest_run_status or "").strip().lower()
+    if status == "running":
+        return "training"
+    if status == "completed":
+        return "serving" if ready_scopes > 0 else "idle"
+    if status == "failed":
+        return "error"
+    if status == "not available":
+        return "idle"
+    return "unknown"
 
 
 class LegacyModelsReadAdapter:
@@ -80,16 +104,18 @@ class LegacyModelsReadAdapter:
             if str(pointer.get(key) or "").strip().lower() not in ACTIVE_SENTINELS
         )
         ready_scopes = sum(1 for scope in scopes if scope.ready)
+        raw_status = latest_run.status if latest_run else "not available"
         summary = ModelsSummary(
             total_models=total_models,
             active_declared_count=active_declared_count,
             ready_scopes=ready_scopes,
             recent_training_runs_count=total_runs,
             latest_run_scope=latest_run.scope if latest_run else "not available",
-            latest_run_status=latest_run.status if latest_run else "not available",
+            latest_run_status=raw_status,
             latest_run_mode=latest_run.mode if latest_run else "not available",
             manifest_status=str(pointer.get("manifest_status") or "missing"),
             db_available=True,
+            pipeline_state=_derive_pipeline_state(raw_status, ready_scopes),
         )
         return ModelsReadSnapshot(
             source_mode=source_mode,
@@ -348,6 +374,7 @@ class LegacyModelsReadAdapter:
                 status_reason="No readable model registry database found.",
             ),
         ]
+        ready_scopes = sum(1 for scope in scopes if scope.ready)
         return ModelsReadSnapshot(
             source_mode=source_mode,
             summary=ModelsSummary(
@@ -356,9 +383,10 @@ class LegacyModelsReadAdapter:
                     for key in ("active_spot_model", "active_futures_model")
                     if str(pointer.get(key) or "").strip().lower() not in ACTIVE_SENTINELS
                 ),
-                ready_scopes=sum(1 for scope in scopes if scope.ready),
+                ready_scopes=ready_scopes,
                 manifest_status=str(pointer.get("manifest_status") or "missing"),
                 db_available=False,
+                pipeline_state=_derive_pipeline_state("not available", ready_scopes),
             ),
             scopes=scopes,
         )
