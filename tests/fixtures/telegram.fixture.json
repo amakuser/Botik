@@ -1,0 +1,68 @@
+{
+  "snapshot": {
+    "source_mode": "fixture",
+    "generated_at": "2026-04-19T00:00:00+00:00",
+    "summary": {
+      "bot_profile": "botik_fixture_bot",
+      "token_profile_name": "TELEGRAM_BOT_TOKEN",
+      "token_configured": true,
+      "internal_bot_disabled": false,
+      "connectivity_state": "healthy",
+      "connectivity_detail": "Bot is reachable",
+      "allowed_chat_count": 2,
+      "allowed_chats_masked": [
+        "***111",
+        "***222"
+      ],
+      "commands_count": 1,
+      "alerts_count": 1,
+      "errors_count": 1,
+      "last_successful_send": "2026-04-19T00:00:00+00:00",
+      "last_error": null,
+      "startup_status": "ok"
+    },
+    "recent_commands": [
+      {
+        "ts": "2026-04-19T00:00:00+00:00",
+        "command": "/status",
+        "source": "telegram",
+        "status": "ok",
+        "chat_id_masked": "***111",
+        "username": "fixture_user",
+        "args": null
+      }
+    ],
+    "recent_alerts": [
+      {
+        "ts": "2026-04-19T00:00:00+00:00",
+        "alert_type": "trade_open",
+        "message": "Fixture trade alert: BTCUSDT Buy",
+        "delivered": true,
+        "source": "telegram",
+        "status": "ok"
+      }
+    ],
+    "recent_errors": [
+      {
+        "ts": "2026-04-19T00:00:00+00:00",
+        "error": "Fixture connectivity error: test only",
+        "source": "telegram",
+        "status": "error"
+      }
+    ],
+    "truncated": {
+      "recent_commands": false,
+      "recent_alerts": false,
+      "recent_errors": false
+    }
+  },
+  "connectivity_check_result": {
+    "checked_at": "2026-04-19T00:00:00+00:00",
+    "source_mode": "fixture",
+    "state": "healthy",
+    "detail": "Fixture connectivity check passed",
+    "bot_username": "botik_fixture_bot",
+    "latency_ms": 42.0,
+    "error": null
+  }
+}

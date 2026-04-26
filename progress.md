@@ -66,8 +66,10 @@
 Active test stack:
 - **Unit tests** (`tests/unit/python/` + integration в `tests/`): 253 tests collected, 22 unit за 1.3s.
 - **Visual** (`tests/visual/`): `regression.spec` + `regions.spec` + `states.spec` (pixel diff с baselines в `baselines/`), `layout.spec` + `text-clip.spec` (JS-based, no baselines), `semantic.spec` + `semantic.helpers.ts` (`data-ui-*` контракт + canonical enums RUNTIME_STATE / JOBS_STATE / ACTION_STATE / MODEL_STATE).
+- **Live product smoke** (`tests/visual/live-product-smoke.spec.ts`): real backend + Vite, no mocks, no vision. 5 routes (/, /runtime, /jobs, /spot, /models) — backend HTTP + DOM + semantic snapshot agreement. **5/5 ✅** на backend 8765 + Vite 4173 (2026-04-26).
 - **Vision** (`tests/vision/vision.spec.ts`): Claude API (`VISION_MODE=llm` + `ANTHROPIC_API_KEY`) или JS heuristic. `VISION_STRICT=1` — fails on `severity=high AND confidence>0.7`.
 - **Desktop-smoke** (`tests/desktop-smoke/`): browser-only headless Chromium против Vite + app-service. Не открывает Tauri window.
+- **Desktop-native smoke** (`tests/desktop-native/run-automated-smoke.ps1`): launches real Tauri exe `apps/desktop/src-tauri/target/release/botik_desktop.exe`, asserts HWND visible, captures screenshot, kills process. Win32 P/Invoke (`lib/Win32Window.ps1`), no CDP/WebView2 framework. **PASSED** 2026-04-26 (window 1296×809, title='Botik').
 
 Retired в M1 cleanup 2026-04-26 (external backup `C:/ai/aiBotik_legacy_backup_2026-04-26/`):
 - `live-backend.spec.ts`, `interaction.spec.ts`, `region-guardrail.spec.ts` — vision-anchored, скиплись без `OLLAMA_VISION=1`.

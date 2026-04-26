@@ -1,0 +1,4 @@
+active_spot_model: spot-champion-v3
+active_futures_model: futures-paper-v2
+spot_checkpoint_path: models/spot-champion-v3.pkl
+futures_checkpoint_path: models/futures-paper-v2.pkl

@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-04-19T00:00:00+00:00",
+  "runtimes": [
+    {
+      "runtime_id": "spot",
+      "label": "Spot Runtime",
+      "state": "offline",
+      "pids": [],
+      "pid_count": 0,
+      "last_heartbeat_at": null,
+      "last_heartbeat_age_seconds": null,
+      "last_error": null,
+      "last_error_at": null,
+      "status_reason": "fixture mode \u2014 no running process",
+      "source_mode": "fixture"
+    },
+    {
+      "runtime_id": "futures",
+      "label": "Futures Runtime",
+      "state": "offline",
+      "pids": [],
+      "pid_count": 0,
+      "last_heartbeat_at": null,
+      "last_heartbeat_age_seconds": null,
+      "last_error": null,
+      "last_error_at": null,
+      "status_reason": "fixture mode \u2014 no running process",
+      "source_mode": "fixture"
+    }
+  ]
+}
